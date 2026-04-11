@@ -1,4 +1,10 @@
 using Hound.Api.Hubs;
+using Hound.Api.Indexes;
+using Hound.Api.Repositories;
+using Hound.Api.Services;
+using Hound.Core.Logging;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Indexes;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -15,10 +21,21 @@ builder.Services.AddCors(options =>
     });
 });
 
-// TODO: Wave 2 — Register:
-// - IDocumentStore (RavenDB at http://ravendb:8080)
-// - IActivityLogger
-// - RavenDB indexes
+// RavenDB IDocumentStore
+var ravenUrl = builder.Configuration["RavenDB:Url"] ?? "http://ravendb:8080";
+var ravenDatabase = builder.Configuration["RavenDB:Database"] ?? "HoundAI";
+var store = new DocumentStore
+{
+    Urls = new[] { ravenUrl },
+    Database = ravenDatabase
+};
+store.Initialize();
+IndexCreation.CreateIndexes(typeof(ActivityLog_ByPackAndTime).Assembly, store);
+builder.Services.AddSingleton<IDocumentStore>(store);
+
+// Repositories and services
+builder.Services.AddScoped<IPackRepository, RavenPackRepository>();
+builder.Services.AddScoped<IActivityLogger, RavenActivityService>();
 
 var app = builder.Build();
 
