@@ -1,0 +1,94 @@
+name: Build and Push to GHCR
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/hound-ai
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore .NET
+        run: dotnet restore src/Hound.sln
+
+      - name: Build .NET
+        run: dotnet build src/Hound.sln --no-restore
+
+      # TODO: Wave 3 — Uncomment after test projects are implemented
+      # - name: Run .NET tests
+      #   run: dotnet test src/Hound.sln --no-build --verbosity normal
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: ui/hound-dashboard/package-lock.json
+
+      - name: Install Angular dependencies
+        run: npm ci
+        working-directory: ui/hound-dashboard
+
+      # TODO: Wave 3 — Uncomment after Angular tests are implemented
+      # - name: Run Angular tests
+      #   run: npx ng test --watch=false --browsers=ChromeHeadless
+      #   working-directory: ui/hound-dashboard
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push trading-pack
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: src/Hound.Trading/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/trading-pack:latest
+            ${{ env.IMAGE_PREFIX }}/trading-pack:${{ github.sha }}
+
+      - name: Build and push hound-api
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: src/Hound.Api/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/hound-api:latest
+            ${{ env.IMAGE_PREFIX }}/hound-api:${{ github.sha }}
+
+      - name: Build and push hound-ui
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v5
+        with:
+          context: ./ui/hound-dashboard
+          file: ui/hound-dashboard/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_PREFIX }}/hound-ui:latest
+            ${{ env.IMAGE_PREFIX }}/hound-ui:${{ github.sha }}

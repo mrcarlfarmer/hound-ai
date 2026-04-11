@@ -1,0 +1,120 @@
+networks:
+  hound-net:
+    driver: bridge
+
+volumes:
+  ollama-data:
+  ravendb-data:
+
+services:
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - hound-net
+
+  ravendb:
+    image: ravendb/ravendb
+    container_name: ravendb
+    ports:
+      - "8080:8080"
+    volumes:
+      - ravendb-data:/opt/RavenDB/Server/RavenData
+    environment:
+      - RAVEN_Setup_Mode=None
+      - RAVEN_License_Eula_Accepted=true
+      - RAVEN_Security_UnsecuredAccessAllowed=PrivateNetwork
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/studio/index.html"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped
+    networks:
+      - hound-net
+
+  trading-pack:
+    image: ghcr.io/mrcarlfarmer/hound-ai/trading-pack:latest
+    container_name: trading-pack
+    build:
+      context: .
+      dockerfile: src/Hound.Trading/Dockerfile
+    env_file:
+      - .env
+    environment:
+      - Ollama__BaseUrl=http://ollama:11434/v1
+      - RavenDb__Url=http://ravendb:8080
+    depends_on:
+      ollama:
+        condition: service_healthy
+      ravendb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hound-net
+
+  hound-api:
+    image: ghcr.io/mrcarlfarmer/hound-ai/hound-api:latest
+    container_name: hound-api
+    build:
+      context: .
+      dockerfile: src/Hound.Api/Dockerfile
+    ports:
+      - "5000:8080"
+    env_file:
+      - .env
+    environment:
+      - RavenDb__Url=http://ravendb:8080
+    depends_on:
+      ravendb:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - hound-net
+
+  hound-ui:
+    image: ghcr.io/mrcarlfarmer/hound-ai/hound-ui:latest
+    container_name: hound-ui
+    build:
+      context: ./ui/hound-dashboard
+      dockerfile: Dockerfile
+    ports:
+      - "4200:80"
+    depends_on:
+      - hound-api
+    restart: unless-stopped
+    networks:
+      - hound-net
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file:
+      - infra/watchtower/config.env
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_ROLLING_RESTART=true
+    restart: unless-stopped
+    networks:
+      - hound-net

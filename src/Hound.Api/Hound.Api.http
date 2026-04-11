@@ -1,0 +1,6 @@
+@Hound.Api_HostAddress = http://localhost:5213
+
+GET {{Hound.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

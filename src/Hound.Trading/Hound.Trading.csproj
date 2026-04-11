@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-Hound.Trading-460d67e2-b37d-4e2e-9108-3a5e1b282076</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Alpaca.Markets" Version="7.2.0" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.13" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hound.Core\Hound.Core.csproj" />
+  </ItemGroup>
+</Project>

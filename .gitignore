@@ -1,0 +1,79 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+project.lock.json
+*.nuget.props
+*.nuget.targets
+.nuget/
+BundleArtifacts/
+PublishProfiles/
+launchSettings.json
+
+# User secrets
+secrets.json
+
+# NuGet
+*.nupkg
+**/[Pp]ackages/*
+!**/[Pp]ackages/build/
+
+# Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+.sass-cache/
+tmp/
+npm-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# IDE
+.vs/
+.vscode/settings.json
+.vscode/tasks.json
+.vscode/launch.json
+*.swp
+*.swo
+*~
+.idea/
+*.iml
+
+# Docker
+.env
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+._*
+
+# Test results
+TestResults/
+coverage/
+*.trx
+*.coverage
+*.coveragexml
+
+# Misc
+*.log
+*.tmp
+*.bak
+*.cache
