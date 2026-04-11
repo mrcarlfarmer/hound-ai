@@ -26,7 +26,7 @@ public class TradingWorker : BackgroundService
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        _logger.LogInformation("TradingWorker starting. Schedule: {Schedule}", _settings.CronSchedule);
+        _logger.LogInformation("TradingWorker starting. Interval: {Interval} minutes", _settings.RunIntervalMinutes);
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -44,9 +44,8 @@ public class TradingWorker : BackgroundService
                 _logger.LogError(ex, "TradingWorker encountered an error during workflow run");
             }
 
-            // Wait for the configured interval (default 4 hours on weekdays).
-            // A full cron scheduler is outside scope; using a fixed interval as a placeholder.
-            var delay = TimeSpan.FromHours(4);
+            // Wait for the configured run interval before the next execution.
+            var delay = TimeSpan.FromMinutes(_settings.RunIntervalMinutes);
             _logger.LogInformation("TradingWorker sleeping for {Delay}", delay);
             await Task.Delay(delay, stoppingToken);
         }

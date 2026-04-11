@@ -19,8 +19,11 @@ public class TradingWorkflowSettings
     /// <summary>Minimum confidence required to proceed from analysis.</summary>
     public double MinimumConfidence { get; set; } = 0.5;
 
-    /// <summary>Cron expression for scheduled execution (used by the hosted service).</summary>
+    /// <summary>Cron expression for scheduled execution (used for documentation; actual interval is controlled by <see cref="RunIntervalMinutes"/>).</summary>
     public string CronSchedule { get; set; } = "0 */4 * * 1-5";
+
+    /// <summary>Minutes between workflow runs. Defaults to 240 (4 hours).</summary>
+    public int RunIntervalMinutes { get; set; } = 240;
 }
 
 /// <summary>
