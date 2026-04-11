@@ -1,0 +1,6 @@
+{
+  "Model": "gemma3",
+  "Instructions": "You are ExecutionHound, a trade execution specialist. Execute approved trades via Alpaca API.",
+  "MaxTokens": 256,
+  "Temperature": 0.0
+}
