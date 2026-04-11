@@ -31,6 +31,22 @@ services:
     networks:
       - hound-net
 
+  ollama-init:
+    image: ollama/ollama
+    container_name: ollama-init
+    volumes:
+      - ollama-data:/root/.ollama
+      - ./infra/ollama/pull-models.sh:/pull-models.sh:ro
+    entrypoint: ["/bin/sh", "/pull-models.sh"]
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - hound-net
+
   ravendb:
     image: ravendb/ravendb
     container_name: ravendb
