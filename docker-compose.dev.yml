@@ -1,0 +1,53 @@
+# Development overrides for Hound AI
+# Usage: docker compose -f docker-compose.yml -f docker-compose.dev.yml up
+#
+# Enables:
+#   - dotnet watch for hot-reload of .NET services
+#   - ng serve with live reload for the Angular UI
+#   - Dev-friendly environment variables
+
+services:
+  trading-pack:
+    build:
+      context: .
+      dockerfile: src/Hound.Trading/Dockerfile
+      target: build
+    volumes:
+      - ./src/Hound.Core:/app/Hound.Core
+      - ./src/Hound.Trading:/app/Hound.Trading
+      - ${HOME}/.nuget/packages:/root/.nuget/packages:ro
+    working_dir: /app/Hound.Trading
+    command: ["dotnet", "watch", "run"]
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_WATCH_RESTART_ON_RUDE_EDIT=true
+
+  hound-api:
+    build:
+      context: .
+      dockerfile: src/Hound.Api/Dockerfile
+      target: build
+    volumes:
+      - ./src/Hound.Core:/app/Hound.Core
+      - ./src/Hound.Api:/app/Hound.Api
+      - ${HOME}/.nuget/packages:/root/.nuget/packages:ro
+    working_dir: /app/Hound.Api
+    command: ["dotnet", "watch", "run"]
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_WATCH_RESTART_ON_RUDE_EDIT=true
+
+  hound-ui:
+    image: node:22-alpine
+    container_name: hound-ui
+    ports:
+      - "4200:4200"
+    volumes:
+      - ./ui/hound-dashboard:/app
+      - /app/node_modules  # anonymous volume prevents host node_modules from shadowing the container's (critical for WSL2 cross-platform compat)
+    working_dir: /app
+    command: ["npx", "ng", "serve", "--host", "0.0.0.0", "--port", "4200", "--proxy-config", "proxy.conf.json"]
+    environment:
+      - NODE_ENV=development
+    depends_on:
+      - hound-api

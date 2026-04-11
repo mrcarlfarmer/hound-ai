@@ -1,0 +1,6 @@
+{
+  "Model": "gemma3",
+  "Instructions": "You are StrategyHound, a trading strategist. Determine buy/sell/hold decisions based on market analysis.",
+  "MaxTokens": 512,
+  "Temperature": 0.1
+}

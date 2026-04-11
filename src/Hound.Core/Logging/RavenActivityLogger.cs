@@ -1,5 +1,7 @@
 using Hound.Core.Models;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Session;
 
 namespace Hound.Core.Logging;
 
@@ -12,13 +14,18 @@ public class RavenActivityLogger : IActivityLogger
         _store = store;
     }
 
-    public Task LogActivityAsync(ActivityLog activity, CancellationToken cancellationToken = default)
+    private static string GetDatabaseName(string packId) =>
+        string.IsNullOrWhiteSpace(packId) ? "hound-activity" : $"hound-{packId.ToLowerInvariant()}";
+
+    public async Task LogActivityAsync(ActivityLog activity, CancellationToken cancellationToken = default)
     {
-        // TODO: Implement in Wave 2 — store ActivityLog to pack-specific database
-        throw new NotImplementedException();
+        var database = GetDatabaseName(activity.PackId);
+        using IAsyncDocumentSession session = _store.OpenAsyncSession(database);
+        await session.StoreAsync(activity, cancellationToken);
+        await session.SaveChangesAsync(cancellationToken);
     }
 
-    public Task<IReadOnlyList<ActivityLog>> GetActivitiesAsync(
+    public async Task<IReadOnlyList<ActivityLog>> GetActivitiesAsync(
         string? packId = null,
         string? houndId = null,
         DateTime? from = null,
@@ -27,7 +34,35 @@ public class RavenActivityLogger : IActivityLogger
         int pageSize = 50,
         CancellationToken cancellationToken = default)
     {
-        // TODO: Implement in Wave 2 — query with filters, pagination
-        throw new NotImplementedException();
+        var database = GetDatabaseName(packId ?? string.Empty);
+        using IAsyncDocumentSession session = _store.OpenAsyncSession(database);
+
+        IRavenQueryable<ActivityLog> query = session.Query<ActivityLog>();
+
+        if (!string.IsNullOrWhiteSpace(packId))
+            query = query.Where(a => a.PackId == packId);
+
+        if (!string.IsNullOrWhiteSpace(houndId))
+            query = query.Where(a => a.HoundId == houndId);
+
+        if (from.HasValue)
+        {
+            var fromValue = from.Value;
+            query = query.Where(a => a.Timestamp >= fromValue);
+        }
+
+        if (to.HasValue)
+        {
+            var toValue = to.Value;
+            query = query.Where(a => a.Timestamp <= toValue);
+        }
+
+        var results = await query
+            .OrderByDescending(a => a.Timestamp)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync(cancellationToken);
+
+        return results.AsReadOnly();
     }
 }

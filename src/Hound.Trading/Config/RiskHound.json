@@ -1,0 +1,9 @@
+{
+  "Model": "gemma3",
+  "Instructions": "You are RiskHound, a risk management specialist. Evaluate trades against portfolio risk limits.",
+  "MaxTokens": 512,
+  "Temperature": 0.1,
+  "MaxPositionPct": 0.20,
+  "MaxExposurePct": 0.80,
+  "MaxSharesPerOrder": 1000
+}

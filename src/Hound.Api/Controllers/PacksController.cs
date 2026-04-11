@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using Hound.Core.Models;
+using Hound.Api.Repositories;
 
 namespace Hound.Api.Controllers;
 
@@ -7,27 +8,36 @@ namespace Hound.Api.Controllers;
 [Route("api/[controller]")]
 public class PacksController : ControllerBase
 {
+    private readonly IPackRepository _packs;
+
+    public PacksController(IPackRepository packs)
+    {
+        _packs = packs;
+    }
+
     /// <summary>GET /api/packs — List all packs with metadata.</summary>
     [HttpGet]
-    public ActionResult<IEnumerable<Pack>> GetPacks()
+    public async Task<ActionResult<IEnumerable<Pack>>> GetPacks(CancellationToken cancellationToken)
     {
-        // TODO: Wave 2 — query RavenDB for registered packs
-        return Ok(Array.Empty<Pack>());
+        var packs = await _packs.GetAllPacksAsync(cancellationToken);
+        return Ok(packs);
     }
 
     /// <summary>GET /api/packs/{id} — Single pack detail.</summary>
     [HttpGet("{id}")]
-    public ActionResult<Pack> GetPack(string id)
+    public async Task<ActionResult<Pack>> GetPack(string id, CancellationToken cancellationToken)
     {
-        // TODO: Wave 2
-        return NotFound();
+        var pack = await _packs.GetPackAsync(id, cancellationToken);
+        if (pack is null)
+            return NotFound();
+        return Ok(pack);
     }
 
     /// <summary>GET /api/packs/{packId}/hounds — All hounds in a pack.</summary>
     [HttpGet("{packId}/hounds")]
-    public ActionResult<IEnumerable<HoundInfo>> GetHounds(string packId)
+    public async Task<ActionResult<IEnumerable<HoundInfo>>> GetHounds(string packId, CancellationToken cancellationToken)
     {
-        // TODO: Wave 2
-        return Ok(Array.Empty<HoundInfo>());
+        var hounds = await _packs.GetHoundsAsync(packId, cancellationToken);
+        return Ok(hounds);
     }
 }
