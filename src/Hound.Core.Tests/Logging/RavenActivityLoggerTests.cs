@@ -2,6 +2,7 @@ using Hound.Core.Logging;
 using Hound.Core.Models;
 using Moq;
 using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 
 namespace Hound.Core.Tests.Logging;
 
@@ -9,12 +10,18 @@ namespace Hound.Core.Tests.Logging;
 public sealed class RavenActivityLoggerTests
 {
     private Mock<IDocumentStore> _storeMock = null!;
+    private Mock<IAsyncDocumentSession> _sessionMock = null!;
     private RavenActivityLogger _logger = null!;
 
     [TestInitialize]
     public void Setup()
     {
         _storeMock = new Mock<IDocumentStore>();
+        _sessionMock = new Mock<IAsyncDocumentSession>();
+
+        _storeMock.Setup(s => s.OpenAsyncSession(It.IsAny<string>()))
+            .Returns(_sessionMock.Object);
+
         _logger = new RavenActivityLogger(_storeMock.Object);
     }
 
@@ -27,7 +34,7 @@ public sealed class RavenActivityLoggerTests
     }
 
     [TestMethod]
-    public async Task LogActivityAsync_NotYetImplemented_ThrowsNotImplementedException()
+    public async Task LogActivityAsync_StoresActivityInSession()
     {
         var activity = new ActivityLog
         {
@@ -39,37 +46,55 @@ public sealed class RavenActivityLoggerTests
             Severity = ActivitySeverity.Info
         };
 
-        await Assert.ThrowsExceptionAsync<NotImplementedException>(
-            () => _logger.LogActivityAsync(activity));
+        await _logger.LogActivityAsync(activity);
+
+        _sessionMock.Verify(s => s.StoreAsync(activity, It.IsAny<CancellationToken>()), Times.Once);
+        _sessionMock.Verify(s => s.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [TestMethod]
-    public async Task LogActivityAsync_WithCancellationToken_ThrowsNotImplementedException()
+    public async Task LogActivityAsync_WithCancellationToken_PassesTokenToSession()
     {
         var activity = new ActivityLog { PackId = "trading-pack", HoundId = "risk-hound" };
         using var cts = new CancellationTokenSource();
 
-        await Assert.ThrowsExceptionAsync<NotImplementedException>(
-            () => _logger.LogActivityAsync(activity, cts.Token));
+        await _logger.LogActivityAsync(activity, cts.Token);
+
+        _sessionMock.Verify(s => s.StoreAsync(activity, cts.Token), Times.Once);
+        _sessionMock.Verify(s => s.SaveChangesAsync(cts.Token), Times.Once);
     }
 
     [TestMethod]
-    public async Task GetActivitiesAsync_NotYetImplemented_ThrowsNotImplementedException()
+    public async Task LogActivityAsync_OpensSessionWithPackDatabase()
     {
-        await Assert.ThrowsExceptionAsync<NotImplementedException>(
+        var activity = new ActivityLog { PackId = "trading-pack" };
+
+        await _logger.LogActivityAsync(activity);
+
+        _storeMock.Verify(s => s.OpenAsyncSession("hound-trading-pack"), Times.Once);
+    }
+
+    [TestMethod]
+    public async Task GetActivitiesAsync_OpensSessionForPack()
+    {
+        _sessionMock.Setup(s => s.Query<ActivityLog>(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()))
+            .Throws<InvalidOperationException>();
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => _logger.GetActivitiesAsync(packId: "trading-pack"));
+
+        _storeMock.Verify(s => s.OpenAsyncSession("hound-trading-pack"), Times.Once);
+    }
+
+    [TestMethod]
+    public async Task GetActivitiesAsync_NoPack_UsesDefaultDatabase()
+    {
+        _sessionMock.Setup(s => s.Query<ActivityLog>(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()))
+            .Throws<InvalidOperationException>();
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
             () => _logger.GetActivitiesAsync());
-    }
 
-    [TestMethod]
-    public async Task GetActivitiesAsync_WithFilters_ThrowsNotImplementedException()
-    {
-        await Assert.ThrowsExceptionAsync<NotImplementedException>(
-            () => _logger.GetActivitiesAsync(
-                packId: "trading-pack",
-                houndId: "execution-hound",
-                from: DateTime.UtcNow.AddDays(-1),
-                to: DateTime.UtcNow,
-                page: 1,
-                pageSize: 25));
+        _storeMock.Verify(s => s.OpenAsyncSession("hound-activity"), Times.Once);
     }
 }
