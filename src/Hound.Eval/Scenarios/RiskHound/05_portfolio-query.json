@@ -1,0 +1,27 @@
+{
+  "scenarioName": "Portfolio State Queried Before Risk Decision",
+  "description": "RiskHound should use the get_portfolio tool to query current account equity and positions before making a risk decision. This validates correct tool usage.",
+  "houndName": "RiskHound",
+  "category": "tool-usage",
+  "input": {
+    "userMessage": "Evaluate the risk of buying 100 shares of GOOG at $175 each.",
+    "context": {
+      "symbol": "GOOG",
+      "action": "Buy",
+      "quantity": 100,
+      "reasoning": "AnalysisHound identified a moderate bullish trend.",
+      "confidence": 0.70
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_portfolio"],
+    "outputMustContain": ["GOOG"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with verdict, decision, reasoning, adjustedQuantity",
+    "decisionCriteria": "RiskHound must call get_portfolio to determine current equity before evaluating the 20% position limit. Response should reference portfolio context."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'GOOG' and a valid verdict field."
+  }
+}
