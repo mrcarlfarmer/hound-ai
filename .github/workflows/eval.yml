@@ -28,6 +28,8 @@ env:
 jobs:
   eval:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     # NOTE: This job requires a running Ollama LLM instance.
     # It is manually triggered and does not block image builds.
     steps:
