@@ -33,10 +33,15 @@ builder.Services.AddSingleton<IDocumentStore>(_ =>
     return store;
 });
 
-builder.Services.AddSingleton<IActivityLogger, RavenActivityLogger>();
-
 // ── HTTP / Ollama ─────────────────────────────────────────────────────────────
 builder.Services.AddHttpClient();
+
+// ── Activity Logger ───────────────────────────────────────────────────────────
+// Forward activity events to the Hound.Api, which persists them and broadcasts
+// to SignalR clients for real-time monitoring in the dashboard.
+var houndApiUrl = builder.Configuration["HoundApi:BaseUrl"] ?? "http://hound-api:5000";
+builder.Services.AddSingleton<IActivityLogger>(sp =>
+    new HttpActivityLogger(sp.GetRequiredService<IHttpClientFactory>(), houndApiUrl));
 
 var ollamaUrl = builder.Configuration["Ollama:BaseUrl"] ?? "http://ollama:11434/v1";
 builder.Services.AddSingleton<IOllamaClientFactory>(sp =>
