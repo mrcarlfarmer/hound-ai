@@ -122,13 +122,14 @@ services:
       - hound-net
 
   watchtower:
-    image: containrrr/watchtower
+    image: containrrr/watchtower:latest
     container_name: watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     env_file:
       - infra/watchtower/config.env
     environment:
+      - DOCKER_API_VERSION=1.40
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_ROLLING_RESTART=true
     restart: unless-stopped
