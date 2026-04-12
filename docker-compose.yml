@@ -126,7 +126,7 @@ services:
     container_name: watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ~/.docker/watchtower-config.json:/etc/watchtower/config.json
+      - ${HOME}/.docker/watchtower-config.json:/etc/watchtower/config.json
     env_file:
       - infra/watchtower/config.env
     environment:
