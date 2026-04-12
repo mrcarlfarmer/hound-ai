@@ -1,4 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
+using Hound.Api.Hubs;
 using Hound.Core.Logging;
 using Hound.Core.Models;
 
@@ -9,10 +11,12 @@ namespace Hound.Api.Controllers;
 public class ActivityController : ControllerBase
 {
     private readonly IActivityLogger _activityLogger;
+    private readonly IHubContext<ActivityHub> _hubContext;
 
-    public ActivityController(IActivityLogger activityLogger)
+    public ActivityController(IActivityLogger activityLogger, IHubContext<ActivityHub> hubContext)
     {
         _activityLogger = activityLogger;
+        _hubContext = hubContext;
     }
 
     /// <summary>
@@ -37,5 +41,22 @@ public class ActivityController : ControllerBase
             pageSize: pageSize,
             cancellationToken: cancellationToken);
         return Ok(results);
+    }
+
+    /// <summary>
+    /// POST /api/activity — Persists an activity log entry and broadcasts it to
+    /// all SignalR clients subscribed to the relevant pack group.
+    /// Called by pack containers (e.g. trading-pack) to hook into the eventing framework.
+    /// </summary>
+    [HttpPost]
+    public async Task<IActionResult> PostActivity(
+        [FromBody] ActivityLog activity,
+        CancellationToken cancellationToken = default)
+    {
+        await _activityLogger.LogActivityAsync(activity, cancellationToken);
+        await _hubContext.Clients
+            .Group($"pack-{activity.PackId}")
+            .SendAsync("OnActivity", activity, cancellationToken);
+        return Ok();
     }
 }

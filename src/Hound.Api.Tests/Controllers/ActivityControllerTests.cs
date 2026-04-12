@@ -1,7 +1,9 @@
 using Hound.Api.Controllers;
+using Hound.Api.Hubs;
 using Hound.Core.Logging;
 using Hound.Core.Models;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Moq;
 
 namespace Hound.Api.Tests.Controllers;
@@ -10,13 +12,21 @@ namespace Hound.Api.Tests.Controllers;
 public class ActivityControllerTests
 {
     private Mock<IActivityLogger> _mockLogger = null!;
+    private Mock<IHubContext<ActivityHub>> _mockHubContext = null!;
+    private Mock<IHubClients> _mockHubClients = null!;
+    private Mock<IClientProxy> _mockClientProxy = null!;
     private ActivityController _controller = null!;
 
     [TestInitialize]
     public void Setup()
     {
         _mockLogger = new Mock<IActivityLogger>();
-        _controller = new ActivityController(_mockLogger.Object);
+        _mockClientProxy = new Mock<IClientProxy>();
+        _mockHubClients = new Mock<IHubClients>();
+        _mockHubClients.Setup(c => c.Group(It.IsAny<string>())).Returns(_mockClientProxy.Object);
+        _mockHubContext = new Mock<IHubContext<ActivityHub>>();
+        _mockHubContext.Setup(h => h.Clients).Returns(_mockHubClients.Object);
+        _controller = new ActivityController(_mockLogger.Object, _mockHubContext.Object);
     }
 
     [TestMethod]
@@ -119,5 +129,69 @@ public class ActivityControllerTests
         _mockLogger.Verify(
             l => l.GetActivitiesAsync(null, null, null, null, 3, 10, default),
             Times.Once);
+    }
+
+    [TestMethod]
+    public async Task PostActivity_PersistsActivityViaLogger()
+    {
+        var activity = new ActivityLog
+        {
+            PackId = "trading-pack",
+            HoundId = "analysis-hound",
+            HoundName = "AnalysisHound",
+            Message = "Bullish signal on AAPL",
+            Severity = ActivitySeverity.Info,
+        };
+
+        var result = await _controller.PostActivity(activity, default);
+
+        _mockLogger.Verify(l => l.LogActivityAsync(activity, default), Times.Once);
+        Assert.IsInstanceOfType<OkResult>(result);
+    }
+
+    [TestMethod]
+    public async Task PostActivity_BroadcastsToPackSignalRGroup()
+    {
+        var activity = new ActivityLog
+        {
+            PackId = "trading-pack",
+            HoundId = "strategy-hound",
+            HoundName = "StrategyHound",
+            Message = "Buy MSFT",
+            Severity = ActivitySeverity.Success,
+        };
+
+        await _controller.PostActivity(activity, default);
+
+        _mockHubClients.Verify(c => c.Group("pack-trading-pack"), Times.Once);
+        _mockClientProxy.Verify(
+            p => p.SendCoreAsync(
+                "OnActivity",
+                It.Is<object?[]>(args => args.Length == 1 && args[0] == activity),
+                It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    [TestMethod]
+    public async Task PostActivity_PersistsBeforeBroadcasting()
+    {
+        var callOrder = new List<string>();
+
+        _mockLogger
+            .Setup(l => l.LogActivityAsync(It.IsAny<ActivityLog>(), It.IsAny<CancellationToken>()))
+            .Callback(() => callOrder.Add("persist"))
+            .Returns(Task.CompletedTask);
+
+        _mockClientProxy
+            .Setup(p => p.SendCoreAsync(It.IsAny<string>(), It.IsAny<object?[]>(), It.IsAny<CancellationToken>()))
+            .Callback(() => callOrder.Add("broadcast"))
+            .Returns(Task.CompletedTask);
+
+        var activity = new ActivityLog { PackId = "trading-pack", HoundId = "risk-hound" };
+        await _controller.PostActivity(activity, default);
+
+        Assert.AreEqual(2, callOrder.Count);
+        Assert.AreEqual("persist", callOrder[0]);
+        Assert.AreEqual("broadcast", callOrder[1]);
     }
 }
