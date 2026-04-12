@@ -288,31 +288,46 @@ WATCHTOWER_POLL_INTERVAL=300          # Check for updates every 5 minutes (in se
 WATCHTOWER_INCLUDE_STOPPED=false      # Only monitor running containers
 ```
 
-Additional Watchtower settings (`WATCHTOWER_CLEANUP`, `WATCHTOWER_ROLLING_RESTART`) and GHCR credentials (`REPO_USER`, `REPO_PASS`) are set in `docker-compose.yml` directly.
+Additional Watchtower settings (`WATCHTOWER_CLEANUP`, `WATCHTOWER_ROLLING_RESTART`) are set in `docker-compose.yml` directly.
+
+> **Important:** Do NOT put `REPO_USER` or `REPO_PASS` in `config.env` or `docker-compose.yml`. Those env vars only work for Docker Hub, not GHCR. GHCR authentication uses a mounted `config.json` file (see below).
 
 ### 9.2 GHCR authentication for Watchtower
 
-Watchtower needs a GitHub Personal Access Token (PAT) with `read:packages` scope to pull from GHCR.
+Watchtower needs a Docker `config.json` with inline credentials to pull from GHCR. The `REPO_USER`/`REPO_PASS` environment variables do **not** work for GHCR.
 
-1. Go to [GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens](https://github.com/settings/tokens?type=beta).
-2. Create a new token with the `read:packages` permission.
+1. Go to [GitHub → Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens).
+2. Create a new token (classic) with `read:packages` scope.
 3. Add the token to your `.env` file as `GHCR_TOKEN`.
+4. Generate a Docker credentials file for Watchtower:
 
-The `docker-compose.yml` maps this into the Watchtower container environment:
+```bash
+cd ~/hound-ai
+source .env
+mkdir -p infra/watchtower/docker-creds
+echo "$GHCR_TOKEN" | docker --config infra/watchtower/docker-creds login ghcr.io -u mrcarlfarmer --password-stdin
+```
+
+This creates `infra/watchtower/docker-creds/config.json` with inline auth (gitignored).
+
+The `docker-compose.yml` mounts this file into the Watchtower container:
 
 ```yaml
 watchtower:
   image: containrrr/watchtower:latest
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock
+    - ./infra/watchtower/docker-creds/config.json:/config.json
   env_file:
     - infra/watchtower/config.env
   environment:
     - DOCKER_API_VERSION=1.40
     - WATCHTOWER_CLEANUP=true
     - WATCHTOWER_ROLLING_RESTART=true
-    - REPO_USER=mrcarlfarmer
-    - REPO_PASS=${GHCR_TOKEN}
+    - WATCHTOWER_NOTIFICATION_URL=generic://hound-api:8080/api/watchtower/webhook?template=json
+    - WATCHTOWER_NOTIFICATION_REPORT=true
+  depends_on:
+    - hound-api
   restart: unless-stopped
   networks:
     - hound-net
@@ -424,10 +439,36 @@ sudo lsof -i :8080
 
 ### Watchtower not pulling updates
 
-1. Check GHCR token is valid: `echo $GHCR_TOKEN | docker login ghcr.io -u mrcarlfarmer --password-stdin`
-2. Check Watchtower logs: `docker compose logs watchtower`
-3. Ensure images are tagged and pushed to GHCR correctly.
-4. Verify poll interval isn't set too high.
+1. **Run debug mode** to check credential loading:
+   ```bash
+   docker exec watchtower /watchtower --run-once --debug 2>&1 | grep -i "credentials\|auth"
+   ```
+   You should see: `Loaded auth credentials for user mrcarlfarmer, on registry ghcr.io, from file /config.json`
+
+2. **If you see `your_github_username_here`** — stale `REPO_USER`/`REPO_PASS` env vars are overriding `config.json`. Check:
+   ```bash
+   docker inspect watchtower --format '{{json .Config.Env}}' | python3 -m json.tool
+   ```
+   Remove any `REPO_USER`/`REPO_PASS` entries from `config.env` and `docker-compose.yml`, then recreate: `docker compose up -d --force-recreate watchtower`
+
+3. **If you see `No credentials for ghcr.io found`** — regenerate the credentials file:
+   ```bash
+   source .env
+   rm -rf infra/watchtower/docker-creds && mkdir -p infra/watchtower/docker-creds
+   echo "$GHCR_TOKEN" | docker --config infra/watchtower/docker-creds login ghcr.io -u mrcarlfarmer --password-stdin
+   docker compose up -d --force-recreate watchtower
+   ```
+
+4. **Verify the config.json mount** is present:
+   ```bash
+   docker inspect watchtower --format '{{json .Mounts}}' | python3 -m json.tool
+   ```
+   You should see a bind mount with `"Destination": "/config.json"`.
+
+5. **Check GHCR token is valid**: `source .env && echo "$GHCR_TOKEN" | docker login ghcr.io -u mrcarlfarmer --password-stdin`
+6. **Check Watchtower logs**: `docker compose logs watchtower`
+7. Ensure images are tagged and pushed to GHCR correctly.
+8. Verify poll interval isn't set too high.
 
 ### WSL2 memory limits
 
