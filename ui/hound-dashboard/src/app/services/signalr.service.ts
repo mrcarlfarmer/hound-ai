@@ -1,10 +1,22 @@
-import { Injectable } from '@angular/core';
+import { Injectable, InjectionToken, inject } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import * as signalR from '@microsoft/signalr';
 import { ActivityLog, WatchtowerEvent } from '../models';
 
+export const SIGNALR_CONNECTION_FACTORY = new InjectionToken<() => signalR.HubConnection>(
+  'SignalrConnectionFactory',
+  {
+    factory: () => () =>
+      new signalR.HubConnectionBuilder()
+        .withUrl('http://localhost:5000/hubs/activity')
+        .withAutomaticReconnect()
+        .build(),
+  },
+);
+
 @Injectable({ providedIn: 'root' })
 export class SignalrService {
+  private connectionFactory = inject(SIGNALR_CONNECTION_FACTORY);
   private hubConnection?: signalR.HubConnection;
   private activitySubject = new Subject<ActivityLog>();
   private watchtowerSubject = new Subject<WatchtowerEvent>();
@@ -13,10 +25,7 @@ export class SignalrService {
   onWatchtowerEvent$: Observable<WatchtowerEvent> = this.watchtowerSubject.asObservable();
 
   connect(): void {
-    this.hubConnection = new signalR.HubConnectionBuilder()
-      .withUrl('http://localhost:5000/hubs/activity')
-      .withAutomaticReconnect()
-      .build();
+    this.hubConnection = this.connectionFactory();
 
     this.hubConnection.on('OnActivity', (activity: ActivityLog) => {
       this.activitySubject.next(activity);

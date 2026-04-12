@@ -1,35 +1,29 @@
 import { TestBed } from '@angular/core/testing';
-import { SignalrService } from './signalr.service';
+import { SignalrService, SIGNALR_CONNECTION_FACTORY } from './signalr.service';
 import { ActivityLog } from '../models';
-
-const mockConnection = vi.hoisted(() => ({
-  on: vi.fn(),
-  start: vi.fn().mockResolvedValue(undefined),
-  stop: vi.fn(),
-  invoke: vi.fn(),
-}));
-
-vi.mock('@microsoft/signalr', () => ({
-  // vi.fn() with an arrow function cannot be called with `new`.
-  // Using a regular function allows `new signalR.HubConnectionBuilder()` to work in production code.
-  HubConnectionBuilder: vi.fn(function () {
-    return {
-      withUrl: vi.fn().mockReturnThis(),
-      withAutomaticReconnect: vi.fn().mockReturnThis(),
-      build: vi.fn().mockReturnValue(mockConnection),
-    };
-  }),
-}));
 
 describe('SignalrService', () => {
   let service: SignalrService;
+  let mockConnection: {
+    on: ReturnType<typeof vi.fn>;
+    start: ReturnType<typeof vi.fn>;
+    stop: ReturnType<typeof vi.fn>;
+    invoke: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(() => {
-    vi.clearAllMocks();
-    mockConnection.start.mockResolvedValue(undefined);
+    mockConnection = {
+      on: vi.fn(),
+      start: vi.fn().mockResolvedValue(undefined),
+      stop: vi.fn(),
+      invoke: vi.fn(),
+    };
 
     TestBed.configureTestingModule({
-      providers: [SignalrService],
+      providers: [
+        SignalrService,
+        { provide: SIGNALR_CONNECTION_FACTORY, useValue: () => mockConnection },
+      ],
     });
     service = TestBed.inject(SignalrService);
   });
