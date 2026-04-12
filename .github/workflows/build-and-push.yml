@@ -32,9 +32,8 @@ jobs:
       - name: Build .NET
         run: dotnet build src/Hound.sln --no-restore
 
-      # TODO: Wave 3 — Uncomment after test projects are implemented
-      # - name: Run .NET tests
-      #   run: dotnet test src/Hound.sln --no-build --verbosity normal
+      - name: Run .NET tests
+        run: dotnet test src/Hound.sln --no-build --no-restore --verbosity normal
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -47,10 +46,9 @@ jobs:
         run: npm ci
         working-directory: ui/hound-dashboard
 
-      # TODO: Wave 3 — Uncomment after Angular tests are implemented
-      # - name: Run Angular tests
-      #   run: npx ng test --watch=false --browsers=ChromeHeadless
-      #   working-directory: ui/hound-dashboard
+      - name: Run Angular tests
+        run: npx ng test --watch=false
+        working-directory: ui/hound-dashboard
 
       - name: Log in to GHCR
         if: github.event_name == 'push'
