@@ -132,6 +132,10 @@ services:
       - DOCKER_API_VERSION=1.40
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_ROLLING_RESTART=true
+      - WATCHTOWER_NOTIFICATION_URL=generic://hound-api:8080/api/watchtower/webhook?template=json
+      - WATCHTOWER_NOTIFICATION_REPORT=true
+    depends_on:
+      - hound-api
     restart: unless-stopped
     networks:
       - hound-net
