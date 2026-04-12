@@ -6,6 +6,10 @@ using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Operations;
+using Raven.Client.Exceptions.Database;
+using Raven.Client.ServerWide;
+using Raven.Client.ServerWide.Operations;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
@@ -351,9 +355,22 @@ public class TunerHound
         TunerExperiment experiment,
         CancellationToken cancellationToken)
     {
+        EnsureDatabaseExists(TunerDatabase);
         using var session = _documentStore.OpenAsyncSession(TunerDatabase);
         await session.StoreAsync(experiment, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
+    }
+
+    private void EnsureDatabaseExists(string database)
+    {
+        try
+        {
+            _documentStore.Maintenance.ForDatabase(database).Send(new GetStatisticsOperation());
+        }
+        catch (DatabaseDoesNotExistException)
+        {
+            _documentStore.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(database)));
+        }
     }
 
     private string PickNextHound()

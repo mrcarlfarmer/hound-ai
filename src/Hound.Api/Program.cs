@@ -5,6 +5,11 @@ using Hound.Api.Services;
 using Hound.Core.Logging;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Indexes;
+using Raven.Client.Documents.Operations;
+using Raven.Client.Exceptions;
+using Raven.Client.Exceptions.Database;
+using Raven.Client.ServerWide;
+using Raven.Client.ServerWide.Operations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -30,6 +35,17 @@ var store = new DocumentStore
     Database = ravenDatabase
 };
 store.Initialize();
+
+// Ensure the database exists
+try
+{
+    store.Maintenance.ForDatabase(ravenDatabase).Send(new GetStatisticsOperation());
+}
+catch (DatabaseDoesNotExistException)
+{
+    store.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(ravenDatabase)));
+}
+
 IndexCreation.CreateIndexes(typeof(ActivityLog_ByPackAndTime).Assembly, store);
 builder.Services.AddSingleton<IDocumentStore>(store);
 

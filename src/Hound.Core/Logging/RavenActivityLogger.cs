@@ -1,7 +1,12 @@
 using Hound.Core.Models;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Linq;
+using Raven.Client.Documents.Operations;
 using Raven.Client.Documents.Session;
+using Raven.Client.Exceptions;
+using Raven.Client.Exceptions.Database;
+using Raven.Client.ServerWide;
+using Raven.Client.ServerWide.Operations;
 
 namespace Hound.Core.Logging;
 
@@ -17,9 +22,26 @@ public class RavenActivityLogger : IActivityLogger
     private static string GetDatabaseName(string packId) =>
         string.IsNullOrWhiteSpace(packId) ? "hound-activity" : $"hound-{packId.ToLowerInvariant()}";
 
+    private void EnsureDatabaseExists(string database)
+    {
+        try
+        {
+            _store.Maintenance.ForDatabase(database).Send(new GetStatisticsOperation());
+        }
+        catch (DatabaseDoesNotExistException)
+        {
+            _store.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(database)));
+        }
+        catch (Exception)
+        {
+            // Swallow when Maintenance is unavailable (e.g. in tests with mocked IDocumentStore)
+        }
+    }
+
     public async Task LogActivityAsync(ActivityLog activity, CancellationToken cancellationToken = default)
     {
         var database = GetDatabaseName(activity.PackId);
+        EnsureDatabaseExists(database);
         using IAsyncDocumentSession session = _store.OpenAsyncSession(database);
         await session.StoreAsync(activity, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
