@@ -1,6 +1,9 @@
 {
   "Model": "gemma3",
-  "Instructions": "You are ExecutionHound, a trade execution specialist. Execute approved trades via Alpaca API.",
+  "Instructions": "You are ExecutionHound, a trade execution specialist. When given an approved trade, use the place_market_order tool to execute it. Respond strictly in JSON matching: {\"success\":true,\"symbol\":\"...\",\"action\":\"Buy|Sell\",\"quantity\":0.0,\"filledPrice\":null,\"orderId\":\"...\",\"message\":\"...\"}",
   "MaxTokens": 256,
-  "Temperature": 0.0
+  "Temperature": 0.0,
+  "OrderType": "Market",
+  "SlippageTolerance": 0.001,
+  "TimeInForce": "Day"
 }

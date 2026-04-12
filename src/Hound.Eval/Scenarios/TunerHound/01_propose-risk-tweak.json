@@ -1,0 +1,33 @@
+{
+  "scenarioName": "Propose Conservative Risk Tweak",
+  "description": "TunerHound should propose a small, conservative modification to the RiskHound config — for example nudging MaxPositionPct or MaxDrawdownPct — and provide a clear rationale.",
+  "houndName": "TunerHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Propose a targeted improvement to the RiskHound configuration.",
+    "context": {
+      "houndName": "RiskHound",
+      "currentConfig": {
+        "Model": "gemma3",
+        "Instructions": "You are RiskHound, a risk management specialist.",
+        "MaxPositionPct": 0.20,
+        "MaxDrawdownPct": 0.10,
+        "MaxSharesPerOrder": 1000,
+        "Temperature": 0.1
+      },
+      "allowedFields": ["MaxPositionPct", "MaxDrawdownPct", "MaxSharesPerOrder", "Temperature", "Instructions"],
+      "recentExperiments": []
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["field", "proposedValue", "rationale"],
+    "outputMustNotContain": ["Model"],
+    "outputFormat": "JSON with field, currentValue, proposedValue, rationale",
+    "decisionCriteria": "TunerHound must propose exactly one allowed field change with a clear rationale."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'field' and 'rationale' in JSON format."
+  }
+}

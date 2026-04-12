@@ -1,10 +1,13 @@
 using Hound.Core.LlmClient;
 using Hound.Core.Logging;
+using Hound.Core.Models;
 using Hound.Trading;
 using Hound.Trading.AlpacaClient;
 using Hound.Trading.Hounds;
+using Hound.Trading.Services;
 using Hound.Trading.Workflows;
 using Raven.Client.Documents;
+using System.Text.Json;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -14,6 +17,9 @@ builder.Services.Configure<AlpacaSettings>(
 
 builder.Services.Configure<TradingWorkflowSettings>(
     builder.Configuration.GetSection(TradingWorkflowSettings.SectionName));
+
+builder.Services.Configure<TunerSettings>(
+    builder.Configuration.GetSection(TunerSettings.SectionName));
 
 // ── RavenDB ──────────────────────────────────────────────────────────────────
 var ravenUrl = builder.Configuration["RavenDb:Url"] ?? "http://ravendb:8080";
@@ -80,6 +86,32 @@ builder.Services.AddSingleton<ExecutionHound>(sp =>
 // ── Workflow & Worker ─────────────────────────────────────────────────────────
 builder.Services.AddSingleton<TradingWorkflow>();
 builder.Services.AddHostedService<TradingWorker>();
+
+// ── TunerHound & TunerHostedService ──────────────────────────────────────────
+var tunerModel = builder.Configuration["Hounds:Tuner:Model"] ?? "gemma3";
+builder.Services.AddSingleton<TunerHound>(sp =>
+{
+    var factory = sp.GetRequiredService<IOllamaClientFactory>();
+    var chatClient = ((OllamaClientFactory)factory).CreateChatClient(tunerModel);
+    var documentStore = sp.GetRequiredService<IDocumentStore>();
+    var activityLogger = sp.GetRequiredService<IActivityLogger>();
+    var tunerSettings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<TunerSettings>>().Value;
+
+    var configDir = tunerSettings.ConfigDirectory
+        ?? Path.Combine(AppContext.BaseDirectory, "Config");
+
+    var constraintsPath = Path.Combine(configDir, "TunerConstraints.json");
+    var constraints = File.Exists(constraintsPath)
+        ? JsonSerializer.Deserialize<TunerConstraints>(
+            File.ReadAllText(constraintsPath),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+          ?? new TunerConstraints()
+        : new TunerConstraints();
+
+    return new TunerHound(chatClient, documentStore, activityLogger, factory, configDir, constraints,
+        sp.GetService<ILoggerFactory>());
+});
+builder.Services.AddHostedService<TunerHostedService>();
 
 var host = builder.Build();
 host.Run();

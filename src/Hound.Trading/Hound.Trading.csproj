@@ -15,4 +15,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Hound.Core\Hound.Core.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="Config/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
