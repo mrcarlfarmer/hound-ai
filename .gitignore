@@ -46,9 +46,12 @@ yarn-error.log*
 
 # IDE
 .vs/
-.vscode/settings.json
-.vscode/tasks.json
-.vscode/launch.json
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/mcp.json
 *.swp
 *.swo
 *~
