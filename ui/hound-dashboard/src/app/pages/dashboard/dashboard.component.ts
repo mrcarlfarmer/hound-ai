@@ -10,7 +10,13 @@ import { Pack } from '../../models';
   imports: [CommonModule, RouterLink],
   template: `
     <h1 class="mb-6 font-heading text-3xl font-semibold tracking-tight text-foreground">Hound AI Dashboard</h1>
-    <div class="grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] gap-4">
+
+    <!-- Loading skeleton -->
+    <div *ngIf="loading" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div *ngFor="let _ of [1,2,3]" class="h-28 animate-pulse rounded-lg bg-secondary/50"></div>
+    </div>
+
+    <div *ngIf="!loading" class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-[repeat(auto-fill,minmax(250px,1fr))]">
       <div *ngFor="let pack of packs"
            class="pack-card cursor-pointer rounded-lg border border-border bg-card p-4 transition-colors hover:border-primary"
            [routerLink]="['/packs', pack.id]">
@@ -25,16 +31,21 @@ import { Pack } from '../../models';
         <p *ngIf="pack.lastActivity" class="mt-1 text-xs text-muted-foreground">Last: {{ pack.lastActivity | date:'short' }}</p>
       </div>
     </div>
-    <p *ngIf="packs.length === 0" class="empty mt-4 italic text-muted-foreground">No packs registered.</p>
+    <p *ngIf="!loading && packs.length === 0" class="empty mt-4 italic text-muted-foreground">No packs registered.</p>
   `,
   styles: []
 })
 export class DashboardComponent implements OnInit {
   packs: Pack[] = [];
+  loading = false;
 
   constructor(private api: ApiService) {}
 
   ngOnInit(): void {
-    this.api.getPacks().subscribe(packs => this.packs = packs);
+    this.loading = true;
+    this.api.getPacks().subscribe(packs => {
+      this.packs = packs;
+      this.loading = false;
+    });
   }
 }

@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TunerService } from '../../services/tuner.service';
 import { TunerExperiment } from '../../models';
+import { toast } from '@spartan-ng/brain/sonner';
 
 @Component({
   selector: 'app-tuner',
@@ -16,26 +17,33 @@ import { TunerExperiment } from '../../models';
 
     <p *ngIf="error" class="mb-4 rounded-md bg-red-900/40 px-4 py-2 text-sm text-red-400">{{ error }}</p>
 
-    <div class="overflow-hidden rounded-lg border border-border" *ngIf="experiments.length > 0">
+    <!-- Loading skeleton -->
+    <div *ngIf="loading" class="space-y-3">
+      <div class="h-10 w-full animate-pulse rounded-md bg-secondary/50"></div>
+      <div class="h-10 w-full animate-pulse rounded-md bg-secondary/50"></div>
+      <div class="h-10 w-full animate-pulse rounded-md bg-secondary/50"></div>
+    </div>
+
+    <div class="overflow-x-auto overflow-hidden rounded-lg border border-border" *ngIf="!loading && experiments.length > 0">
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-b border-border bg-secondary/50">
             <th class="px-3 py-3 font-semibold text-foreground">Hound</th>
-            <th class="px-3 py-3 font-semibold text-foreground">Timestamp</th>
-            <th class="px-3 py-3 font-semibold text-foreground">Baseline</th>
-            <th class="px-3 py-3 font-semibold text-foreground">Candidate</th>
+            <th class="hidden px-3 py-3 font-semibold text-foreground md:table-cell">Timestamp</th>
+            <th class="hidden px-3 py-3 font-semibold text-foreground lg:table-cell">Baseline</th>
+            <th class="hidden px-3 py-3 font-semibold text-foreground lg:table-cell">Candidate</th>
             <th class="px-3 py-3 font-semibold text-foreground">Delta</th>
             <th class="px-3 py-3 font-semibold text-foreground">Status</th>
-            <th class="px-3 py-3 font-semibold text-foreground">Rationale</th>
+            <th class="hidden px-3 py-3 font-semibold text-foreground xl:table-cell">Rationale</th>
             <th class="px-3 py-3 font-semibold text-foreground">Actions</th>
           </tr>
         </thead>
         <tbody>
           <tr *ngFor="let exp of experiments" class="border-b border-border last:border-b-0">
             <td class="px-3 py-3 text-foreground">{{ exp.houndName }}</td>
-            <td class="px-3 py-3 text-muted-foreground">{{ exp.timestamp | date:'medium' }}</td>
-            <td class="px-3 py-3 text-foreground">{{ exp.baselineScore | number:'1.3-3' }}</td>
-            <td class="px-3 py-3 text-foreground">{{ exp.candidateScore | number:'1.3-3' }}</td>
+            <td class="hidden px-3 py-3 text-muted-foreground md:table-cell">{{ exp.timestamp | date:'medium' }}</td>
+            <td class="hidden px-3 py-3 text-foreground lg:table-cell">{{ exp.baselineScore | number:'1.3-3' }}</td>
+            <td class="hidden px-3 py-3 text-foreground lg:table-cell">{{ exp.candidateScore | number:'1.3-3' }}</td>
             <td class="px-3 py-3 font-semibold"
                 [ngClass]="{
                   'text-green-400': exp.delta > 0,
@@ -53,7 +61,7 @@ import { TunerExperiment } from '../../models';
                       'bg-blue-900/40 text-blue-400': exp.status === 'applied'
                     }">{{ exp.status }}</span>
             </td>
-            <td class="max-w-xs truncate px-3 py-3 text-muted-foreground">{{ exp.rationale }}</td>
+            <td class="hidden max-w-xs truncate px-3 py-3 text-muted-foreground xl:table-cell">{{ exp.rationale }}</td>
             <td class="whitespace-nowrap px-3 py-3">
               <ng-container *ngIf="exp.status === 'pending-review'">
                 <button class="btn-apply mr-1 rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-green-700"
@@ -67,7 +75,7 @@ import { TunerExperiment } from '../../models';
       </table>
     </div>
 
-    <p *ngIf="experiments.length === 0" class="empty mt-4 italic text-muted-foreground">No experiments found.</p>
+    <p *ngIf="!loading && experiments.length === 0" class="empty mt-4 italic text-muted-foreground">No experiments found.</p>
 
     <div class="pagination mt-4 flex items-center gap-4" *ngIf="totalCount > pageSize">
       <button [disabled]="page === 1" (click)="prevPage()"
@@ -85,6 +93,7 @@ export class TunerComponent implements OnInit {
   page = 1;
   readonly pageSize = 20;
   error: string | null = null;
+  loading = false;
 
   constructor(private tuner: TunerService) {}
 
@@ -94,13 +103,16 @@ export class TunerComponent implements OnInit {
 
   loadExperiments(): void {
     this.error = null;
+    this.loading = true;
     this.tuner.getExperiments(this.page, this.pageSize).subscribe({
       next: result => {
         this.experiments = result.items;
         this.totalCount = result.totalCount;
+        this.loading = false;
       },
       error: () => {
         this.error = 'Failed to load experiments. Please try again.';
+        this.loading = false;
       },
     });
   }
@@ -109,9 +121,11 @@ export class TunerComponent implements OnInit {
     this.tuner.applyExperiment(exp.id).subscribe({
       next: () => {
         exp.status = 'applied';
+        toast.success('Experiment applied successfully.');
       },
       error: () => {
         this.error = `Failed to apply experiment ${exp.id}.`;
+        toast.error(`Failed to apply experiment ${exp.id}.`);
       },
     });
   }
@@ -120,9 +134,11 @@ export class TunerComponent implements OnInit {
     this.tuner.rejectExperiment(exp.id).subscribe({
       next: () => {
         exp.status = 'rejected';
+        toast.success('Experiment rejected.');
       },
       error: () => {
         this.error = `Failed to reject experiment ${exp.id}.`;
+        toast.error(`Failed to reject experiment ${exp.id}.`);
       },
     });
   }

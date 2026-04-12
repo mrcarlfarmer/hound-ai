@@ -11,7 +11,7 @@ import { ActivityLog, ActivityFilter } from '../../models';
   template: `
     <h1 class="mb-6 font-heading text-3xl font-semibold tracking-tight text-foreground">Activity Log</h1>
 
-    <div class="mb-4 flex gap-2">
+    <div class="mb-4 flex flex-wrap gap-2">
       <input [(ngModel)]="filter.pack" placeholder="Pack ID"
              class="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
       <input [(ngModel)]="filter.hound" placeholder="Hound ID"
@@ -20,7 +20,14 @@ import { ActivityLog, ActivityFilter } from '../../models';
               class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80">Search</button>
     </div>
 
-    <div class="overflow-hidden rounded-lg border border-border">
+    <!-- Loading skeleton -->
+    <div *ngIf="loading" class="space-y-3">
+      <div class="h-10 w-full animate-pulse rounded-md bg-secondary/50"></div>
+      <div class="h-10 w-full animate-pulse rounded-md bg-secondary/50"></div>
+      <div class="h-10 w-full animate-pulse rounded-md bg-secondary/50"></div>
+    </div>
+
+    <div class="overflow-x-auto overflow-hidden rounded-lg border border-border" *ngIf="!loading">
       <table class="w-full text-left text-sm">
         <thead>
           <tr class="border-b border-border bg-secondary/50">
@@ -52,13 +59,14 @@ import { ActivityLog, ActivityFilter } from '../../models';
       </table>
     </div>
 
-    <p *ngIf="activities.length === 0" class="empty mt-4 italic text-muted-foreground">No activity found.</p>
+    <p *ngIf="!loading && activities.length === 0" class="empty mt-4 italic text-muted-foreground">No activity found.</p>
   `,
   styles: []
 })
 export class ActivityLogComponent implements OnInit {
   activities: ActivityLog[] = [];
   filter: ActivityFilter = {};
+  loading = false;
 
   constructor(private api: ApiService) {}
 
@@ -67,8 +75,10 @@ export class ActivityLogComponent implements OnInit {
   }
 
   loadActivity(): void {
+    this.loading = true;
     this.api.getActivity(this.filter).subscribe(result => {
       this.activities = result.items;
+      this.loading = false;
     });
   }
 }
