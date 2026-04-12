@@ -10,41 +10,37 @@ import { Subscription } from 'rxjs';
   standalone: true,
   imports: [CommonModule],
   template: `
-    <h1>Watchtower Events</h1>
+    <h1 class="mb-6 font-heading text-3xl font-semibold tracking-tight text-foreground">Watchtower Events</h1>
 
-    <table class="events-table">
-      <thead>
-        <tr>
-          <th>Timestamp</th>
-          <th>Container</th>
-          <th>Image</th>
-          <th>Old ID</th>
-          <th>New ID</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let evt of events" [class.updated]="evt.newImageId">
-          <td>{{ evt.timestamp | date:'medium' }}</td>
-          <td>{{ evt.containerName }}</td>
-          <td>{{ evt.imageName }}</td>
-          <td class="mono">{{ evt.oldImageId }}</td>
-          <td class="mono">{{ evt.newImageId }}</td>
-          <td>{{ evt.action }}</td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="overflow-hidden rounded-lg border border-border">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-border bg-secondary/50">
+            <th class="px-4 py-3 font-semibold text-foreground">Timestamp</th>
+            <th class="px-4 py-3 font-semibold text-foreground">Container</th>
+            <th class="px-4 py-3 font-semibold text-foreground">Image</th>
+            <th class="px-4 py-3 font-semibold text-foreground">Old ID</th>
+            <th class="px-4 py-3 font-semibold text-foreground">New ID</th>
+            <th class="px-4 py-3 font-semibold text-foreground">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let evt of events" class="border-b border-border last:border-b-0"
+              [ngClass]="{ 'border-l-4 border-l-green-500': evt.newImageId }">
+            <td class="px-4 py-3 text-muted-foreground">{{ evt.timestamp | date:'medium' }}</td>
+            <td class="px-4 py-3 text-foreground">{{ evt.containerName }}</td>
+            <td class="px-4 py-3 text-foreground">{{ evt.imageName }}</td>
+            <td class="mono px-4 py-3 font-mono text-sm text-muted-foreground">{{ evt.oldImageId }}</td>
+            <td class="mono px-4 py-3 font-mono text-sm text-muted-foreground">{{ evt.newImageId }}</td>
+            <td class="px-4 py-3 text-foreground">{{ evt.action }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-    <p *ngIf="events.length === 0" class="empty">No watchtower events recorded yet.</p>
+    <p *ngIf="events.length === 0" class="empty mt-4 italic text-muted-foreground">No watchtower events recorded yet.</p>
   `,
-  styles: [`
-    .events-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    .events-table th, .events-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #eee; text-align: left; }
-    .events-table th { background: #f5f5f5; font-weight: 600; }
-    .events-table tr.updated { border-left: 3px solid #28a745; }
-    .mono { font-family: monospace; font-size: 0.85rem; }
-    .empty { color: #666; font-style: italic; }
-  `]
+  styles: []
 })
 export class WatchtowerComponent implements OnInit, OnDestroy {
   events: WatchtowerEvent[] = [];

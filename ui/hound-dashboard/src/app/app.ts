@@ -1,30 +1,30 @@
 import { Component } from '@angular/core';
-import { RouterOutlet, RouterLink } from '@angular/router';
+import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
+import { HlmToaster } from '@spartan-ng/helm/sonner';
 
 @Component({
   selector: 'app-root',
   standalone: true,
-  imports: [RouterOutlet, RouterLink],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, HlmToaster],
   template: `
-    <nav class="navbar">
-      <a routerLink="/" class="brand">Hound AI</a>
-      <div class="nav-links">
-        <a routerLink="/">Dashboard</a>
-        <a routerLink="/activity">Activity</a>
-        <a routerLink="/tuner">Tuner</a>
-        <a routerLink="/watchtower">Watchtower</a>
+    <nav class="flex flex-wrap items-center gap-4 border-b border-border bg-card px-4 py-3 sm:gap-6 sm:px-6">
+      <a routerLink="/" class="brand text-lg font-bold text-foreground no-underline">Hound AI</a>
+      <div class="flex flex-wrap gap-3 sm:gap-4">
+        <a routerLink="/" routerLinkActive="text-primary" [routerLinkActiveOptions]="{ exact: true }"
+           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Dashboard</a>
+        <a routerLink="/activity" routerLinkActive="text-primary"
+           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Activity</a>
+        <a routerLink="/tuner" routerLinkActive="text-primary"
+           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Tuner</a>
+        <a routerLink="/watchtower" routerLinkActive="text-primary"
+           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Watchtower</a>
       </div>
     </nav>
-    <main class="content">
+    <main class="mx-auto max-w-7xl p-4 sm:p-6">
       <router-outlet />
     </main>
+    <hlm-toaster />
   `,
-  styles: [`
-    .navbar { display: flex; align-items: center; padding: 0.75rem 1.5rem; background: #1a1a2e; color: #fff; }
-    .brand { font-weight: bold; font-size: 1.2rem; color: #fff; text-decoration: none; margin-right: 2rem; }
-    .nav-links a { color: #ccc; text-decoration: none; margin-right: 1rem; }
-    .nav-links a:hover { color: #fff; }
-    .content { padding: 1.5rem; max-width: 1200px; margin: 0 auto; }
-  `]
+  styles: []
 })
 export class App {}

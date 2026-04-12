@@ -2,90 +2,90 @@ import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TunerService } from '../../services/tuner.service';
 import { TunerExperiment } from '../../models';
+import { toast } from '@spartan-ng/brain/sonner';
 
 @Component({
   selector: 'app-tuner',
   standalone: true,
   imports: [CommonModule],
   template: `
-    <h1>Tuner Experiments</h1>
+    <h1 class="mb-4 font-heading text-3xl font-semibold tracking-tight text-foreground">Tuner Experiments</h1>
 
-    <div class="toolbar">
-      <span class="count" *ngIf="totalCount > 0">{{ totalCount }} experiment(s)</span>
+    <div class="mb-4 flex items-center gap-4">
+      <span class="text-sm text-muted-foreground" *ngIf="totalCount > 0">{{ totalCount }} experiment(s)</span>
     </div>
 
-    <p *ngIf="error" class="error-msg">{{ error }}</p>
+    <p *ngIf="error" class="mb-4 rounded-md bg-red-900/40 px-4 py-2 text-sm text-red-400">{{ error }}</p>
 
-    <table class="experiments-table" *ngIf="experiments.length > 0">
-      <thead>
-        <tr>
-          <th>Hound</th>
-          <th>Timestamp</th>
-          <th>Baseline</th>
-          <th>Candidate</th>
-          <th>Delta</th>
-          <th>Status</th>
-          <th>Rationale</th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let exp of experiments" [class]="exp.status">
-          <td>{{ exp.houndName }}</td>
-          <td>{{ exp.timestamp | date:'medium' }}</td>
-          <td>{{ exp.baselineScore | number:'1.3-3' }}</td>
-          <td>{{ exp.candidateScore | number:'1.3-3' }}</td>
-          <td [class]="deltaClass(exp.delta)">{{ exp.delta >= 0 ? '+' : '' }}{{ exp.delta | number:'1.3-3' }}</td>
-          <td><span class="badge" [class]="exp.status">{{ exp.status }}</span></td>
-          <td class="rationale">{{ exp.rationale }}</td>
-          <td class="actions">
-            <ng-container *ngIf="exp.status === 'pending-review'">
-              <button class="btn-apply" (click)="apply(exp)">Apply</button>
-              <button class="btn-reject" (click)="reject(exp)">Reject</button>
-            </ng-container>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <!-- Loading skeleton -->
+    <div *ngIf="loading" class="space-y-3">
+      <div class="h-10 w-full animate-pulse rounded-md bg-secondary/50"></div>
+      <div class="h-10 w-full animate-pulse rounded-md bg-secondary/50"></div>
+      <div class="h-10 w-full animate-pulse rounded-md bg-secondary/50"></div>
+    </div>
 
-    <p *ngIf="experiments.length === 0" class="empty">No experiments found.</p>
+    <div class="overflow-x-auto overflow-hidden rounded-lg border border-border" *ngIf="!loading && experiments.length > 0">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-border bg-secondary/50">
+            <th class="px-3 py-3 font-semibold text-foreground">Hound</th>
+            <th class="hidden px-3 py-3 font-semibold text-foreground md:table-cell">Timestamp</th>
+            <th class="hidden px-3 py-3 font-semibold text-foreground lg:table-cell">Baseline</th>
+            <th class="hidden px-3 py-3 font-semibold text-foreground lg:table-cell">Candidate</th>
+            <th class="px-3 py-3 font-semibold text-foreground">Delta</th>
+            <th class="px-3 py-3 font-semibold text-foreground">Status</th>
+            <th class="hidden px-3 py-3 font-semibold text-foreground xl:table-cell">Rationale</th>
+            <th class="px-3 py-3 font-semibold text-foreground">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let exp of experiments" class="border-b border-border last:border-b-0">
+            <td class="px-3 py-3 text-foreground">{{ exp.houndName }}</td>
+            <td class="hidden px-3 py-3 text-muted-foreground md:table-cell">{{ exp.timestamp | date:'medium' }}</td>
+            <td class="hidden px-3 py-3 text-foreground lg:table-cell">{{ exp.baselineScore | number:'1.3-3' }}</td>
+            <td class="hidden px-3 py-3 text-foreground lg:table-cell">{{ exp.candidateScore | number:'1.3-3' }}</td>
+            <td class="px-3 py-3 font-semibold"
+                [ngClass]="{
+                  'text-green-400': exp.delta > 0,
+                  'text-red-400': exp.delta < 0,
+                  'text-muted-foreground': exp.delta === 0
+                }">{{ exp.delta >= 0 ? '+' : '' }}{{ exp.delta | number:'1.3-3' }}</td>
+            <td class="px-3 py-3">
+              <span class="badge inline-block rounded-md px-2 py-0.5 text-xs font-medium capitalize"
+                    [ngClass]="{
+                      'bg-green-900/40 text-green-400': exp.status === 'improved',
+                      'bg-red-900/40 text-red-400': exp.status === 'worse' || exp.status === 'crash',
+                      'font-bold': exp.status === 'crash',
+                      'bg-secondary text-secondary-foreground': exp.status === 'equal' || exp.status === 'rejected',
+                      'bg-yellow-900/40 text-yellow-400': exp.status === 'pending-review',
+                      'bg-blue-900/40 text-blue-400': exp.status === 'applied'
+                    }">{{ exp.status }}</span>
+            </td>
+            <td class="hidden max-w-xs truncate px-3 py-3 text-muted-foreground xl:table-cell">{{ exp.rationale }}</td>
+            <td class="whitespace-nowrap px-3 py-3">
+              <ng-container *ngIf="exp.status === 'pending-review'">
+                <button class="btn-apply mr-1 rounded-md bg-green-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-green-700"
+                        (click)="apply(exp)">Apply</button>
+                <button class="btn-reject rounded-md bg-red-600 px-2.5 py-1 text-xs font-medium text-white transition-colors hover:bg-red-700"
+                        (click)="reject(exp)">Reject</button>
+              </ng-container>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-    <div class="pagination" *ngIf="totalCount > pageSize">
-      <button [disabled]="page === 1" (click)="prevPage()">Prev</button>
-      <span>Page {{ page }}</span>
-      <button [disabled]="page * pageSize >= totalCount" (click)="nextPage()">Next</button>
+    <p *ngIf="!loading && experiments.length === 0" class="empty mt-4 italic text-muted-foreground">No experiments found.</p>
+
+    <div class="pagination mt-4 flex items-center gap-4" *ngIf="totalCount > pageSize">
+      <button [disabled]="page === 1" (click)="prevPage()"
+              class="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40">Prev</button>
+      <span class="text-sm text-muted-foreground">Page {{ page }}</span>
+      <button [disabled]="page * pageSize >= totalCount" (click)="nextPage()"
+              class="rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground transition-colors hover:bg-secondary disabled:cursor-not-allowed disabled:opacity-40">Next</button>
     </div>
   `,
-  styles: [`
-    .error-msg { color: #721c24; background: #f8d7da; padding: 0.5rem 1rem; border-radius: 4px; margin-bottom: 1rem; }
-    h1 { margin-bottom: 1rem; }
-    .toolbar { display: flex; align-items: center; margin-bottom: 1rem; gap: 1rem; }
-    .count { font-size: 0.9rem; color: #666; }
-    .experiments-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
-    .experiments-table th, .experiments-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid #eee; text-align: left; }
-    .experiments-table th { background: #f5f5f5; font-weight: 600; }
-    .rationale { max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .actions { white-space: nowrap; }
-    .badge { padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; text-transform: capitalize; }
-    .badge.improved { background: #d4edda; color: #155724; }
-    .badge.worse { background: #f8d7da; color: #721c24; }
-    .badge.crash { background: #f8d7da; color: #721c24; font-weight: bold; }
-    .badge.equal { background: #e2e3e5; color: #383d41; }
-    .badge.pending-review { background: #fff3cd; color: #856404; }
-    .badge.applied { background: #cce5ff; color: #004085; }
-    .badge.rejected { background: #e2e3e5; color: #383d41; }
-    .delta-positive { color: #155724; font-weight: 600; }
-    .delta-negative { color: #721c24; font-weight: 600; }
-    .delta-neutral { color: #383d41; }
-    .btn-apply { padding: 0.25rem 0.6rem; background: #28a745; color: #fff; border: none; border-radius: 4px; cursor: pointer; margin-right: 0.25rem; font-size: 0.8rem; }
-    .btn-reject { padding: 0.25rem 0.6rem; background: #dc3545; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 0.8rem; }
-    .btn-apply:hover { background: #218838; }
-    .btn-reject:hover { background: #c82333; }
-    .pagination { display: flex; align-items: center; gap: 1rem; margin-top: 1rem; }
-    .pagination button { padding: 0.3rem 0.75rem; border: 1px solid #ddd; border-radius: 4px; cursor: pointer; background: #fff; }
-    .pagination button:disabled { opacity: 0.4; cursor: not-allowed; }
-    .empty { color: #666; font-style: italic; }
-  `]
+  styles: []
 })
 export class TunerComponent implements OnInit {
   experiments: TunerExperiment[] = [];
@@ -93,6 +93,7 @@ export class TunerComponent implements OnInit {
   page = 1;
   readonly pageSize = 20;
   error: string | null = null;
+  loading = false;
 
   constructor(private tuner: TunerService) {}
 
@@ -102,13 +103,16 @@ export class TunerComponent implements OnInit {
 
   loadExperiments(): void {
     this.error = null;
+    this.loading = true;
     this.tuner.getExperiments(this.page, this.pageSize).subscribe({
       next: result => {
         this.experiments = result.items;
         this.totalCount = result.totalCount;
+        this.loading = false;
       },
       error: () => {
         this.error = 'Failed to load experiments. Please try again.';
+        this.loading = false;
       },
     });
   }
@@ -117,9 +121,11 @@ export class TunerComponent implements OnInit {
     this.tuner.applyExperiment(exp.id).subscribe({
       next: () => {
         exp.status = 'applied';
+        toast.success('Experiment applied successfully.');
       },
       error: () => {
         this.error = `Failed to apply experiment ${exp.id}.`;
+        toast.error(`Failed to apply experiment ${exp.id}.`);
       },
     });
   }
@@ -128,9 +134,11 @@ export class TunerComponent implements OnInit {
     this.tuner.rejectExperiment(exp.id).subscribe({
       next: () => {
         exp.status = 'rejected';
+        toast.success('Experiment rejected.');
       },
       error: () => {
         this.error = `Failed to reject experiment ${exp.id}.`;
+        toast.error(`Failed to reject experiment ${exp.id}.`);
       },
     });
   }
