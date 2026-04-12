@@ -285,11 +285,10 @@ The Watchtower configuration lives in `infra/watchtower/config.env`:
 
 ```env
 WATCHTOWER_POLL_INTERVAL=300          # Check for updates every 5 minutes (in seconds)
-WATCHTOWER_CLEANUP=true               # Remove old images after update
 WATCHTOWER_INCLUDE_STOPPED=false      # Only monitor running containers
-WATCHTOWER_ROLLING_RESTART=true       # Restart containers one at a time
-WATCHTOWER_LABEL_ENABLE=false         # Monitor all containers (not just labelled ones)
 ```
+
+Additional Watchtower settings (`WATCHTOWER_CLEANUP`, `WATCHTOWER_ROLLING_RESTART`) and GHCR credentials (`REPO_USER`, `REPO_PASS`) are set in `docker-compose.yml` directly.
 
 ### 9.2 GHCR authentication for Watchtower
 
@@ -299,17 +298,19 @@ Watchtower needs a GitHub Personal Access Token (PAT) with `read:packages` scope
 2. Create a new token with the `read:packages` permission.
 3. Add the token to your `.env` file as `GHCR_TOKEN`.
 
-The `docker-compose.yml` should map this into the Watchtower container environment:
+The `docker-compose.yml` maps this into the Watchtower container environment:
 
 ```yaml
 watchtower:
-  image: containrrr/watchtower
+  image: containrrr/watchtower:latest
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock
   env_file:
     - infra/watchtower/config.env
   environment:
-    - WATCHTOWER_HTTP_API_TOKEN=${GHCR_TOKEN}
+    - DOCKER_API_VERSION=1.40
+    - WATCHTOWER_CLEANUP=true
+    - WATCHTOWER_ROLLING_RESTART=true
     - REPO_USER=mrcarlfarmer
     - REPO_PASS=${GHCR_TOKEN}
   restart: unless-stopped

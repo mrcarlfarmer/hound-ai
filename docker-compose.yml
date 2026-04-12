@@ -132,6 +132,8 @@ services:
       - DOCKER_API_VERSION=1.40
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_ROLLING_RESTART=true
+      - REPO_USER=mrcarlfarmer
+      - REPO_PASS=${GHCR_TOKEN}
       - WATCHTOWER_NOTIFICATION_URL=generic://hound-api:8080/api/watchtower/webhook?template=json
       - WATCHTOWER_NOTIFICATION_REPORT=true
     depends_on:
