@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "pwsh -NoProfile -Command \"$input = $Input | ConvertFrom-Json; $tool = $input.toolUse.toolName; $path = $input.toolUse.input.filePath; if ($tool -eq 'create_file' -and $path -match 'Hounds[\\\\/][A-Z]\\w+Hound\\.cs$') { $hound = [System.IO.Path]::GetFileNameWithoutExtension($path); $json = @{ systemMessage = \\\"REMINDER: You just created a new hound class ($hound). Ensure you also create: (1) eval scenarios in src/Hound.Eval/Scenarios/$hound/ (minimum 5), (2) a JSON config in Config/, (3) DI registration in Program.cs, (4) unit tests. Run 'dotnet run --project src/Hound.Eval -- --dry-run' to validate.\\\" } | ConvertTo-Json -Compress; Write-Output $json }\"",
+        "timeout": 5
+      }
+    ]
+  }
+}
