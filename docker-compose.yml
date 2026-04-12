@@ -126,10 +126,11 @@ services:
     container_name: watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ~/.docker/config.json:/config.json
+      - ~/.docker/watchtower-config.json:/etc/watchtower/config.json
     env_file:
       - infra/watchtower/config.env
     environment:
+      - DOCKER_CONFIG=/etc/watchtower
       - DOCKER_API_VERSION=1.40
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_ROLLING_RESTART=true
