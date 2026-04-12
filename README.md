@@ -72,13 +72,10 @@ cd hound-ai
 cp .env.example .env
 # Edit .env — set ALPACA_API_KEY, ALPACA_API_SECRET, GHCR_TOKEN
 
-# 3. Fill in Watchtower GHCR credentials
-# Edit infra/watchtower/config.env — set REPO_USER and REPO_PASS (your GHCR PAT)
-
-# 4. Start everything
+# 3. Start everything
 docker compose up -d
 
-# 5. Wait for Ollama models to pull (ollama-init container)
+# 4. Wait for Ollama models to pull (ollama-init container)
 docker compose logs -f ollama-init
 ```
 
@@ -122,14 +119,11 @@ Watchtower polls GHCR every 5 minutes and redeploys updated images automatically
 
 1. Go to **GitHub → Settings → Developer Settings → Personal access tokens (classic)**
 2. Generate a new token with the **`read:packages`** scope
-3. Edit `infra/watchtower/config.env`:
+3. Set `GHCR_TOKEN` in your `.env` file (copied from `.env.example` in step 2 of Quick Start)
 
-```env
-REPO_USER=your_github_username_here
-REPO_PASS=your_ghcr_pat_here
-```
+The `docker-compose.yml` passes this token to Watchtower as `REPO_PASS` automatically.
 
-> **Never commit your PAT.** `infra/watchtower/config.env` is listed in `.gitignore`.
+> **Never commit your PAT.** The `.env` file is listed in `.gitignore`.
 
 ---
 
@@ -159,7 +153,7 @@ hound-ai/
 │   ├── ollama/
 │   │   └── pull-models.sh      # Bootstrap: pulls gemma3, qwen2.5, phi3
 │   └── watchtower/
-│       └── config.env          # Watchtower poll interval + GHCR credentials
+│       └── config.env          # Watchtower poll interval settings
 ├── src/
 │   ├── Hound.Core/             # Shared models, interfaces, IActivityLogger
 │   ├── Hound.Trading/          # Trading pack (4 hounds + AF workflow)
