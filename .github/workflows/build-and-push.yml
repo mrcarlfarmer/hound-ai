@@ -19,10 +19,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup .NET 9
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '9.0.x'
 
@@ -36,7 +36,7 @@ jobs:
         run: dotnet test src/Hound.sln --no-build --no-restore --verbosity normal
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
           cache: 'npm'
@@ -52,7 +52,7 @@ jobs:
 
       - name: Log in to GHCR
         if: github.event_name == 'push'
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -60,7 +60,7 @@ jobs:
 
       - name: Build and push trading-pack
         if: github.event_name == 'push'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/Hound.Trading/Dockerfile
@@ -71,7 +71,7 @@ jobs:
 
       - name: Build and push hound-api
         if: github.event_name == 'push'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: src/Hound.Api/Dockerfile
@@ -82,7 +82,7 @@ jobs:
 
       - name: Build and push hound-ui
         if: github.event_name == 'push'
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: ./ui/hound-dashboard
           file: ui/hound-dashboard/Dockerfile
