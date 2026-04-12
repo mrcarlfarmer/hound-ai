@@ -1,0 +1,30 @@
+{
+  "AllowedModifications": {
+    "StrategyHound": [
+      "BullishConfidenceThreshold",
+      "BearishConfidenceThreshold",
+      "EntryThreshold",
+      "ExitThreshold",
+      "Temperature",
+      "Instructions"
+    ],
+    "RiskHound": [
+      "MaxPositionPct",
+      "MaxDrawdownPct",
+      "MaxSharesPerOrder",
+      "Temperature",
+      "Instructions"
+    ],
+    "AnalysisHound": [
+      "DataWindowDays",
+      "ConfidenceThreshold",
+      "Temperature",
+      "Instructions"
+    ],
+    "ExecutionHound": [
+      "SlippageTolerance",
+      "Temperature",
+      "Instructions"
+    ]
+  }
+}

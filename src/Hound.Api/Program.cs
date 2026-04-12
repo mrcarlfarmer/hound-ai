@@ -36,6 +36,8 @@ builder.Services.AddSingleton<IDocumentStore>(store);
 // Repositories and services
 builder.Services.AddScoped<IPackRepository, RavenPackRepository>();
 builder.Services.AddScoped<IActivityLogger, RavenActivityService>();
+builder.Services.AddScoped<ITunerExperimentRepository, RavenTunerExperimentRepository>();
+builder.Services.AddSingleton<TunerStateService>();
 
 var app = builder.Build();
 
