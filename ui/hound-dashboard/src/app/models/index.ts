@@ -53,3 +53,14 @@ export interface TunerExperiment {
   status: 'improved' | 'equal' | 'worse' | 'crash' | 'pending-review' | 'applied' | 'rejected';
   rationale: string;
 }
+
+export interface WatchtowerEvent {
+  id: string;
+  containerName: string;
+  imageName: string;
+  oldImageId: string;
+  newImageId: string;
+  action: string;
+  timestamp: string;
+  rawPayload: string;
+}

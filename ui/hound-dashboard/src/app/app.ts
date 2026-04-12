@@ -12,6 +12,7 @@ import { RouterOutlet, RouterLink } from '@angular/router';
         <a routerLink="/">Dashboard</a>
         <a routerLink="/activity">Activity</a>
         <a routerLink="/tuner">Tuner</a>
+        <a routerLink="/watchtower">Watchtower</a>
       </div>
     </nav>
     <main class="content">

@@ -134,6 +134,10 @@ services:
       - WATCHTOWER_ROLLING_RESTART=true
       - REPO_USER=mrcarlfarmer
       - REPO_PASS=${GHCR_TOKEN}
+      - WATCHTOWER_NOTIFICATION_URL=generic://hound-api:8080/api/watchtower/webhook?template=json
+      - WATCHTOWER_NOTIFICATION_REPORT=true
+    depends_on:
+      - hound-api
     restart: unless-stopped
     networks:
       - hound-net
