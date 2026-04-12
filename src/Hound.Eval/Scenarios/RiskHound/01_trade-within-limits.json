@@ -1,0 +1,27 @@
+{
+  "scenarioName": "Trade Within Position Limits Approved",
+  "description": "RiskHound should approve a trade that is well within the 20% single-position limit and 1000-share order limit.",
+  "houndName": "RiskHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Evaluate risk for buying 50 shares of AAPL at ~$175 each (total ~$8,750) against a $100,000 portfolio.",
+    "context": {
+      "symbol": "AAPL",
+      "action": "Buy",
+      "quantity": 50,
+      "reasoning": "Strong bullish signal with high confidence from AnalysisHound.",
+      "confidence": 0.85
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_portfolio"],
+    "outputMustContain": ["Approved"],
+    "outputMustNotContain": ["Rejected"],
+    "outputFormat": "JSON with verdict, decision, reasoning, adjustedQuantity",
+    "decisionCriteria": "50 shares * $175 = $8,750 is 8.75% of $100,000 equity, well under the 20% limit."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'Approved'."
+  }
+}

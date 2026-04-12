@@ -1,0 +1,76 @@
+name: Eval Hound Scenarios
+
+on:
+  workflow_dispatch:
+    inputs:
+      hound:
+        description: 'Hound name to evaluate (leave blank for all)'
+        required: false
+        default: ''
+      category:
+        description: 'Scenario category filter (happy-path, edge-case, adversarial, tool-usage, refusal)'
+        required: false
+        default: ''
+      verbose:
+        description: 'Enable verbose output'
+        required: false
+        default: 'false'
+        type: boolean
+      ollama_model:
+        description: 'Ollama model name (e.g. gemma3, qwen2.5)'
+        required: false
+        default: 'gemma3'
+
+env:
+  OLLAMA_URL: http://localhost:11434/v1
+  OLLAMA_MODEL: ${{ inputs.ollama_model || 'gemma3' }}
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # NOTE: This job requires a running Ollama LLM instance.
+    # It is manually triggered and does not block image builds.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore .NET
+        run: dotnet restore src/Hound.Eval/Hound.Eval.csproj
+
+      - name: Build Hound.Eval
+        run: dotnet build src/Hound.Eval/Hound.Eval.csproj --no-restore
+
+      - name: Validate scenario files (dry-run)
+        run: >
+          dotnet run --project src/Hound.Eval --no-build --
+          --dry-run
+          ${{ inputs.hound && format('--hound={0}', inputs.hound) || '' }}
+          ${{ inputs.category && format('--category={0}', inputs.category) || '' }}
+
+      - name: Start Ollama
+        run: |
+          docker run -d --name ollama -p 11434:11434 ollama/ollama
+          # Wait for Ollama to be ready
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:11434/api/tags && break || sleep 2
+          done
+
+      - name: Pull LLM model
+        run: docker exec ollama ollama pull ${{ env.OLLAMA_MODEL }}
+
+      - name: Run eval scenarios
+        env:
+          OLLAMA_URL: ${{ env.OLLAMA_URL }}
+          OLLAMA_MODEL: ${{ env.OLLAMA_MODEL }}
+        run: >
+          dotnet run --project src/Hound.Eval --no-build --
+          ${{ inputs.hound && format('--hound={0}', inputs.hound) || '' }}
+          ${{ inputs.category && format('--category={0}', inputs.category) || '' }}
+          ${{ inputs.verbose == 'true' && '--verbose' || '' }}

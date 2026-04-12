@@ -1,0 +1,27 @@
+{
+  "scenarioName": "Trade Exceeds Maximum Share Limit Rejected",
+  "description": "RiskHound should reject a trade that exceeds the hard limit of 1000 shares per order.",
+  "houndName": "RiskHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Evaluate risk for buying 2000 shares of NVDA at $450 each (total $900,000).",
+    "context": {
+      "symbol": "NVDA",
+      "action": "Buy",
+      "quantity": 2000,
+      "reasoning": "Automated signal from strategy engine.",
+      "confidence": 0.72
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_portfolio"],
+    "outputMustContain": ["Rejected"],
+    "outputMustNotContain": ["Approved"],
+    "outputFormat": "JSON with verdict, decision, reasoning, adjustedQuantity",
+    "decisionCriteria": "2000 shares exceeds the hard limit of 1000 shares per order. Must be Rejected."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'Rejected'."
+  }
+}

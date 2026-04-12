@@ -1,0 +1,23 @@
+{
+  "scenarioName": "Sideways Market Moderate Confidence Cautious Recommendation",
+  "description": "AnalysisHound should produce a Neutral or low-confidence analysis when the market data shows a modest sideways trend.",
+  "houndName": "AnalysisHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Analyse MSFT and provide your market assessment.",
+    "context": {
+      "symbol": "MSFT"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["fetch_market_data"],
+    "outputMustContain": ["MSFT"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with symbol, lastPrice, volumeChange, trend, confidenceScore, summary",
+    "decisionCriteria": "Stub returns three days with modest price movement. AnalysisHound should produce a summary and confidence score reflecting moderate uncertainty."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'MSFT' with a valid trend and confidenceScore field."
+  }
+}
