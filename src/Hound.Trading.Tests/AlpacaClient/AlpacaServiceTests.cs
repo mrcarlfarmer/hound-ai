@@ -1,12 +1,21 @@
 using Alpaca.Markets;
 using Hound.Trading.AlpacaClient;
 using Microsoft.Extensions.Options;
+using Moq;
 
 namespace Hound.Trading.Tests.AlpacaClient;
 
 [TestClass]
 public sealed class AlpacaServiceTests
 {
+    private static IOptions<AlpacaSettings> CreateTestOptions() =>
+        Options.Create(new AlpacaSettings
+        {
+            ApiKeyId = "test-key-id",
+            SecretKey = "test-secret-key",
+            Environment = "Paper"
+        });
+
     private AlpacaService _service = null!;
 
     [TestInitialize]

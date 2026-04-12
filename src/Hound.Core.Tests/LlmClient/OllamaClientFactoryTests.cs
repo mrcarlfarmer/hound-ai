@@ -35,26 +35,31 @@ public sealed class OllamaClientFactoryTests
     }
 
     [TestMethod]
-    public void CreateClient_NotYetImplemented_ThrowsNotImplementedException()
+    public void CreateClient_ReturnsHttpClientWithBaseAddress()
     {
         var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient(It.IsAny<string>()))
+            .Returns(new HttpClient());
+
         var factory = new OllamaClientFactory(httpClientFactory.Object);
 
-        Assert.ThrowsException<NotImplementedException>(
-            () => factory.CreateClient("gemma3"));
+        using var client = factory.CreateClient("gemma3");
+        Assert.IsNotNull(client);
+        Assert.AreEqual(new Uri(factory.BaseUrl), client.BaseAddress);
     }
 
     [TestMethod]
-    public void CreateClient_AnyModelName_ThrowsNotImplementedException()
+    public void CreateClient_UsesModelNameInClientName()
     {
         var httpClientFactory = new Mock<IHttpClientFactory>();
+        httpClientFactory.Setup(f => f.CreateClient("ollama-qwen2.5"))
+            .Returns(new HttpClient());
+
         var factory = new OllamaClientFactory(httpClientFactory.Object);
 
-        Assert.ThrowsException<NotImplementedException>(
-            () => factory.CreateClient("qwen2.5"));
-
-        Assert.ThrowsException<NotImplementedException>(
-            () => factory.CreateClient("phi3"));
+        using var client = factory.CreateClient("qwen2.5");
+        Assert.IsNotNull(client);
+        httpClientFactory.Verify(f => f.CreateClient("ollama-qwen2.5"), Times.Once);
     }
 
     [TestMethod]
