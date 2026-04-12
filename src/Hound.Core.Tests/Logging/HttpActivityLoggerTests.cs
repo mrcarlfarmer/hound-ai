@@ -3,6 +3,7 @@ using Hound.Core.Models;
 using Moq;
 using System.Net;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 
 namespace Hound.Core.Tests.Logging;
@@ -128,7 +129,7 @@ public sealed class HttpActivityLoggerTests
         {
             capturedMethod = req.Method;
             var response = new HttpResponseMessage(HttpStatusCode.OK);
-            response.Content = new StringContent("[]", System.Text.Encoding.UTF8, "application/json");
+            response.Content = new StringContent("[]", Encoding.UTF8, "application/json");
             return response;
         });
 
@@ -146,7 +147,7 @@ public sealed class HttpActivityLoggerTests
         {
             capturedUri = req.RequestUri;
             var response = new HttpResponseMessage(HttpStatusCode.OK);
-            response.Content = new StringContent("[]", System.Text.Encoding.UTF8, "application/json");
+            response.Content = new StringContent("[]", Encoding.UTF8, "application/json");
             return response;
         });
 
@@ -169,7 +170,7 @@ public sealed class HttpActivityLoggerTests
         {
             var json = JsonSerializer.Serialize(expected);
             var response = new HttpResponseMessage(HttpStatusCode.OK);
-            response.Content = new StringContent(json, System.Text.Encoding.UTF8, "application/json");
+            response.Content = new StringContent(json, Encoding.UTF8, "application/json");
             return response;
         });
 
@@ -187,7 +188,7 @@ public sealed class HttpActivityLoggerTests
         var handler = new TestHttpMessageHandler(_ =>
         {
             var response = new HttpResponseMessage(HttpStatusCode.OK);
-            response.Content = new StringContent("null", System.Text.Encoding.UTF8, "application/json");
+            response.Content = new StringContent("null", Encoding.UTF8, "application/json");
             return response;
         });
 

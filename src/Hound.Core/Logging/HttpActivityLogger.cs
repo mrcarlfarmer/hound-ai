@@ -37,15 +37,19 @@ public class HttpActivityLogger : IActivityLogger
     {
         var client = _httpClientFactory.CreateClient();
 
-        var query = System.Web.HttpUtility.ParseQueryString(string.Empty);
-        if (!string.IsNullOrWhiteSpace(packId)) query["pack"] = packId;
-        if (!string.IsNullOrWhiteSpace(houndId)) query["hound"] = houndId;
-        if (from.HasValue) query["from"] = from.Value.ToString("O");
-        if (to.HasValue) query["to"] = to.Value.ToString("O");
-        query["page"] = page.ToString();
-        query["pageSize"] = pageSize.ToString();
+        var queryParams = new List<string>();
+        if (!string.IsNullOrWhiteSpace(packId))
+            queryParams.Add($"pack={Uri.EscapeDataString(packId)}");
+        if (!string.IsNullOrWhiteSpace(houndId))
+            queryParams.Add($"hound={Uri.EscapeDataString(houndId)}");
+        if (from.HasValue)
+            queryParams.Add($"from={Uri.EscapeDataString(from.Value.ToString("O"))}");
+        if (to.HasValue)
+            queryParams.Add($"to={Uri.EscapeDataString(to.Value.ToString("O"))}");
+        queryParams.Add($"page={page}");
+        queryParams.Add($"pageSize={pageSize}");
 
-        var url = $"{_baseUrl}/api/activity?{query}";
+        var url = $"{_baseUrl}/api/activity?{string.Join("&", queryParams)}";
         var results = await client.GetFromJsonAsync<List<ActivityLog>>(url, cancellationToken);
         return (results ?? []).AsReadOnly();
     }
