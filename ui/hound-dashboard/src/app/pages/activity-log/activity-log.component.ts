@@ -9,50 +9,52 @@ import { ActivityLog, ActivityFilter } from '../../models';
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <h1>Activity Log</h1>
+    <h1 class="mb-6 font-heading text-3xl font-semibold tracking-tight text-foreground">Activity Log</h1>
 
-    <div class="filters">
-      <input [(ngModel)]="filter.pack" placeholder="Pack ID" />
-      <input [(ngModel)]="filter.hound" placeholder="Hound ID" />
-      <button (click)="loadActivity()">Search</button>
+    <div class="mb-4 flex gap-2">
+      <input [(ngModel)]="filter.pack" placeholder="Pack ID"
+             class="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+      <input [(ngModel)]="filter.hound" placeholder="Hound ID"
+             class="rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring" />
+      <button (click)="loadActivity()"
+              class="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/80">Search</button>
     </div>
 
-    <table class="activity-table">
-      <thead>
-        <tr>
-          <th>Timestamp</th>
-          <th>Pack</th>
-          <th>Hound</th>
-          <th>Message</th>
-          <th>Severity</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr *ngFor="let item of activities" [class]="item.severity.toLowerCase()">
-          <td>{{ item.timestamp | date:'medium' }}</td>
-          <td>{{ item.packId }}</td>
-          <td>{{ item.houndName }}</td>
-          <td>{{ item.message }}</td>
-          <td><span class="badge" [class]="item.severity.toLowerCase()">{{ item.severity }}</span></td>
-        </tr>
-      </tbody>
-    </table>
+    <div class="overflow-hidden rounded-lg border border-border">
+      <table class="w-full text-left text-sm">
+        <thead>
+          <tr class="border-b border-border bg-secondary/50">
+            <th class="px-4 py-3 font-semibold text-foreground">Timestamp</th>
+            <th class="px-4 py-3 font-semibold text-foreground">Pack</th>
+            <th class="px-4 py-3 font-semibold text-foreground">Hound</th>
+            <th class="px-4 py-3 font-semibold text-foreground">Message</th>
+            <th class="px-4 py-3 font-semibold text-foreground">Severity</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let item of activities" class="border-b border-border last:border-b-0">
+            <td class="px-4 py-3 text-muted-foreground">{{ item.timestamp | date:'medium' }}</td>
+            <td class="px-4 py-3 text-foreground">{{ item.packId }}</td>
+            <td class="px-4 py-3 text-foreground">{{ item.houndName }}</td>
+            <td class="px-4 py-3 text-foreground">{{ item.message }}</td>
+            <td class="px-4 py-3">
+              <span class="badge inline-block rounded-md px-2 py-0.5 text-xs font-medium"
+                    [ngClass]="{
+                      'bg-red-900/40 text-red-400': item.severity.toLowerCase() === 'error',
+                      'bg-yellow-900/40 text-yellow-400': item.severity.toLowerCase() === 'warning',
+                      'bg-green-900/40 text-green-400': item.severity.toLowerCase() === 'success',
+                      'bg-blue-900/40 text-blue-400': item.severity.toLowerCase() === 'info'
+                    }"
+                    [class]="item.severity.toLowerCase()">{{ item.severity }}</span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
 
-    <p *ngIf="activities.length === 0" class="empty">No activity found.</p>
+    <p *ngIf="activities.length === 0" class="empty mt-4 italic text-muted-foreground">No activity found.</p>
   `,
-  styles: [`
-    .filters { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
-    .filters input { padding: 0.5rem; border: 1px solid #ddd; border-radius: 4px; }
-    .filters button { padding: 0.5rem 1rem; background: #333; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-    .activity-table { width: 100%; border-collapse: collapse; }
-    .activity-table th, .activity-table td { padding: 0.5rem; border-bottom: 1px solid #eee; text-align: left; }
-    .badge { padding: 2px 8px; border-radius: 4px; font-size: 0.8rem; }
-    .badge.error { background: #f8d7da; color: #721c24; }
-    .badge.warning { background: #fff3cd; color: #856404; }
-    .badge.success { background: #d4edda; color: #155724; }
-    .badge.info { background: #d1ecf1; color: #0c5460; }
-    .empty { color: #666; font-style: italic; }
-  `]
+  styles: []
 })
 export class ActivityLogComponent implements OnInit {
   activities: ActivityLog[] = [];
