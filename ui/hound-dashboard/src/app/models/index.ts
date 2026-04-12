@@ -40,3 +40,16 @@ export interface PagedResult<T> {
   page: number;
   pageSize: number;
 }
+
+export interface TunerExperiment {
+  id: string;
+  houndName: string;
+  timestamp: string;
+  configBefore: string;
+  configAfter: string;
+  baselineScore: number;
+  candidateScore: number;
+  delta: number;
+  status: 'improved' | 'equal' | 'worse' | 'crash' | 'pending-review' | 'applied' | 'rejected';
+  rationale: string;
+}

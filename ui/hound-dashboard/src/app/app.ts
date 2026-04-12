@@ -11,6 +11,7 @@ import { RouterOutlet, RouterLink } from '@angular/router';
       <div class="nav-links">
         <a routerLink="/">Dashboard</a>
         <a routerLink="/activity">Activity</a>
+        <a routerLink="/tuner">Tuner</a>
       </div>
     </nav>
     <main class="content">
