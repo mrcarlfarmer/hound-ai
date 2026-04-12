@@ -12,7 +12,7 @@ import { Subscription } from 'rxjs';
   template: `
     <h1>Watchtower Events</h1>
 
-    <table class="events-table" *ngIf="events.length > 0">
+    <table class="events-table">
       <thead>
         <tr>
           <th>Timestamp</th>

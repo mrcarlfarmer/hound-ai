@@ -1,40 +1,47 @@
 import { TestBed } from '@angular/core/testing';
-import { provideHttpClient } from '@angular/common/http';
-import {
-  provideHttpClientTesting,
-  HttpTestingController,
-} from '@angular/common/http/testing';
+import { of, Subject } from 'rxjs';
+import { vi } from 'vitest';
 import { WatchtowerComponent } from './watchtower.component';
 import { WatchtowerEvent } from '../../models';
+import { ApiService } from '../../services/api.service';
+import { SignalrService } from '../../services/signalr.service';
 
 describe('WatchtowerComponent', () => {
-  let httpMock: HttpTestingController;
+  let watchtowerSubject: Subject<WatchtowerEvent>;
+  let mockSignalr: Partial<SignalrService>;
 
-  const WATCHTOWER_URL = 'http://localhost:5000/api/watchtower';
+  function createComponent(events: WatchtowerEvent[] = []) {
+    TestBed.overrideProvider(ApiService, {
+      useValue: { getWatchtowerEvents: vi.fn().mockReturnValue(of(events)) },
+    });
+    const fixture = TestBed.createComponent(WatchtowerComponent);
+    fixture.detectChanges();
+    return fixture;
+  }
 
   beforeEach(async () => {
+    watchtowerSubject = new Subject<WatchtowerEvent>();
+    mockSignalr = {
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      onWatchtowerEvent$: watchtowerSubject,
+    };
+
     await TestBed.configureTestingModule({
       imports: [WatchtowerComponent],
       providers: [
-        provideHttpClient(),
-        provideHttpClientTesting(),
+        { provide: ApiService, useValue: { getWatchtowerEvents: vi.fn().mockReturnValue(of([])) } },
+        { provide: SignalrService, useValue: mockSignalr },
       ],
     }).compileComponents();
-    httpMock = TestBed.inject(HttpTestingController);
-  });
-
-  afterEach(() => {
-    httpMock.verify();
   });
 
   it('should create', () => {
-    const fixture = TestBed.createComponent(WatchtowerComponent);
-    fixture.detectChanges();
+    const fixture = createComponent();
     expect(fixture.componentInstance).toBeTruthy();
-    httpMock.expectOne(r => r.url === WATCHTOWER_URL).flush([]);
   });
 
-  it('should render a table row for each event', async () => {
+  it('should render a table row for each event', () => {
     const events: WatchtowerEvent[] = [
       {
         id: '1',
@@ -58,10 +65,7 @@ describe('WatchtowerComponent', () => {
       },
     ];
 
-    const fixture = TestBed.createComponent(WatchtowerComponent);
-    fixture.autoDetectChanges();
-    httpMock.expectOne(r => r.url === WATCHTOWER_URL).flush(events);
-    await fixture.whenStable();
+    const fixture = createComponent(events);
 
     const rows = fixture.nativeElement.querySelectorAll('tbody tr');
     expect(rows.length).toBe(2);
@@ -69,19 +73,15 @@ describe('WatchtowerComponent', () => {
     expect(rows[1].textContent).toContain('hound-api');
   });
 
-  it('should show empty message when no events are returned', async () => {
-    const fixture = TestBed.createComponent(WatchtowerComponent);
-    fixture.detectChanges();
-    httpMock.expectOne(r => r.url === WATCHTOWER_URL).flush([]);
-    await fixture.whenStable();
-    fixture.detectChanges();
+  it('should show empty message when no events are returned', () => {
+    const fixture = createComponent([]);
 
     const empty = fixture.nativeElement.querySelector('.empty');
     expect(empty).toBeTruthy();
     expect(empty.textContent).toContain('No watchtower events');
   });
 
-  it('should display image IDs in mono font cells', async () => {
+  it('should display image IDs in mono font cells', () => {
     const events: WatchtowerEvent[] = [
       {
         id: '1',
@@ -95,10 +95,7 @@ describe('WatchtowerComponent', () => {
       },
     ];
 
-    const fixture = TestBed.createComponent(WatchtowerComponent);
-    fixture.autoDetectChanges();
-    httpMock.expectOne(r => r.url === WATCHTOWER_URL).flush(events);
-    await fixture.whenStable();
+    const fixture = createComponent(events);
 
     const monoCells = fixture.nativeElement.querySelectorAll('.mono');
     expect(monoCells.length).toBe(2);
