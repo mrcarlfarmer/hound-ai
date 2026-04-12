@@ -14,7 +14,7 @@ on:
       verbose:
         description: 'Enable verbose output'
         required: false
-        default: 'false'
+        default: false
         type: boolean
       ollama_model:
         description: 'Ollama model name (e.g. gemma3, qwen2.5)'
@@ -48,11 +48,14 @@ jobs:
         run: dotnet build src/Hound.Eval/Hound.Eval.csproj --no-restore
 
       - name: Validate scenario files (dry-run)
-        run: >
-          dotnet run --project src/Hound.Eval --no-build --
-          --dry-run
-          ${{ inputs.hound && format('--hound={0}', inputs.hound) || '' }}
-          ${{ inputs.category && format('--category={0}', inputs.category) || '' }}
+        env:
+          EVAL_HOUND: ${{ inputs.hound }}
+          EVAL_CATEGORY: ${{ inputs.category }}
+        run: |
+          ARGS="--dry-run"
+          [ -n "$EVAL_HOUND" ] && ARGS="$ARGS --hound=$EVAL_HOUND"
+          [ -n "$EVAL_CATEGORY" ] && ARGS="$ARGS --category=$EVAL_CATEGORY"
+          dotnet run --project src/Hound.Eval --no-build -- $ARGS
 
       - name: Start Ollama
         run: |
@@ -63,14 +66,16 @@ jobs:
           done
 
       - name: Pull LLM model
-        run: docker exec ollama ollama pull ${{ env.OLLAMA_MODEL }}
+        run: docker exec ollama ollama pull "$OLLAMA_MODEL"
 
       - name: Run eval scenarios
         env:
-          OLLAMA_URL: ${{ env.OLLAMA_URL }}
-          OLLAMA_MODEL: ${{ env.OLLAMA_MODEL }}
-        run: >
-          dotnet run --project src/Hound.Eval --no-build --
-          ${{ inputs.hound && format('--hound={0}', inputs.hound) || '' }}
-          ${{ inputs.category && format('--category={0}', inputs.category) || '' }}
-          ${{ inputs.verbose == 'true' && '--verbose' || '' }}
+          EVAL_HOUND: ${{ inputs.hound }}
+          EVAL_CATEGORY: ${{ inputs.category }}
+          EVAL_VERBOSE: ${{ inputs.verbose }}
+        run: |
+          ARGS=""
+          [ -n "$EVAL_HOUND" ] && ARGS="$ARGS --hound=$EVAL_HOUND"
+          [ -n "$EVAL_CATEGORY" ] && ARGS="$ARGS --category=$EVAL_CATEGORY"
+          [ "$EVAL_VERBOSE" = "true" ] && ARGS="$ARGS --verbose"
+          dotnet run --project src/Hound.Eval --no-build -- $ARGS
