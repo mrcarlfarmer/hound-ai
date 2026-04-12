@@ -14,6 +14,8 @@ import { TunerExperiment } from '../../models';
       <span class="count" *ngIf="totalCount > 0">{{ totalCount }} experiment(s)</span>
     </div>
 
+    <p *ngIf="error" class="error-msg">{{ error }}</p>
+
     <table class="experiments-table" *ngIf="experiments.length > 0">
       <thead>
         <tr>
@@ -55,6 +57,7 @@ import { TunerExperiment } from '../../models';
     </div>
   `,
   styles: [`
+    .error-msg { color: #721c24; background: #f8d7da; padding: 0.5rem 1rem; border-radius: 4px; margin-bottom: 1rem; }
     h1 { margin-bottom: 1rem; }
     .toolbar { display: flex; align-items: center; margin-bottom: 1rem; gap: 1rem; }
     .count { font-size: 0.9rem; color: #666; }
@@ -89,6 +92,7 @@ export class TunerComponent implements OnInit {
   totalCount = 0;
   page = 1;
   readonly pageSize = 20;
+  error: string | null = null;
 
   constructor(private tuner: TunerService) {}
 
@@ -97,21 +101,37 @@ export class TunerComponent implements OnInit {
   }
 
   loadExperiments(): void {
-    this.tuner.getExperiments(this.page, this.pageSize).subscribe(result => {
-      this.experiments = result.items;
-      this.totalCount = result.totalCount;
+    this.error = null;
+    this.tuner.getExperiments(this.page, this.pageSize).subscribe({
+      next: result => {
+        this.experiments = result.items;
+        this.totalCount = result.totalCount;
+      },
+      error: () => {
+        this.error = 'Failed to load experiments. Please try again.';
+      },
     });
   }
 
   apply(exp: TunerExperiment): void {
-    this.tuner.applyExperiment(exp.id).subscribe(() => {
-      exp.status = 'applied';
+    this.tuner.applyExperiment(exp.id).subscribe({
+      next: () => {
+        exp.status = 'applied';
+      },
+      error: () => {
+        this.error = `Failed to apply experiment ${exp.id}.`;
+      },
     });
   }
 
   reject(exp: TunerExperiment): void {
-    this.tuner.rejectExperiment(exp.id).subscribe(() => {
-      exp.status = 'rejected';
+    this.tuner.rejectExperiment(exp.id).subscribe({
+      next: () => {
+        exp.status = 'rejected';
+      },
+      error: () => {
+        this.error = `Failed to reject experiment ${exp.id}.`;
+      },
     });
   }
 
