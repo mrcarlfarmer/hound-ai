@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, WatchtowerEvent } from '../models';
+import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, WatchtowerEvent, HealthReport } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -37,5 +37,9 @@ export class ApiService {
       .set('page', page.toString())
       .set('pageSize', pageSize.toString());
     return this.http.get<WatchtowerEvent[]>(`${this.baseUrl}/api/watchtower`, { params });
+  }
+
+  getHealth(): Observable<HealthReport> {
+    return this.http.get<HealthReport>(`${this.baseUrl}/api/health`);
   }
 }

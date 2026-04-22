@@ -1,9 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { DashboardComponent } from './dashboard.component';
 import { ApiService } from '../../services/api.service';
-import { Pack } from '../../models';
+import { Pack, HealthReport } from '../../models';
 
 describe('DashboardComponent', () => {
   const mockPacks: Pack[] = [
@@ -11,8 +11,22 @@ describe('DashboardComponent', () => {
     { id: '2', name: 'Test Pack', status: 'Idle', houndCount: 1 },
   ];
 
-  function createComponent(packs: Pack[] = []) {
-    const mockApi = { getPacks: vi.fn().mockReturnValue(of(packs)) };
+  const mockHealth: HealthReport = {
+    status: 'Healthy',
+    timestamp: new Date().toISOString(),
+    services: [
+      { name: 'hound-api', status: 'Healthy' },
+      { name: 'ravendb', status: 'Healthy' },
+      { name: 'ollama', status: 'Healthy', detail: '2 models loaded' },
+      { name: 'trading-pack', status: 'Degraded', detail: 'Last activity 8m ago' },
+    ],
+  };
+
+  function createComponent(packs: Pack[] = [], health: HealthReport = mockHealth) {
+    const mockApi = {
+      getPacks: vi.fn().mockReturnValue(of(packs)),
+      getHealth: vi.fn().mockReturnValue(of(health)),
+    };
     TestBed.overrideProvider(ApiService, { useValue: mockApi });
     const fixture = TestBed.createComponent(DashboardComponent);
     fixture.detectChanges();
@@ -24,9 +38,19 @@ describe('DashboardComponent', () => {
       imports: [DashboardComponent],
       providers: [
         provideRouter([]),
-        { provide: ApiService, useValue: { getPacks: vi.fn().mockReturnValue(of([])) } },
+        {
+          provide: ApiService,
+          useValue: {
+            getPacks: vi.fn().mockReturnValue(of([])),
+            getHealth: vi.fn().mockReturnValue(of(mockHealth)),
+          },
+        },
       ],
     }).compileComponents();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   it('should create', () => {
@@ -37,6 +61,11 @@ describe('DashboardComponent', () => {
   it('should call ApiService.getPacks on init', () => {
     const { mockApi } = createComponent();
     expect(mockApi.getPacks).toHaveBeenCalled();
+  });
+
+  it('should call ApiService.getHealth on init', () => {
+    const { mockApi } = createComponent();
+    expect(mockApi.getHealth).toHaveBeenCalled();
   });
 
   it('should render a card for each pack returned by the API', () => {
@@ -61,5 +90,28 @@ describe('DashboardComponent', () => {
     const empty = fixture.nativeElement.querySelector('.empty');
     expect(empty).toBeTruthy();
     expect(empty.textContent).toContain('No packs registered');
+  });
+
+  it('should render service health indicators', () => {
+    const { fixture } = createComponent([], mockHealth);
+
+    const serviceNames = fixture.nativeElement.querySelectorAll('.font-medium');
+    const names = Array.from(serviceNames).map((el: any) => el.textContent?.trim());
+    expect(names).toContain('hound-api');
+    expect(names).toContain('ravendb');
+    expect(names).toContain('ollama');
+    expect(names).toContain('trading-pack');
+  });
+
+  it('should show health error message when API is unreachable', () => {
+    const mockApi = {
+      getPacks: vi.fn().mockReturnValue(of([])),
+      getHealth: vi.fn().mockReturnValue(throwError(() => new Error('Network error'))),
+    };
+    TestBed.overrideProvider(ApiService, { useValue: mockApi });
+    const fixture = TestBed.createComponent(DashboardComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.healthError).toBe(true);
   });
 });

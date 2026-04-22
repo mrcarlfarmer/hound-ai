@@ -64,3 +64,17 @@ export interface WatchtowerEvent {
   timestamp: string;
   rawPayload: string;
 }
+
+export type HealthStatus = 'Healthy' | 'Degraded' | 'Unhealthy' | 'Unknown';
+
+export interface ServiceHealth {
+  name: string;
+  status: HealthStatus;
+  detail?: string;
+}
+
+export interface HealthReport {
+  status: HealthStatus;
+  timestamp: string;
+  services: ServiceHealth[];
+}
