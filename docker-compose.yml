@@ -43,6 +43,8 @@ services:
     depends_on:
       ollama:
         condition: service_healthy
+      hound-api:
+        condition: service_started
     restart: "no"
     networks:
       - hound-net

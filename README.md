@@ -38,7 +38,7 @@ Data flow:  trading-pack ──► RavenDB ──► hound-api ──► hound-u
 |-----------------------|-----------------------------------|-------------|
 | Agent Framework       | Microsoft Agent Framework         | v1.1.0      |
 | Backend               | .NET / ASP.NET Core               | 9.0         |
-| Frontend              | Angular (standalone components)   | 19+         |
+| Frontend              | Angular (standalone components)   | 21          |
 | Database              | RavenDB                           | Latest      |
 | LLM                   | Ollama (containerized)            | Latest      |
 | Trading API           | Alpaca Markets (paper)            | NuGet       |
@@ -151,7 +151,7 @@ hound-ai/
 ├── .env.example                # Environment variable template
 ├── infra/
 │   ├── ollama/
-│   │   └── pull-models.sh      # Bootstrap: pulls gemma3, qwen2.5, phi3
+│   │   └── pull-models.sh      # Bootstrap: pulls qwen3:14b, qwen3.5:9b
 │   └── watchtower/
 │       └── config.env          # Watchtower poll interval settings
 ├── src/
@@ -163,7 +163,7 @@ hound-ai/
 │   ├── Hound.Api.Tests/
 │   └── Hound.Eval/             # Agent evaluation harness
 └── ui/
-    └── hound-dashboard/        # Angular 19+ SPA
+    └── hound-dashboard/        # Angular 21 SPA
 ```
 
 ---
