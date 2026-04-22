@@ -1,33 +1,35 @@
 ---
-description: 'Guidelines for building C# applications'
-applyTo: '**/*.cs'
+description: "Use when writing or editing C# code in the Hound AI platform. Covers AF agent patterns, activity logging, DI conventions, and hound class structure."
+applyTo: "src/**/*.cs"
 ---
+# Hound AI — C# Conventions
 
-# C# Development
+## Agent Framework Patterns
+- Hounds wrap `ChatClientAgent` from `Microsoft.Agents.AI` — keep as a private field
+- Define tools via `AIFunctionFactory.Create(...)` passed to the agent constructor
+- Run agents with `_agent.RunAsync(messages, options, cancellationToken)` — fresh session per call
+- Parse responses with `JsonSerializer.Deserialize<T>(response.Text, new JsonSerializerOptions { PropertyNameCaseInsensitive = true })`
 
-## C# Instructions
-- Always use the latest version C#, currently C# 14 features.
-- Write clear and concise comments for each function.
+## Activity Logging
+- All hounds log activity via `IActivityLogger.LogActivityAsync()` **before and after** agent invocation
+- Never use `Console.WriteLine` — use `IActivityLogger` for hound activity, `ILogger<T>` for infrastructure
 
-## General Instructions
-- Make only high confidence suggestions when reviewing code changes.
-- Write code with good maintainability practices, including comments on why certain design decisions were made.
-- Handle edge cases and write clear exception handling.
-- For libraries or external dependencies, mention their usage and purpose in comments.
+## DI Registration
+- Hounds registered as **singletons** in the pack's `Program.cs`
+- Per-hound model configured via `builder.Configuration["Hounds:{Name}:Model"]`
+- Use `IOllamaClientFactory` → cast to `OllamaClientFactory` to call `CreateChatClient(model)`
+- Settings bound via `IOptions<T>` — config from `Config/*.json` and environment variables
 
-## Naming Conventions
+## Hound Class Structure
+- Const `HoundId` (kebab-case: `analysis-hound`) and `PackId` (kebab-case: `trading-pack`)
+- Constructor: `IChatClient`, `IActivityLogger`, optional `ILoggerFactory?`, plus domain services
+- Public async method returns a typed **record** (defined in shared models)
+- `CancellationToken` on all public async methods
 
-- Follow PascalCase for component names, method names, and public members.
-- Use camelCase for private fields and local variables.
-- Prefix interface names with "I" (e.g., IUserService).
-
-## Formatting
-
-- Apply code-formatting style defined in `.editorconfig`.
-- Prefer file-scoped namespace declarations and single-line using directives.
-- Insert a newline before the opening curly brace of any code block (e.g., after `if`, `for`, `while`, `foreach`, `using`, `try`, etc.).
-- Ensure that the final return statement of a method is on its own line.
-- Use pattern matching and switch expressions wherever possible.
+## Workflows
+- Hound outputs feed into downstream hounds via typed records (e.g., `MarketAnalysis` → `TradingDecision`)
+- Workflows are sequential chains orchestrated in `Workflows/` classes
+- Confidence thresholds and symbols driven by `IOptions<TSettings>`
 - Use `nameof` instead of string literals when referring to member names.
 - Ensure that XML doc comments are created for any public APIs. When applicable, include `<example>` and `<code>` documentation in the comments.
 
