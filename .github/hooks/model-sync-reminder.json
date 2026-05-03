@@ -1,0 +1,11 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "type": "command",
+        "command": "pwsh -NoProfile -Command \"$input = $Input | ConvertFrom-Json; $tool = $input.toolUse.toolName; $path = $input.toolUse.input.filePath; if (($tool -in 'replace_string_in_file','create_file','multi_replace_string_in_file') -and $path -match '(Hound\\.Core[\\\\/]Models[\\\\/].*\\.cs|models[\\\\/]index\\.ts)$') { $side = if ($path -match '\\.cs$') { 'C#' } else { 'TypeScript' }; $other = if ($side -eq 'C#') { 'ui/hound-dashboard/src/app/models/index.ts' } else { 'src/Hound.Core/Models/' }; $json = @{ systemMessage = \\\"MODEL SYNC: You edited a $side model file. Verify the counterpart in $other still matches — property names (camelCase in TS, PascalCase in C#), types, and enum/union values must stay aligned. See .github/instructions/angular-services.instructions.md for the mapping rules.\\\" } | ConvertTo-Json -Compress; Write-Output $json }\"",
+        "timeout": 5
+      }
+    ]
+  }
+}
