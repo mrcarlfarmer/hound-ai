@@ -18,6 +18,7 @@ export const SIGNALR_CONNECTION_FACTORY = new InjectionToken<() => signalR.HubCo
 export class SignalrService {
   private connectionFactory = inject(SIGNALR_CONNECTION_FACTORY);
   private hubConnection?: signalR.HubConnection;
+  private connectionPromise?: Promise<void>;
   private activitySubject = new Subject<ActivityLog>();
   private watchtowerSubject = new Subject<WatchtowerEvent>();
   private orderUpdateSubject = new Subject<OrderUpdate>();
@@ -27,6 +28,8 @@ export class SignalrService {
   onOrderUpdate$: Observable<OrderUpdate> = this.orderUpdateSubject.asObservable();
 
   connect(): void {
+    if (this.connectionPromise) return;
+
     this.hubConnection = this.connectionFactory();
 
     this.hubConnection.on('OnActivity', (activity: ActivityLog) => {
@@ -41,18 +44,19 @@ export class SignalrService {
       this.orderUpdateSubject.next(update);
     });
 
-    this.hubConnection.start().catch(err => console.error('SignalR connection error:', err));
+    this.connectionPromise = this.hubConnection.start().catch(err => console.error('SignalR connection error:', err));
   }
 
   disconnect(): void {
     this.hubConnection?.stop();
+    this.connectionPromise = undefined;
   }
 
   subscribeToPack(packId: string): void {
-    this.hubConnection?.invoke('SubscribeToPack', packId);
+    this.connectionPromise?.then(() => this.hubConnection?.invoke('SubscribeToPack', packId));
   }
 
   unsubscribeFromPack(packId: string): void {
-    this.hubConnection?.invoke('UnsubscribeFromPack', packId);
+    this.connectionPromise?.then(() => this.hubConnection?.invoke('UnsubscribeFromPack', packId));
   }
 }

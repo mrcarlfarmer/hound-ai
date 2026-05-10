@@ -47,16 +47,16 @@ describe('SignalrService', () => {
     expect(mockConnection.start).toHaveBeenCalled();
   });
 
-  it('subscribeToPack() should invoke SubscribeToPack on the hub', () => {
+  it('subscribeToPack() should invoke SubscribeToPack on the hub', async () => {
     service.connect();
     service.subscribeToPack('pack1');
-    expect(mockConnection.invoke).toHaveBeenCalledWith('SubscribeToPack', 'pack1');
+    await vi.waitFor(() => expect(mockConnection.invoke).toHaveBeenCalledWith('SubscribeToPack', 'pack1'));
   });
 
-  it('unsubscribeFromPack() should invoke UnsubscribeFromPack on the hub', () => {
+  it('unsubscribeFromPack() should invoke UnsubscribeFromPack on the hub', async () => {
     service.connect();
     service.unsubscribeFromPack('pack1');
-    expect(mockConnection.invoke).toHaveBeenCalledWith('UnsubscribeFromPack', 'pack1');
+    await vi.waitFor(() => expect(mockConnection.invoke).toHaveBeenCalledWith('UnsubscribeFromPack', 'pack1'));
   });
 
   it('disconnect() should stop the hub connection', () => {
