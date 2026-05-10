@@ -12,7 +12,7 @@ public class BaseHoundConfig
 }
 
 /// <summary>
-/// Configuration for AnalysisHound — analysis parameters, indicator weights and confidence thresholds.
+/// Configuration for DataNode (formerly AnalysisHound) — analysis parameters, indicator weights and confidence thresholds.
 /// </summary>
 public class AnalysisHoundConfig : BaseHoundConfig
 {
@@ -22,7 +22,7 @@ public class AnalysisHoundConfig : BaseHoundConfig
 }
 
 /// <summary>
-/// Configuration for StrategyHound — indicators, timeframes, and entry/exit thresholds.
+/// Configuration for StrategyNode — indicators, timeframes, and entry/exit thresholds.
 /// </summary>
 public class StrategyHoundConfig : BaseHoundConfig
 {
@@ -35,7 +35,7 @@ public class StrategyHoundConfig : BaseHoundConfig
 }
 
 /// <summary>
-/// Configuration for RiskHound — position limits, drawdown caps, and portfolio exposure.
+/// Configuration for RiskNode — position limits, drawdown caps, and portfolio exposure.
 /// </summary>
 public class RiskHoundConfig : BaseHoundConfig
 {
@@ -47,32 +47,18 @@ public class RiskHoundConfig : BaseHoundConfig
 }
 
 /// <summary>
-/// Configuration for ExecutionHound — order types, slippage tolerance, and order watcher settings.
+/// Configuration for ExecutionNode — order types and slippage tolerance.
 /// </summary>
 public class ExecutionHoundConfig : BaseHoundConfig
 {
     public string OrderType { get; set; } = "Market";
     public double SlippageTolerance { get; set; } = 0.001;
     public string TimeInForce { get; set; } = "Day";
-
-    /// <summary>Seconds between order status polls. Default: 5.</summary>
-    public int OrderWatchIntervalSeconds { get; set; } = 5;
-
-    /// <summary>Minutes before the watcher gives up on a pending order. Default: 30.</summary>
-    public int OrderWatchTimeoutMinutes { get; set; } = 30;
 }
 
 /// <summary>
-/// Tuner constraints specifying which config fields each hound is allowed to have modified.
+/// Configuration for MonitorNode — trade lifecycle monitoring.
 /// </summary>
-public class TunerConstraints
+public class MonitorNodeConfig : BaseHoundConfig
 {
-    public Dictionary<string, List<string>> AllowedModifications { get; set; } = new();
-
-    public IReadOnlyList<string> GetAllowedFields(string houndName)
-    {
-        if (AllowedModifications.TryGetValue(houndName, out var fields))
-            return fields.AsReadOnly();
-        return [];
-    }
 }

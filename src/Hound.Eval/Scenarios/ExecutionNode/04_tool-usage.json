@@ -1,0 +1,31 @@
+{
+  "scenarioName": "Place Market Order Tool Called with Correct Parameters",
+  "description": "ExecutionHound should call the place_market_order tool with the correct symbol, quantity, and side parameters for an approved buy order. The agent also has get_order_status and cancel_order tools available.",
+  "houndName": "ExecutionNode",
+  "category": "tool-usage",
+  "input": {
+    "userMessage": "Execute the approved buy trade for 100 shares of NVDA.",
+    "context": {
+      "verdict": "Approved",
+      "decision": {
+        "symbol": "NVDA",
+        "action": "Buy",
+        "quantity": 100,
+        "reasoning": "Strong momentum signal with high confidence.",
+        "confidence": 0.82
+      },
+      "reasoning": "All risk checks passed."
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["place_market_order"],
+    "outputMustContain": ["NVDA"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with success, symbol, action, quantity, filledPrice, orderId, message",
+    "decisionCriteria": "ExecutionHound must call place_market_order with symbol='NVDA', quantity=100, side='Buy'. The agent should not call get_order_status or cancel_order during initial placement."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'NVDA' with a valid orderId field."
+  }
+}

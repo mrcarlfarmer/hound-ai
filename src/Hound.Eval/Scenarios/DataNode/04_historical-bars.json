@@ -1,0 +1,23 @@
+{
+  "scenarioName": "Historical Bars Tool Usage Verification",
+  "description": "AnalysisHound should call the fetch_market_data tool with the correct symbol to retrieve historical price bars before producing its analysis.",
+  "houndName": "DataNode",
+  "category": "tool-usage",
+  "input": {
+    "userMessage": "Analyse GOOG and provide your market assessment including recent price bars.",
+    "context": {
+      "symbol": "GOOG"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["fetch_market_data"],
+    "outputMustContain": ["GOOG"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with symbol, lastPrice, volumeChange, trend, confidenceScore, summary",
+    "decisionCriteria": "AnalysisHound must invoke fetch_market_data with 'GOOG' to obtain bar data, then incorporate that data into its analysis output."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'GOOG' and a valid lastPrice value from the stub bar data."
+  }
+}

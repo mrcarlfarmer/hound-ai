@@ -1,6 +1,7 @@
 using Hound.Core.Logging;
 using Hound.Trading.AlpacaClient;
-using Hound.Trading.Hounds;
+using Hound.Trading.Graph;
+using Hound.Trading.Nodes;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using System.ClientModel;
@@ -177,41 +178,65 @@ public class EvalRunner
 
         switch (scenario.HoundName)
         {
+            case "StrategyNode":
             case "StrategyHound":
             {
-                var hound = new StrategyHound(chatClient, activityLogger);
+                var node = new StrategyNode(chatClient, activityLogger);
                 var analysis = DeserializeContext<MarketAnalysis>(scenario.Input.Context)
                     ?? new MarketAnalysis("AAPL", 0, 0, "Unknown", 0, scenario.Input.UserMessage);
-                var decision = await hound.DecideAsync(analysis, ct);
-                return JsonSerializer.Serialize(decision, JsonOptions);
+                var state = TradingGraphState.Initial("AAPL") with { DataOutput = analysis };
+                var result = await node.ExecuteAsync(state, ct);
+                return JsonSerializer.Serialize(result.StrategyOutput, JsonOptions);
             }
 
+            case "DataNode":
             case "AnalysisHound":
             {
-                var hound = new AnalysisHound(chatClient, alpacaService, activityLogger);
+                var node = new DataNode(chatClient, alpacaService, activityLogger);
                 var symbol = GetContextString(scenario.Input.Context, "symbol") ?? "AAPL";
-                var analysis = await hound.AnalyseAsync(symbol, ct);
-                return JsonSerializer.Serialize(analysis, JsonOptions);
+                var state = TradingGraphState.Initial(symbol);
+                var result = await node.ExecuteAsync(state, ct);
+                return JsonSerializer.Serialize(result.DataOutput, JsonOptions);
             }
 
+            case "RiskNode":
             case "RiskHound":
             {
-                var hound = new RiskHound(chatClient, alpacaService, activityLogger);
+                var node = new RiskNode(chatClient, alpacaService, activityLogger);
                 var decision = DeserializeContext<TradingDecision>(scenario.Input.Context)
                     ?? new TradingDecision("AAPL", TradeAction.Buy, 10, scenario.Input.UserMessage, 0.5);
-                var assessment = await hound.EvaluateAsync(decision, ct);
-                return JsonSerializer.Serialize(assessment, JsonOptions);
+                var state = TradingGraphState.Initial("AAPL") with { StrategyOutput = decision };
+                var result = await node.ExecuteAsync(state, ct);
+                return JsonSerializer.Serialize(result.RiskOutput, JsonOptions);
             }
 
+            case "ExecutionNode":
             case "ExecutionHound":
             {
-                var hound = new ExecutionHound(chatClient, alpacaService, activityLogger, StubDocumentStoreFactory.Create());
+                var node = new ExecutionNode(chatClient, alpacaService, activityLogger, StubDocumentStoreFactory.Create());
                 var assessment = DeserializeContext<RiskAssessment>(scenario.Input.Context)
                     ?? new RiskAssessment(RiskVerdict.Rejected,
                         new TradingDecision("AAPL", TradeAction.Buy, 10, "", 0),
                         "No assessment provided");
-                var result = await hound.ExecuteAsync(assessment, ct);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+                var result = await node.ExecuteAsync(state, ct);
+                return JsonSerializer.Serialize(result.ExecutionOutput, JsonOptions);
+            }
+
+            case "MonitorNode":
+            {
+                var resetter = new StubResettableExecutor();
+                var node = new MonitorNode(chatClient, alpacaService, activityLogger,
+                    StubDocumentStoreFactory.Create(), resetter, monitorDelaySeconds: 0);
+                var executionResult = DeserializeContext<ExecutionResult>(scenario.Input.Context)
+                    ?? new ExecutionResult(true, "AAPL", TradeAction.Buy, 10, null, "test-order", "Test");
+                var state = TradingGraphState.Initial("AAPL") with
+                {
+                    ExecutionOutput = executionResult,
+                    Phase = GraphPhase.Monitor,
+                };
+                var result = await node.ExecuteAsync(state, ct);
+                return JsonSerializer.Serialize(result.MonitorOutput, JsonOptions);
             }
 
             default:

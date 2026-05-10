@@ -1,0 +1,32 @@
+{
+  "scenarioName": "Modified Trade Uses Adjusted Quantity",
+  "description": "ExecutionHound should use the adjustedQuantity from a Modified RiskAssessment rather than the original decision quantity when executing the trade.",
+  "houndName": "ExecutionNode",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Execute this modified trade for GOOG where RiskHound adjusted the quantity down from 200 to 80 shares.",
+    "context": {
+      "verdict": "Modified",
+      "decision": {
+        "symbol": "GOOG",
+        "action": "Buy",
+        "quantity": 200,
+        "reasoning": "Bullish signal detected.",
+        "confidence": 0.75
+      },
+      "reasoning": "Original quantity exceeded 20% position limit. Adjusted to 80 shares.",
+      "adjustedQuantity": 80
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["place_market_order"],
+    "outputMustContain": ["GOOG"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with success, symbol, action, quantity, filledPrice, orderId, message",
+    "decisionCriteria": "ExecutionHound must use adjustedQuantity (80) not the original quantity (200). Output should confirm execution of GOOG."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'GOOG'."
+  }
+}

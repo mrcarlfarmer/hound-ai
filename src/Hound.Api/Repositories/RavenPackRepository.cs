@@ -47,6 +47,17 @@ public class RavenPackRepository : IPackRepository
 
         await session.StoreAsync(pack, cancellationToken);
 
+        // Remove stale hound records no longer in this registration
+        var registeredIds = registration.Hounds.Select(h => h.Id).ToHashSet();
+        var existing = await session.Query<HoundInfo>()
+            .Where(h => h.PackId == registration.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var stale in existing.Where(h => !registeredIds.Contains(h.Id)))
+        {
+            session.Delete(stale);
+        }
+
         foreach (var hound in registration.Hounds)
         {
             var houndInfo = await session.LoadAsync<HoundInfo>(hound.Id, cancellationToken)

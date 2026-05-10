@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Partial Fill In Progress",
+  "houndName": "MonitorNode",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Check the status of order abc-004 for GOOG and the current position.",
+    "context": {
+      "success": true,
+      "symbol": "GOOG",
+      "action": "Buy",
+      "quantity": 100,
+      "filledPrice": null,
+      "orderId": "abc-004",
+      "message": "Order partially filled",
+      "tradeDocumentId": "TradeDocuments/4"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_order_status"],
+    "outputMustContain": ["tradeOpen", "true"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with tradeOpen, currentStatus, currentPrice, unrealizedPnL, summary",
+    "decisionCriteria": "Order is partially filled; trade should remain open while fill completes."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'tradeOpen' and 'true'."
+  }
+}

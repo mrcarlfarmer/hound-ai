@@ -1,13 +1,11 @@
 using Hound.Core.LlmClient;
 using Hound.Core.Logging;
-using Hound.Core.Models;
 using Hound.Trading;
 using Hound.Trading.AlpacaClient;
-using Hound.Trading.Hounds;
-using Hound.Trading.Services;
-using Hound.Trading.Workflows;
+using Hound.Trading.Graph;
+using Hound.Trading.Nodes;
+using Microsoft.Extensions.AI;
 using Raven.Client.Documents;
-using System.Text.Json;
 
 var builder = Host.CreateApplicationBuilder(args);
 
@@ -15,14 +13,8 @@ var builder = Host.CreateApplicationBuilder(args);
 builder.Services.Configure<AlpacaSettings>(
     builder.Configuration.GetSection(AlpacaSettings.SectionName));
 
-builder.Services.Configure<TradingWorkflowSettings>(
-    builder.Configuration.GetSection(TradingWorkflowSettings.SectionName));
-
-builder.Services.Configure<TunerSettings>(
-    builder.Configuration.GetSection(TunerSettings.SectionName));
-
-builder.Services.Configure<ExecutionHoundConfig>(
-    builder.Configuration.GetSection("ExecutionHound"));
+builder.Services.Configure<TradingGraphSettings>(
+    builder.Configuration.GetSection(TradingGraphSettings.SectionName));
 
 // ── RavenDB ──────────────────────────────────────────────────────────────────
 var ravenUrl = builder.Configuration["RavenDb:Url"] ?? "http://ravendb:8080";
@@ -40,8 +32,6 @@ builder.Services.AddSingleton<IDocumentStore>(_ =>
 builder.Services.AddHttpClient();
 
 // ── Activity Logger ───────────────────────────────────────────────────────────
-// Forward activity events to the Hound.Api, which persists them and broadcasts
-// to SignalR clients for real-time monitoring in the dashboard.
 var houndApiUrl = builder.Configuration["HoundApi:BaseUrl"] ?? "http://hound-api:8080";
 builder.Services.AddSingleton<IActivityLogger>(sp =>
     new HttpActivityLogger(sp.GetRequiredService<IHttpClientFactory>(), houndApiUrl));
@@ -53,75 +43,86 @@ builder.Services.AddSingleton<IOllamaClientFactory>(sp =>
 // ── Alpaca ────────────────────────────────────────────────────────────────────
 builder.Services.AddSingleton<IAlpacaService, AlpacaService>();
 
-// ── Hounds ────────────────────────────────────────────────────────────────────
-var analysisModel = builder.Configuration["Hounds:Analysis:Model"] ?? "gemma3";
-var strategyModel = builder.Configuration["Hounds:Strategy:Model"] ?? "gemma3";
-var riskModel = builder.Configuration["Hounds:Risk:Model"] ?? "gemma3";
-var executionModel = builder.Configuration["Hounds:Execution:Model"] ?? "gemma3";
+// ── Keyed IChatClient instances ──────────────────────────────────────────────
+// StrategyNode uses qwen3:14b; all other nodes use qwen3.5:9b.
+var strategyModel = builder.Configuration["Ollama:StrategyModel"] ?? "qwen3:14b";
+var defaultModel = builder.Configuration["Ollama:DefaultModel"] ?? "qwen3.5:9b";
 
-builder.Services.AddSingleton<AnalysisHound>(sp =>
+builder.Services.AddKeyedSingleton<IChatClient>("strategy", (sp, _) =>
 {
     var factory = sp.GetRequiredService<IOllamaClientFactory>();
-    var chatClient = ((OllamaClientFactory)factory).CreateChatClient(analysisModel);
-    return new AnalysisHound(chatClient, sp.GetRequiredService<IAlpacaService>(),
-        sp.GetRequiredService<IActivityLogger>(), sp.GetService<ILoggerFactory>());
+    return ((OllamaClientFactory)factory).CreateChatClient(strategyModel);
 });
 
-builder.Services.AddSingleton<StrategyHound>(sp =>
+builder.Services.AddKeyedSingleton<IChatClient>("default", (sp, _) =>
 {
     var factory = sp.GetRequiredService<IOllamaClientFactory>();
-    var chatClient = ((OllamaClientFactory)factory).CreateChatClient(strategyModel);
-    return new StrategyHound(chatClient, sp.GetRequiredService<IActivityLogger>(),
+    return ((OllamaClientFactory)factory).CreateChatClient(defaultModel);
+});
+
+// ── Graph Infrastructure ─────────────────────────────────────────────────────
+builder.Services.AddSingleton<IStateStore, RavenStateStore>();
+builder.Services.AddSingleton<IResettableExecutor>(sp =>
+{
+    var ollamaBase = builder.Configuration["Ollama:BaseUrl"] ?? "http://ollama:11434/v1";
+    // Strip /v1 suffix for the raw Ollama API
+    var rawBase = ollamaBase.Replace("/v1", string.Empty);
+    return new OllamaResettableExecutor(
+        sp.GetRequiredService<IHttpClientFactory>(), rawBase,
+        sp.GetService<ILoggerFactory>()?.CreateLogger<OllamaResettableExecutor>());
+});
+
+// ── Nodes ─────────────────────────────────────────────────────────────────────
+builder.Services.AddSingleton<DataNode>(sp => new DataNode(
+    sp.GetRequiredKeyedService<IChatClient>("default"),
+    sp.GetRequiredService<IAlpacaService>(),
+    sp.GetRequiredService<IActivityLogger>(),
+    sp.GetService<ILoggerFactory>()));
+
+builder.Services.AddSingleton<StrategyNode>(sp => new StrategyNode(
+    sp.GetRequiredKeyedService<IChatClient>("strategy"),
+    sp.GetRequiredService<IActivityLogger>(),
+    sp.GetService<ILoggerFactory>()));
+
+builder.Services.AddSingleton<RiskNode>(sp => new RiskNode(
+    sp.GetRequiredKeyedService<IChatClient>("default"),
+    sp.GetRequiredService<IAlpacaService>(),
+    sp.GetRequiredService<IActivityLogger>(),
+    sp.GetService<ILoggerFactory>()));
+
+builder.Services.AddSingleton<ExecutionNode>(sp => new ExecutionNode(
+    sp.GetRequiredKeyedService<IChatClient>("default"),
+    sp.GetRequiredService<IAlpacaService>(),
+    sp.GetRequiredService<IActivityLogger>(),
+    sp.GetRequiredService<IDocumentStore>(),
+    sp.GetService<ILoggerFactory>()));
+
+builder.Services.AddSingleton<MonitorNode>(sp =>
+{
+    var settings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<TradingGraphSettings>>().Value;
+    return new MonitorNode(
+        sp.GetRequiredKeyedService<IChatClient>("default"),
+        sp.GetRequiredService<IAlpacaService>(),
+        sp.GetRequiredService<IActivityLogger>(),
+        sp.GetRequiredService<IDocumentStore>(),
+        sp.GetRequiredService<IResettableExecutor>(),
+        settings.MonitorDelaySeconds,
         sp.GetService<ILoggerFactory>());
 });
 
-builder.Services.AddSingleton<RiskHound>(sp =>
-{
-    var factory = sp.GetRequiredService<IOllamaClientFactory>();
-    var chatClient = ((OllamaClientFactory)factory).CreateChatClient(riskModel);
-    return new RiskHound(chatClient, sp.GetRequiredService<IAlpacaService>(),
-        sp.GetRequiredService<IActivityLogger>(), sp.GetService<ILoggerFactory>());
-});
+// ── Node dictionary for graph executor ────────────────────────────────────────
+builder.Services.AddSingleton<IReadOnlyDictionary<string, INode>>(sp =>
+    new Dictionary<string, INode>
+    {
+        ["data-node"] = sp.GetRequiredService<DataNode>(),
+        ["strategy-node"] = sp.GetRequiredService<StrategyNode>(),
+        ["risk-node"] = sp.GetRequiredService<RiskNode>(),
+        ["execution-node"] = sp.GetRequiredService<ExecutionNode>(),
+        ["monitor-node"] = sp.GetRequiredService<MonitorNode>(),
+    });
 
-builder.Services.AddSingleton<ExecutionHound>(sp =>
-{
-    var factory = sp.GetRequiredService<IOllamaClientFactory>();
-    var chatClient = ((OllamaClientFactory)factory).CreateChatClient(executionModel);
-    return new ExecutionHound(chatClient, sp.GetRequiredService<IAlpacaService>(),
-        sp.GetRequiredService<IActivityLogger>(), sp.GetRequiredService<IDocumentStore>(),
-        sp.GetService<ILoggerFactory>());
-});
-
-// ── Workflow & Worker ─────────────────────────────────────────────────────────
-builder.Services.AddSingleton<TradingWorkflow>();
+builder.Services.AddSingleton<TradingGraph>();
 builder.Services.AddHostedService<TradingWorker>();
-builder.Services.AddHostedService<OrderWatcherService>();
-
-// ── TunerHound & TunerHostedService ──────────────────────────────────────────
-var tunerModel = builder.Configuration["Hounds:Tuner:Model"] ?? "gemma3";
-builder.Services.AddSingleton<TunerHound>(sp =>
-{
-    var factory = sp.GetRequiredService<IOllamaClientFactory>();
-    var chatClient = ((OllamaClientFactory)factory).CreateChatClient(tunerModel);
-    var documentStore = sp.GetRequiredService<IDocumentStore>();
-    var activityLogger = sp.GetRequiredService<IActivityLogger>();
-    var tunerSettings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<TunerSettings>>().Value;
-
-    var configDir = tunerSettings.ConfigDirectory
-        ?? Path.Combine(AppContext.BaseDirectory, "Config");
-
-    var constraintsPath = Path.Combine(configDir, "TunerConstraints.json");
-    var constraints = File.Exists(constraintsPath)
-        ? JsonSerializer.Deserialize<TunerConstraints>(
-            File.ReadAllText(constraintsPath),
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
-          ?? new TunerConstraints()
-        : new TunerConstraints();
-
-    return new TunerHound(chatClient, documentStore, activityLogger, factory, configDir, constraints,
-        sp.GetService<ILoggerFactory>());
-});
-builder.Services.AddHostedService<TunerHostedService>();
 
 var host = builder.Build();
 host.Run();

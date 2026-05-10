@@ -1,23 +1,24 @@
 using Hound.Core.Logging;
 using Hound.Core.Models;
 using Hound.Trading.AlpacaClient;
-using Hound.Trading.Hounds;
+using Hound.Trading.Graph;
+using Hound.Trading.Nodes;
 using Microsoft.Extensions.AI;
 using Moq;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
 
-namespace Hound.Trading.Tests.Hounds;
+namespace Hound.Trading.Tests.Nodes;
 
 [TestClass]
-public sealed class ExecutionHoundTests
+public sealed class ExecutionNodeTests
 {
     private Mock<IChatClient> _mockChatClient = null!;
     private Mock<IAlpacaService> _mockAlpacaService = null!;
     private Mock<IActivityLogger> _mockActivityLogger = null!;
     private Mock<IDocumentStore> _mockDocumentStore = null!;
     private Mock<IAsyncDocumentSession> _mockSession = null!;
-    private ExecutionHound _hound = null!;
+    private ExecutionNode _node = null!;
 
     [TestInitialize]
     public void Setup()
@@ -32,7 +33,6 @@ public sealed class ExecutionHoundTests
             .Setup(s => s.OpenAsyncSession(It.IsAny<string>()))
             .Returns(_mockSession.Object);
 
-        // Simulate RavenDB assigning an Id on StoreAsync
         _mockSession
             .Setup(s => s.StoreAsync(It.IsAny<TradeDocument>(), It.IsAny<CancellationToken>()))
             .Callback<object, CancellationToken>((entity, _) =>
@@ -42,7 +42,7 @@ public sealed class ExecutionHoundTests
             })
             .Returns(Task.CompletedTask);
 
-        _hound = new ExecutionHound(
+        _node = new ExecutionNode(
             _mockChatClient.Object,
             _mockAlpacaService.Object,
             _mockActivityLogger.Object,
@@ -57,11 +57,12 @@ public sealed class ExecutionHoundTests
             new TradingDecision("AAPL", TradeAction.Buy, 50, "Test", 0.9),
             "Position too large");
 
-        var result = await _hound.ExecuteAsync(assessment);
+        var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+        var result = await _node.ExecuteAsync(state, default);
 
-        Assert.IsFalse(result.Success);
-        Assert.AreEqual("AAPL", result.Symbol);
-        Assert.IsTrue(result.Message.Contains("Rejected"));
+        Assert.IsFalse(result.ExecutionOutput!.Success);
+        Assert.AreEqual("AAPL", result.ExecutionOutput.Symbol);
+        Assert.IsTrue(result.ExecutionOutput.Message.Contains("Rejected"));
         _mockActivityLogger.Verify(
             l => l.LogActivityAsync(It.Is<ActivityLog>(a => a.Severity == ActivitySeverity.Warning), default),
             Times.Once);
@@ -75,7 +76,8 @@ public sealed class ExecutionHoundTests
             new TradingDecision("AAPL", TradeAction.Buy, 50, "Test", 0.9),
             "Position too large");
 
-        await _hound.ExecuteAsync(assessment);
+        var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+        await _node.ExecuteAsync(state, default);
 
         _mockAlpacaService.Verify(
             s => s.SubmitOrderAsync(It.IsAny<string>(), It.IsAny<Alpaca.Markets.OrderQuantity>(),
@@ -92,7 +94,8 @@ public sealed class ExecutionHoundTests
             new TradingDecision("MSFT", TradeAction.Sell, 100, "Test", 0.8),
             "Max exposure exceeded");
 
-        await _hound.ExecuteAsync(assessment);
+        var state = TradingGraphState.Initial("MSFT") with { RiskOutput = assessment };
+        await _node.ExecuteAsync(state, default);
 
         _mockSession.Verify(
             s => s.StoreAsync(It.IsAny<TradeDocument>(), It.IsAny<CancellationToken>()),
@@ -109,7 +112,8 @@ public sealed class ExecutionHoundTests
 
         SetupChatClientResponse("""{"success":true,"symbol":"AAPL","action":"Buy","quantity":50,"filledPrice":null,"orderId":"abc-123","message":"Order placed"}""");
 
-        var result = await _hound.ExecuteAsync(assessment);
+        var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+        await _node.ExecuteAsync(state, default);
 
         _mockSession.Verify(
             s => s.StoreAsync(It.Is<TradeDocument>(t =>
@@ -132,7 +136,8 @@ public sealed class ExecutionHoundTests
 
         SetupChatClientResponse("""{"success":true,"symbol":"GOOG","action":"Buy","quantity":80,"filledPrice":null,"orderId":"def-456","message":"Order placed"}""");
 
-        var result = await _hound.ExecuteAsync(assessment);
+        var state = TradingGraphState.Initial("GOOG") with { RiskOutput = assessment };
+        await _node.ExecuteAsync(state, default);
 
         _mockSession.Verify(
             s => s.StoreAsync(It.Is<TradeDocument>(t => t.RequestedQuantity == 80),
@@ -150,10 +155,28 @@ public sealed class ExecutionHoundTests
 
         SetupChatClientResponse("""{"success":true,"symbol":"SPY","action":"Buy","quantity":10,"filledPrice":null,"orderId":"xyz-789","message":"Done"}""");
 
-        var result = await _hound.ExecuteAsync(assessment);
+        var state = TradingGraphState.Initial("SPY") with { RiskOutput = assessment };
+        var result = await _node.ExecuteAsync(state, default);
 
-        Assert.IsNotNull(result.TradeDocumentId);
-        Assert.AreNotEqual(string.Empty, result.TradeDocumentId);
+        Assert.IsNotNull(result.ExecutionOutput!.TradeDocumentId);
+        Assert.AreNotEqual(string.Empty, result.ExecutionOutput.TradeDocumentId);
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_SuccessfulExecution_TransitionsToMonitorPhase()
+    {
+        var assessment = new RiskAssessment(
+            RiskVerdict.Approved,
+            new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.85),
+            "Approved");
+
+        SetupChatClientResponse("""{"success":true,"symbol":"AAPL","action":"Buy","quantity":10,"filledPrice":150.00,"orderId":"ord-001","message":"Filled"}""");
+
+        var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+        var result = await _node.ExecuteAsync(state, default);
+
+        Assert.AreEqual(GraphPhase.Monitor, result.Phase);
+        Assert.IsFalse(result.IsComplete);
     }
 
     private void SetupChatClientResponse(string responseJson)

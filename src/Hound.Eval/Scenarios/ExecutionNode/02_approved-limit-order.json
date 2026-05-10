@@ -1,0 +1,31 @@
+{
+  "scenarioName": "Approved Limit Order with Correct Limit Price",
+  "description": "ExecutionHound should execute an approved sell order for TSLA and include the limit price in its execution output.",
+  "houndName": "ExecutionNode",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Execute this approved limit sell order for 30 shares of TSLA at $215.",
+    "context": {
+      "verdict": "Approved",
+      "decision": {
+        "symbol": "TSLA",
+        "action": "Sell",
+        "quantity": 30,
+        "reasoning": "Bearish trend detected. Sell at limit to lock in profit.",
+        "confidence": 0.78
+      },
+      "reasoning": "Sell order within limits. Limit price target $215."
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["place_market_order"],
+    "outputMustContain": ["TSLA"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with success, symbol, action, quantity, filledPrice, orderId, message",
+    "decisionCriteria": "ExecutionHound should process the approved TSLA sell decision and return an execution result for TSLA."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'TSLA'."
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Order Filled Position Open",
+  "houndName": "MonitorNode",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Check the status of order abc-002 for MSFT and the current position.",
+    "context": {
+      "success": true,
+      "symbol": "MSFT",
+      "action": "Buy",
+      "quantity": 25,
+      "filledPrice": 420.50,
+      "orderId": "abc-002",
+      "message": "Order filled",
+      "tradeDocumentId": "TradeDocuments/2"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_order_status", "check_position"],
+    "outputMustContain": ["tradeOpen"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with tradeOpen, currentStatus, currentPrice, unrealizedPnL, summary",
+    "decisionCriteria": "Order filled, position is still held. Trade should remain open."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'tradeOpen'."
+  }
+}

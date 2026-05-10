@@ -1,0 +1,27 @@
+{
+  "scenarioName": "Trade at Exactly 20 Percent Position Boundary",
+  "description": "RiskHound should handle the boundary case where a trade is at exactly 20% of portfolio equity. A trade at exactly the limit may be Approved or Modified but must not be silently ignored.",
+  "houndName": "RiskNode",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Evaluate risk for buying shares of SPY that represent exactly 20% of a $100,000 portfolio ($20,000 total at ~$500/share = 40 shares).",
+    "context": {
+      "symbol": "SPY",
+      "action": "Buy",
+      "quantity": 40,
+      "reasoning": "ETF position to match index exposure target of exactly 20% of portfolio.",
+      "confidence": 0.65
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_portfolio"],
+    "outputMustContain": [],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with verdict, decision, reasoning, adjustedQuantity",
+    "decisionCriteria": "Trade at exactly 20% boundary should result in Approved or Modified with a clear reasoning. Must not be an empty or malformed response."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains a valid verdict (Approved, Rejected, or Modified) with reasoning."
+  }
+}

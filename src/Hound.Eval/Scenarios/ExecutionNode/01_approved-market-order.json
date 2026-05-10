@@ -1,0 +1,31 @@
+{
+  "scenarioName": "Approved Buy Order Submits Market Order",
+  "description": "ExecutionHound should execute an approved buy order for AAPL by calling place_market_order with the correct symbol and quantity.",
+  "houndName": "ExecutionNode",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Execute this approved buy order for 50 shares of AAPL.",
+    "context": {
+      "verdict": "Approved",
+      "decision": {
+        "symbol": "AAPL",
+        "action": "Buy",
+        "quantity": 50,
+        "reasoning": "Strong bullish signal from AnalysisHound and RiskHound approved.",
+        "confidence": 0.85
+      },
+      "reasoning": "Trade within all risk limits."
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["place_market_order"],
+    "outputMustContain": ["AAPL", "true"],
+    "outputMustNotContain": ["false"],
+    "outputFormat": "JSON with success, symbol, action, quantity, filledPrice, orderId, message",
+    "decisionCriteria": "ExecutionHound must call place_market_order for AAPL with Buy side and return a successful execution result."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'AAPL' and 'true' (success=true)."
+  }
+}

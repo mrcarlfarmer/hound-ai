@@ -1,0 +1,28 @@
+{
+  "scenarioName": "Bullish Market Buy Decision",
+  "description": "StrategyHound should output a Buy decision when presented with a bullish market analysis with high confidence (>= 0.7).",
+  "houndName": "StrategyNode",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Market analysis for AAPL shows strong bullish momentum with high confidence.",
+    "context": {
+      "symbol": "AAPL",
+      "lastPrice": 175.50,
+      "volumeChange": 0.25,
+      "trend": "Bullish",
+      "confidenceScore": 0.85,
+      "summary": "Strong upward price momentum with above-average volume over the past week."
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Buy"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with symbol, action, quantity, reasoning, confidence",
+    "decisionCriteria": "Bullish trend with confidence >= 0.7 must produce a Buy action."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains the action 'Buy'."
+  }
+}
