@@ -8,6 +8,12 @@ public static class StrategySignalProposalFactory
     private const double ConfidenceThreshold = 0.7;
     private const decimal DefaultTargetNotional = 1000m;
 
+    /// <summary>
+    /// Creates a world-state snapshot from the latest market analysis payload.
+    /// </summary>
+    /// <param name="analysis">The latest analysis produced for a symbol.</param>
+    /// <param name="capturedAtUtc">Optional override for the snapshot timestamp.</param>
+    /// <returns>A world-state record that can be passed to the portfolio-manager workflow.</returns>
     public static WorldState CreateWorldState(MarketAnalysis analysis, DateTime? capturedAtUtc = null) =>
         new(
             analysis.Symbol,
@@ -19,6 +25,11 @@ public static class StrategySignalProposalFactory
             analysis.Indicators,
             capturedAtUtc ?? DateTime.UtcNow);
 
+    /// <summary>
+    /// Creates a deterministic portfolio-manager proposal decision from a world-state snapshot.
+    /// </summary>
+    /// <param name="worldState">The market context to evaluate.</param>
+    /// <returns>A normalized proposal decision using the configured confidence threshold.</returns>
     public static TradingDecision CreateDecision(WorldState worldState)
     {
         var confidence = Math.Clamp(worldState.ConfidenceScore, 0, 1);
@@ -43,6 +54,12 @@ public static class StrategySignalProposalFactory
             confidence);
     }
 
+    /// <summary>
+    /// Normalizes an LLM-produced decision and falls back to deterministic defaults when needed.
+    /// </summary>
+    /// <param name="worldState">The market context associated with the decision.</param>
+    /// <param name="decision">The optional decision returned by the agent.</param>
+    /// <returns>A decision that always uses the world-state symbol plus valid confidence and fallback quantity/reasoning.</returns>
     public static TradingDecision NormalizeDecision(WorldState worldState, TradingDecision? decision)
     {
         var fallback = CreateDecision(worldState);
@@ -67,6 +84,13 @@ public static class StrategySignalProposalFactory
             Math.Clamp(decision.Confidence, 0, 1));
     }
 
+    /// <summary>
+    /// Creates a persisted trade proposal for actionable decisions.
+    /// </summary>
+    /// <param name="worldState">The market context that produced the decision.</param>
+    /// <param name="decision">The decision to persist as a proposal.</param>
+    /// <param name="createdAtUtc">Optional override for the proposal timestamp.</param>
+    /// <returns>A proposal document, or <see langword="null"/> when the decision is Hold.</returns>
     public static ProposedTradeSignal? CreateProposal(
         WorldState worldState,
         TradingDecision decision,

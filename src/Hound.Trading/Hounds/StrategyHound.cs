@@ -94,8 +94,6 @@ public class StrategyHound
                 "StrategyHound returned invalid JSON for {Symbol}. Falling back to deterministic proposal.",
                 analysis.Symbol);
 
-            decision = StrategySignalProposalFactory.CreateDecision(worldState);
-
             await _activityLogger.LogActivityAsync(new ActivityLog
             {
                 PackId = PackId,
@@ -104,6 +102,8 @@ public class StrategyHound
                 Message = $"Strategy response for {analysis.Symbol} was invalid JSON; used deterministic portfolio-manager fallback",
                 Severity = ActivitySeverity.Warning,
             }, cancellationToken);
+
+            decision = StrategySignalProposalFactory.CreateDecision(worldState);
         }
 
         var proposal = StrategySignalProposalFactory.CreateProposal(worldState, decision);
@@ -134,6 +134,11 @@ public class StrategyHound
         return decision;
     }
 
+    /// <summary>
+    /// Persists an actionable trade proposal to RavenDB when the document store is available.
+    /// </summary>
+    /// <param name="proposal">The proposal to persist.</param>
+    /// <param name="cancellationToken">The cancellation token for the RavenDB operations.</param>
     private async Task SaveProposalAsync(ProposedTradeSignal proposal, CancellationToken cancellationToken)
     {
         if (_documentStore is null)
@@ -143,7 +148,7 @@ public class StrategyHound
 
         try
         {
-            EnsureDatabaseExists(TradingDatabase);
+            await EnsureDatabaseExistsAsync(TradingDatabase, cancellationToken);
 
             using var session = _documentStore.OpenAsyncSession(TradingDatabase);
             await session.StoreAsync(proposal, proposal.Id, cancellationToken);
@@ -165,7 +170,12 @@ public class StrategyHound
         }
     }
 
-    private void EnsureDatabaseExists(string database)
+    /// <summary>
+    /// Ensures the trading-pack database exists before proposal persistence occurs.
+    /// </summary>
+    /// <param name="database">The RavenDB database name.</param>
+    /// <param name="cancellationToken">The cancellation token for the maintenance operations.</param>
+    private async Task EnsureDatabaseExistsAsync(string database, CancellationToken cancellationToken)
     {
         if (_documentStore is null)
         {
@@ -174,11 +184,13 @@ public class StrategyHound
 
         try
         {
-            _documentStore.Maintenance.ForDatabase(database).Send(new GetStatisticsOperation());
+            await _documentStore.Maintenance.ForDatabase(database)
+                .SendAsync(new GetStatisticsOperation(), cancellationToken);
         }
         catch (DatabaseDoesNotExistException)
         {
-            _documentStore.Maintenance.Server.Send(new CreateDatabaseOperation(new DatabaseRecord(database)));
+            await _documentStore.Maintenance.Server
+                .SendAsync(new CreateDatabaseOperation(new DatabaseRecord(database)), cancellationToken);
         }
     }
 }
