@@ -66,6 +66,7 @@ public class MonitorNode : INode
         _agent = new ChatClientAgent(
             chatClient,
             instructions: """
+                /no_think
                 You are MonitorNode, a trade lifecycle monitor.
                 Your role is to check the status of placed orders and open positions.
                 Use get_order_status to check if the order has been filled.

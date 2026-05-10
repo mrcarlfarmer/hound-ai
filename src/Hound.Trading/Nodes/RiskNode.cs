@@ -48,6 +48,7 @@ public class RiskNode : INode
         _agent = new ChatClientAgent(
             chatClient,
             instructions: """
+                /no_think
                 You are RiskNode, a risk management specialist.
                 Evaluate the proposed trade against these rules:
                 - Maximum single-position size: 20% of portfolio equity

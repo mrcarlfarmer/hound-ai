@@ -58,4 +58,43 @@ public class LlmResponseParserTests
         var result = LlmResponseParser.ExtractJson("  no json here  ");
         Assert.AreEqual("no json here", result);
     }
+
+    [TestMethod]
+    public void ExtractJson_ThinkBlock_StripsThinkingAndExtractsJson()
+    {
+        var input = """
+            <think>
+            Let me think about this... the price is {high} so I should reject.
+            Wait, maybe I should approve. Let me recalculate.
+            </think>
+            {"verdict":"Approved","reasoning":"Trade is within limits"}
+            """;
+        var result = LlmResponseParser.ExtractJson(input);
+        Assert.AreEqual("""{"verdict":"Approved","reasoning":"Trade is within limits"}""", result);
+    }
+
+    [TestMethod]
+    public void ExtractJson_ThinkBlockWithJsonFragments_ExtractsLastBalancedObject()
+    {
+        var input = """
+            <think>
+            The proposed trade {"symbol":"AAPL"} looks risky because 10 shares at $285 = $2850.
+            </think>
+            {"verdict":"Rejected","decision":{"symbol":"AAPL","action":"Buy","quantity":10},"reasoning":"Exceeds 20% limit"}
+            """;
+        var result = LlmResponseParser.ExtractJson(input);
+        Assert.IsTrue(result.StartsWith("""{"verdict":"Rejected"""));
+        Assert.IsTrue(result.EndsWith("""Exceeds 20% limit"}"""));
+    }
+
+    [TestMethod]
+    public void ExtractJson_ChainOfThoughtWithoutThinkTags_ExtractsLastObject()
+    {
+        var input = """
+            Let me check: 20% of 1000 is 200. At 285, max shares = floor(200/285)=0.
+            This seems odd. {"verdict":"Modified","adjustedQuantity":0}
+            """;
+        var result = LlmResponseParser.ExtractJson(input);
+        Assert.AreEqual("""{"verdict":"Modified","adjustedQuantity":0}""", result);
+    }
 }

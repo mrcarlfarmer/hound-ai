@@ -124,6 +124,13 @@ public class TradingGraph
             }, cancellationToken);
 
             state = state with { CurrentNode = nextNodeId };
+
+            // Transition phase when entering the monitor loop
+            if (nextNodeId == "monitor-node" && state.Phase == GraphPhase.Entry)
+            {
+                state = state with { Phase = GraphPhase.Monitor };
+            }
+
             await _stateStore.SaveAsync(state, cancellationToken);
             await _publisher.PublishAsync(state, cancellationToken);
 

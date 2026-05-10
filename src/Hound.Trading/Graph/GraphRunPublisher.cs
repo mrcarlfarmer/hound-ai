@@ -89,7 +89,7 @@ public class GraphRunPublisher
                 "data-node" => GetSlot(state.DataOutput, state.CurrentNode, nodeId),
                 "strategy-node" => GetSlot(state.StrategyOutput, state.CurrentNode, nodeId),
                 "risk-node" => GetSlot(state.RiskOutput, state.CurrentNode, nodeId),
-                "execution-node" => GetSlot(state.ExecutionOutput, state.CurrentNode, nodeId),
+                "execution-node" => GetExecutionSlot(state),
                 "monitor-node" => GetSlot(state.MonitorOutput, state.CurrentNode, nodeId),
                 _ => (NodeStatus.Pending, null),
             };
@@ -112,6 +112,20 @@ public class GraphRunPublisher
             return (NodeStatus.Completed, JsonSerializer.Serialize(output, JsonOptions));
 
         if (currentNode == nodeId)
+            return (NodeStatus.Active, null);
+
+        return (NodeStatus.Pending, null);
+    }
+
+    private static (NodeStatus Status, string? OutputJson) GetExecutionSlot(TradingGraphState state)
+    {
+        if (state.ExecutionOutput is not null)
+        {
+            var status = state.ExecutionOutput.Success ? NodeStatus.Completed : NodeStatus.Failed;
+            return (status, JsonSerializer.Serialize(state.ExecutionOutput, JsonOptions));
+        }
+
+        if (state.CurrentNode == "execution-node")
             return (NodeStatus.Active, null);
 
         return (NodeStatus.Pending, null);

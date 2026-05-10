@@ -65,6 +65,7 @@ public class ExecutionNode : INode
         _agent = new ChatClientAgent(
             chatClient,
             instructions: """
+                /no_think
                 You are ExecutionNode, an institutional-grade execution trader.
                 Your role is precision order placement and lifecycle management.
                 When given an approved trade, use the place_market_order tool to submit the order.
@@ -207,25 +208,36 @@ public class ExecutionNode : INode
 
     private async Task<string> PlaceMarketOrderAsync(string symbol, decimal quantity, string side)
     {
-        var orderSide = string.Equals(side, "Sell", StringComparison.OrdinalIgnoreCase)
-            ? OrderSide.Sell
-            : OrderSide.Buy;
-
-        var order = await _alpacaService.SubmitOrderAsync(
-            symbol,
-            OrderQuantity.Fractional(quantity),
-            orderSide,
-            OrderType.Market,
-            TimeInForce.Day);
-
-        return JsonSerializer.Serialize(new
+        try
         {
-            orderId = order.OrderId.ToString(),
-            status = order.OrderStatus.ToString(),
-            symbol = order.Symbol,
-            quantity = order.Quantity,
-            side = order.OrderSide.ToString(),
-        });
+            var orderSide = string.Equals(side, "Sell", StringComparison.OrdinalIgnoreCase)
+                ? OrderSide.Sell
+                : OrderSide.Buy;
+
+            var order = await _alpacaService.SubmitOrderAsync(
+                symbol,
+                OrderQuantity.Fractional(quantity),
+                orderSide,
+                OrderType.Market,
+                TimeInForce.Day);
+
+            return JsonSerializer.Serialize(new
+            {
+                orderId = order.OrderId.ToString(),
+                status = order.OrderStatus.ToString(),
+                symbol = order.Symbol,
+                quantity = order.Quantity,
+                side = order.OrderSide.ToString(),
+            });
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new
+            {
+                error = true,
+                message = $"Order placement failed: {ex.Message}",
+            });
+        }
     }
 
     private async Task<string> GetOrderStatusAsync(string orderId)
@@ -233,18 +245,25 @@ public class ExecutionNode : INode
         if (!Guid.TryParse(orderId, out var guid))
             return JsonSerializer.Serialize(new { error = "Invalid order ID format" });
 
-        var order = await _alpacaService.GetOrderAsync(guid);
-
-        return JsonSerializer.Serialize(new
+        try
         {
-            orderId = order.OrderId.ToString(),
-            status = order.OrderStatus.ToString(),
-            symbol = order.Symbol,
-            filledQuantity = order.FilledQuantity,
-            averageFillPrice = order.AverageFillPrice,
-            submittedAt = order.SubmittedAtUtc,
-            filledAt = order.FilledAtUtc,
-        });
+            var order = await _alpacaService.GetOrderAsync(guid);
+
+            return JsonSerializer.Serialize(new
+            {
+                orderId = order.OrderId.ToString(),
+                status = order.OrderStatus.ToString(),
+                symbol = order.Symbol,
+                filledQuantity = order.FilledQuantity,
+                averageFillPrice = order.AverageFillPrice,
+                submittedAt = order.SubmittedAtUtc,
+                filledAt = order.FilledAtUtc,
+            });
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new { error = true, message = $"Failed to get order status: {ex.Message}" });
+        }
     }
 
     private async Task<string> CancelOrderAsync(string orderId)
@@ -252,8 +271,14 @@ public class ExecutionNode : INode
         if (!Guid.TryParse(orderId, out var guid))
             return JsonSerializer.Serialize(new { error = "Invalid order ID format", success = false });
 
-        var success = await _alpacaService.CancelOrderAsync(guid);
-
-        return JsonSerializer.Serialize(new { orderId, success });
+        try
+        {
+            var success = await _alpacaService.CancelOrderAsync(guid);
+            return JsonSerializer.Serialize(new { orderId, success });
+        }
+        catch (Exception ex)
+        {
+            return JsonSerializer.Serialize(new { error = true, message = $"Failed to cancel order: {ex.Message}", success = false });
+        }
     }
 }

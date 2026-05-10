@@ -32,16 +32,19 @@ public class StrategyNode : INode
         _agent = new ChatClientAgent(
             chatClient,
             instructions: """
+                /no_think
                 You are StrategyNode, an algorithmic trading strategist.
                 Given a market analysis (JSON), decide whether to buy, sell, or hold.
                 Consider the trend, confidence score, and volume change.
                 - Confidence >= 0.7 and Bullish trend => Buy
                 - Confidence >= 0.7 and Bearish trend => Sell
                 - Otherwise => Hold
+                When action is Buy or Sell, quantity MUST be a positive integer (number of shares to trade).
+                When action is Hold, set quantity to 0.
                 If you receive risk rejection feedback, address the specific concerns raised
                 and adjust your strategy accordingly.
                 Respond strictly in JSON matching:
-                {"symbol":"...","action":"Buy|Sell|Hold","quantity":0.0,"reasoning":"...","confidence":0.0}
+                {"symbol":"...","action":"Buy|Sell|Hold","quantity":10,"reasoning":"...","confidence":0.0}
                 """,
             name: "StrategyNode",
             description: "Determines buy/sell/hold strategy based on market analysis",
@@ -90,6 +93,12 @@ public class StrategyNode : INode
         catch (JsonException)
         {
             decision = new TradingDecision(state.Symbol, TradeAction.Hold, 0, json, 0);
+        }
+
+        // Treat Buy/Sell with zero quantity as Hold to avoid pointless refinement loops
+        if (decision.Action != TradeAction.Hold && decision.Quantity <= 0)
+        {
+            decision = decision with { Action = TradeAction.Hold, Reasoning = $"Converted to Hold: {decision.Action} with quantity 0 is not actionable. {decision.Reasoning}" };
         }
 
         await _activityLogger.LogActivityAsync(new ActivityLog

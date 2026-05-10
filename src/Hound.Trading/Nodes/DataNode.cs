@@ -45,6 +45,7 @@ public class DataNode : INode
         _agent = new ChatClientAgent(
             chatClient,
             instructions: """
+                /no_think
                 You are DataNode, a quantitative market analyst.
                 When asked to analyse a symbol, use the fetch_market_data tool to retrieve recent bars.
                 Calculate the price trend (Bullish/Bearish/Neutral), percentage volume change vs the previous period,
