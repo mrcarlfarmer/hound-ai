@@ -121,6 +121,11 @@ builder.Services.AddSingleton<IReadOnlyDictionary<string, INode>>(sp =>
         ["monitor-node"] = sp.GetRequiredService<MonitorNode>(),
     });
 
+builder.Services.AddSingleton<GraphRunPublisher>(sp =>
+    new GraphRunPublisher(
+        sp.GetRequiredService<IDocumentStore>(),
+        sp.GetRequiredService<IHttpClientFactory>(),
+        builder.Configuration["HoundApi:BaseUrl"] ?? "http://hound-api:8080"));
 builder.Services.AddSingleton<TradingGraph>();
 builder.Services.AddHostedService<TradingWorker>();
 

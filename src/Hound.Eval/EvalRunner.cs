@@ -1,4 +1,5 @@
 using Hound.Core.Logging;
+using Hound.Core.Models;
 using Hound.Trading.AlpacaClient;
 using Hound.Trading.Graph;
 using Hound.Trading.Nodes;

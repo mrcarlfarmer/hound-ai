@@ -106,3 +106,45 @@ export interface OrderUpdate {
   averageFillPrice?: number;
   executionTime?: string;
 }
+
+// ── Graph Run models ─────────────────────────────────────────────────────────
+
+export type GraphPhase = 'Entry' | 'Monitor';
+export type NodeStatus = 'Pending' | 'Active' | 'Completed' | 'Failed' | 'Skipped';
+
+export interface NodeSnapshot {
+  nodeId: string;
+  status: NodeStatus;
+  startedAt?: string;
+  completedAt?: string;
+  outputJson?: string;
+  errorMessage?: string;
+}
+
+export interface GraphRun {
+  id: string;
+  runId: string;
+  symbol: string;
+  startedAt: string;
+  completedAt?: string;
+  phase: GraphPhase;
+  currentNode?: string;
+  isComplete: boolean;
+  errorMessage?: string;
+  refinementCount: number;
+  monitorCycleCount: number;
+  nodes: NodeSnapshot[];
+}
+
+export type RunRequestStatus = 'Pending' | 'Running' | 'Completed' | 'Failed';
+
+export interface RunRequest {
+  id: string;
+  symbol: string;
+  status: RunRequestStatus;
+  requestedAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  runId?: string;
+  errorMessage?: string;
+}

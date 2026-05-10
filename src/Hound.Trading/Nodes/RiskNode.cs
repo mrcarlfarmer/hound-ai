@@ -86,7 +86,7 @@ public class RiskNode : INode
             session,
             cancellationToken: cancellationToken);
 
-        var json = response.Text ?? "{}";
+        var json = LlmResponseParser.ExtractJson(response.Text ?? "{}");
         RiskAssessment assessment;
 
         try

@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, WatchtowerEvent, HealthReport, TradeDocument, FillStatus } from '../models';
+import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, WatchtowerEvent, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -54,5 +54,18 @@ export class ApiService {
 
   getTrade(id: string): Observable<TradeDocument> {
     return this.http.get<TradeDocument>(`${this.baseUrl}/api/trades/${id}`);
+  }
+
+  getRuns(limit = 20): Observable<GraphRun[]> {
+    const params = new HttpParams().set('limit', limit.toString());
+    return this.http.get<GraphRun[]>(`${this.baseUrl}/api/runs`, { params });
+  }
+
+  getRun(runId: string): Observable<GraphRun> {
+    return this.http.get<GraphRun>(`${this.baseUrl}/api/runs/${runId}`);
+  }
+
+  queueRun(symbol: string): Observable<RunRequest> {
+    return this.http.post<RunRequest>(`${this.baseUrl}/api/runs`, { symbol });
   }
 }

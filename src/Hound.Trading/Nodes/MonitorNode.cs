@@ -106,7 +106,7 @@ public class MonitorNode : INode
             session,
             cancellationToken: cancellationToken);
 
-        var json = response.Text ?? "{}";
+        var json = LlmResponseParser.ExtractJson(response.Text ?? "{}");
         MonitorResult monitor;
 
         try

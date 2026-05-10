@@ -148,7 +148,7 @@ public class ExecutionNode : INode
             agentSession,
             cancellationToken: cancellationToken);
 
-        var json = response.Text ?? "{}";
+        var json = LlmResponseParser.ExtractJson(response.Text ?? "{}");
         ExecutionResult result;
 
         try

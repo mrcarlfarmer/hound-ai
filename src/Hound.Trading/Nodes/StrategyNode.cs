@@ -78,7 +78,7 @@ public class StrategyNode : INode
             session,
             cancellationToken: cancellationToken);
 
-        var json = response.Text ?? "{}";
+        var json = LlmResponseParser.ExtractJson(response.Text ?? "{}");
         TradingDecision decision;
 
         try

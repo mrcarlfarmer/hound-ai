@@ -76,7 +76,7 @@ public class DataNode : INode
             session,
             cancellationToken: cancellationToken);
 
-        var json = response.Text ?? "{}";
+        var json = LlmResponseParser.ExtractJson(response.Text ?? "{}");
         MarketAnalysis analysis;
 
         try
@@ -104,16 +104,24 @@ public class DataNode : INode
 
     private async Task<string> FetchMarketDataAsync(string symbol)
     {
-        var to = DateTime.UtcNow.Date;
-        var from = to.AddDays(-7);
-        var bars = await _alpacaService.GetBarsAsync(symbol, from, to, BarTimeFrame.Day);
+        try
+        {
+            var to = DateTime.UtcNow.Date;
+            var from = to.AddDays(-7);
+            var bars = await _alpacaService.GetBarsAsync(symbol, from, to, BarTimeFrame.Day);
 
-        if (bars.Count == 0)
-            return $"No bar data found for {symbol}";
+            if (bars.Count == 0)
+                return $"No bar data found for {symbol} in the last 7 days.";
 
-        var summary = bars.Select(b =>
-            $"{b.TimeUtc:yyyy-MM-dd}: O={b.Open} H={b.High} L={b.Low} C={b.Close} V={b.Volume}");
+            var summary = bars.Select(b =>
+                $"{b.TimeUtc:yyyy-MM-dd}: O={b.Open} H={b.High} L={b.Low} C={b.Close} V={b.Volume}");
 
-        return string.Join("\n", summary);
+            return string.Join("\n", summary);
+        }
+        catch (Exception ex)
+        {
+            return $"ERROR fetching market data for {symbol}: {ex.Message}";
+        }
     }
+
 }

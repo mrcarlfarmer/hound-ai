@@ -11,7 +11,7 @@ public class TradingGraphSettings
     public const string SectionName = "TradingGraph";
 
     /// <summary>Symbols to analyse each run.</summary>
-    public List<string> Symbols { get; set; } = ["AAPL", "MSFT", "SPY"];
+    public List<string> Symbols { get; set; } = [];
 
     /// <summary>Maximum times RiskNode can reject before hard-reject.</summary>
     public int MaxRefinements { get; set; } = 2;
@@ -45,6 +45,7 @@ public class TradingGraph
     private readonly IReadOnlyDictionary<string, INode> _nodes;
     private readonly IStateStore _stateStore;
     private readonly IResettableExecutor _resetter;
+    private readonly GraphRunPublisher _publisher;
     private readonly TradingGraphSettings _settings;
     private readonly IActivityLogger _activityLogger;
     private readonly ILogger<TradingGraph> _logger;
@@ -53,6 +54,7 @@ public class TradingGraph
         IReadOnlyDictionary<string, INode> nodes,
         IStateStore stateStore,
         IResettableExecutor resetter,
+        GraphRunPublisher publisher,
         IOptions<TradingGraphSettings> settings,
         IActivityLogger activityLogger,
         ILogger<TradingGraph> logger)
@@ -60,6 +62,7 @@ public class TradingGraph
         _nodes = nodes;
         _stateStore = stateStore;
         _resetter = resetter;
+        _publisher = publisher;
         _settings = settings.Value;
         _activityLogger = activityLogger;
         _logger = logger;
@@ -122,6 +125,7 @@ public class TradingGraph
 
             state = state with { CurrentNode = nextNodeId };
             await _stateStore.SaveAsync(state, cancellationToken);
+            await _publisher.PublishAsync(state, cancellationToken);
 
             try
             {
@@ -136,11 +140,13 @@ public class TradingGraph
                     ErrorMessage = $"Node {nextNodeId} failed: {ex.Message}",
                 };
                 await _stateStore.SaveAsync(state, cancellationToken);
+                await _publisher.PublishAsync(state, cancellationToken);
                 break;
             }
         }
 
         var severity = state.ErrorMessage is not null ? ActivitySeverity.Error : ActivitySeverity.Success;
+        await _publisher.PublishAsync(state with { IsComplete = true }, cancellationToken);
         await _activityLogger.LogActivityAsync(new ActivityLog
         {
             PackId = "trading-pack",

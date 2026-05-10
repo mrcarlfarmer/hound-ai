@@ -1,8 +1,7 @@
+using Hound.Core.Models;
 using Hound.Trading.Nodes;
 
 namespace Hound.Trading.Graph;
-
-public enum GraphPhase { Entry, Monitor }
 
 /// <summary>
 /// Immutable state record that flows through the trading graph.

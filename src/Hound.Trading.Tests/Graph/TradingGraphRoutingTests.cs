@@ -1,4 +1,5 @@
 using Hound.Core.Logging;
+using Hound.Core.Models;
 using Hound.Trading.Graph;
 using Hound.Trading.Nodes;
 using Microsoft.Extensions.Logging;
@@ -15,11 +16,12 @@ public sealed class TradingGraphRoutingTests
         var nodes = new Dictionary<string, INode>();
         var stateStore = new Mock<IStateStore>();
         var resetter = new Mock<IResettableExecutor>();
+        var publisher = new Mock<GraphRunPublisher>(MockBehavior.Loose, new Mock<Raven.Client.Documents.IDocumentStore>().Object, new Mock<System.Net.Http.IHttpClientFactory>().Object, "http://localhost");
         var settings = Options.Create(new TradingGraphSettings { MaxRefinements = maxRefinements });
         var activityLogger = new Mock<IActivityLogger>();
         var logger = new Mock<ILogger<TradingGraph>>();
 
-        return new TradingGraph(nodes, stateStore.Object, resetter.Object, settings,
+        return new TradingGraph(nodes, stateStore.Object, resetter.Object, publisher.Object, settings,
             activityLogger.Object, logger.Object);
     }
 

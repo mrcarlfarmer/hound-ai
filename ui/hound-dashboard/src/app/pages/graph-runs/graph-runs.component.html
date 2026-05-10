@@ -1,0 +1,219 @@
+<div class="p-6 max-w-7xl mx-auto">
+  <h1 class="text-2xl font-bold mb-6">Graph Runs</h1>
+
+  <!-- Ticker Input -->
+  <div class="rounded-lg border border-border bg-card p-4 mb-6">
+    <form (ngSubmit)="submitSymbol()" class="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
+      <div class="flex-1">
+        <label for="symbol-input" class="block text-sm font-medium text-muted-foreground mb-1">
+          Analyse a ticker symbol
+        </label>
+        <input
+          id="symbol-input"
+          type="text"
+          [(ngModel)]="symbolInput"
+          name="symbol"
+          placeholder="e.g. AAPL, MSFT, TSLA"
+          class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          [disabled]="submitting"
+          autocomplete="off"
+          (keydown.enter)="$event.preventDefault(); submitSymbol()" />
+      </div>
+      <button
+        type="submit"
+        [disabled]="submitting || !symbolInput.trim()"
+        class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none">
+        @if (submitting) {
+          <svg class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          Queuing...
+        } @else {
+          Run Analysis
+        }
+      </button>
+    </form>
+    @if (submitError) {
+      <p class="mt-2 text-sm text-red-400">{{ submitError }}</p>
+    }
+  </div>
+
+  <div class="flex flex-col lg:flex-row gap-6">
+    <!-- Run List Sidebar -->
+    <div class="lg:w-72 shrink-0">
+      <div class="rounded-lg border border-border bg-card p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Recent Runs</h2>
+          <button
+            (click)="loadRuns()"
+            class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Refresh
+          </button>
+        </div>
+
+        @if (loading && runs.length === 0) {
+          <div class="space-y-2">
+            @for (_ of [1,2,3]; track $index) {
+              <div class="h-16 rounded bg-muted animate-pulse"></div>
+            }
+          </div>
+        }
+
+        @if (!loading && runs.length === 0) {
+          <p class="text-sm text-muted-foreground py-4 text-center">No runs yet. Waiting for the trading graph to execute.</p>
+        }
+
+        <div class="space-y-1.5 max-h-[calc(100vh-16rem)] overflow-y-auto">
+          @for (run of runs; track run.runId) {
+            <button
+              (click)="selectRun(run)"
+              class="w-full text-left p-3 rounded-md border transition-colors"
+              [class]="selectedRun?.runId === run.runId
+                ? 'border-primary bg-primary/10'
+                : 'border-transparent hover:bg-muted/50'">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-mono text-sm font-semibold">{{ run.symbol }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded" [ngClass]="statusBadgeClass(run)">
+                  {{ statusLabel(run) }}
+                </span>
+              </div>
+              <div class="text-xs text-muted-foreground">{{ formatDate(run.startedAt) }}</div>
+              @if (run.refinementCount > 0) {
+                <div class="text-xs text-yellow-400 mt-0.5">↻ {{ run.refinementCount }} refinement(s)</div>
+              }
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Graph Detail Panel -->
+    <div class="flex-1 min-w-0">
+      @if (!selectedRun) {
+        <div class="rounded-lg border border-border bg-card p-12 text-center">
+          <p class="text-muted-foreground">Select a run to view its graph execution.</p>
+        </div>
+      } @else {
+        <!-- Run Header -->
+        <div class="rounded-lg border border-border bg-card p-4 mb-4">
+          <div class="flex flex-wrap items-center gap-4">
+            <div>
+              <h2 class="text-lg font-semibold">{{ selectedRun.symbol }}</h2>
+              <p class="text-xs text-muted-foreground font-mono">{{ selectedRun.runId }}</p>
+            </div>
+            <span class="text-xs px-2 py-1 rounded" [ngClass]="statusBadgeClass(selectedRun)">
+              {{ statusLabel(selectedRun) }}
+            </span>
+            <span class="text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
+              Phase: {{ selectedRun.phase }}
+            </span>
+            @if (selectedRun.refinementCount > 0) {
+              <span class="text-xs px-2 py-1 rounded bg-yellow-900/40 text-yellow-400">
+                ↻ {{ selectedRun.refinementCount }} refinement(s)
+              </span>
+            }
+            @if (selectedRun.monitorCycleCount > 0) {
+              <span class="text-xs px-2 py-1 rounded bg-purple-900/40 text-purple-400">
+                ⟳ {{ selectedRun.monitorCycleCount }} monitor cycle(s)
+              </span>
+            }
+            <div class="ml-auto text-xs text-muted-foreground">
+              Started: {{ formatDate(selectedRun.startedAt) }}
+              @if (selectedRun.completedAt) {
+                <br>Finished: {{ formatDate(selectedRun.completedAt) }}
+              }
+            </div>
+          </div>
+          @if (selectedRun.errorMessage) {
+            <div class="mt-3 p-2 rounded bg-red-900/20 border border-red-800 text-red-400 text-sm">
+              {{ selectedRun.errorMessage }}
+            </div>
+          }
+        </div>
+
+        <!-- Node Pipeline Visualization -->
+        <div class="space-y-0">
+          @for (node of selectedRun.nodes; track node.nodeId; let last = $last) {
+            <!-- Node Card -->
+            <div class="relative">
+              <button
+                (click)="toggleNode(node.nodeId)"
+                class="w-full text-left rounded-lg border p-4 transition-colors"
+                [ngClass]="nodeStatusClass(node.status)">
+                <div class="flex items-center gap-3">
+                  <!-- Status Indicator -->
+                  <div class="w-3 h-3 rounded-full shrink-0"
+                    [ngClass]="{
+                      'bg-blue-400 animate-pulse': node.status === 'Active',
+                      'bg-green-400': node.status === 'Completed',
+                      'bg-red-400': node.status === 'Failed',
+                      'bg-gray-500': node.status === 'Pending' || node.status === 'Skipped'
+                    }">
+                  </div>
+
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold">{{ nodeLabels[node.nodeId] || node.nodeId }}</span>
+                      <span class="text-xs opacity-60 font-mono">{{ node.nodeId }}</span>
+                    </div>
+                    <p class="text-xs opacity-70 mt-0.5">{{ nodeDescriptions[node.nodeId] }}</p>
+                  </div>
+
+                  <span class="text-xs font-mono shrink-0">{{ node.status }}</span>
+
+                  @if (node.outputJson || node.errorMessage) {
+                    <svg class="w-4 h-4 transition-transform shrink-0" [class.rotate-180]="isExpanded(node.nodeId)"
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  }
+                </div>
+              </button>
+
+              <!-- Expanded Node Output -->
+              @if (isExpanded(node.nodeId) && (node.outputJson || node.errorMessage)) {
+                <div class="border border-t-0 rounded-b-lg p-4 bg-card/50 border-border">
+                  @if (node.errorMessage) {
+                    <div class="text-red-400 text-sm">{{ node.errorMessage }}</div>
+                  }
+                  @if (parseOutput(node.outputJson); as output) {
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      @for (entry of (output | keyvalue); track entry.key) {
+                        <div class="text-sm">
+                          <span class="text-muted-foreground font-mono text-xs">{{ entry.key }}</span>
+                          <div class="mt-0.5 font-medium break-words">
+                            @if (isObject(entry.value)) {
+                              <pre class="text-xs bg-muted/50 p-2 rounded overflow-x-auto">{{ entry.value | json }}</pre>
+                            } @else {
+                              {{ entry.value }}
+                            }
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <!-- Connector Line -->
+            @if (!last) {
+              <div class="flex justify-center py-0.5">
+                <div class="w-0.5 h-4" [ngClass]="nodeConnectorClass(node.status)"></div>
+              </div>
+            }
+          }
+        </div>
+
+        <!-- Refinement Loop Indicator -->
+        @if (selectedRun.phase === 'Entry' && !selectedRun.isComplete && selectedRun.currentNode === 'strategy-node' && selectedRun.refinementCount > 0) {
+          <div class="mt-4 p-3 rounded-lg border border-yellow-800 bg-yellow-900/20 text-yellow-400 text-sm flex items-center gap-2">
+            <span class="text-lg">↻</span>
+            Risk rejected the strategy — refining (attempt {{ selectedRun.refinementCount + 1 }})
+          </div>
+        }
+      }
+    </div>
+  </div>
+</div>
