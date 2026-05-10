@@ -9,67 +9,7 @@ import { TradeDocument, OrderUpdate } from '../../models';
   selector: 'app-execution',
   standalone: true,
   imports: [CommonModule],
-  template: `
-    <h1 class="mb-6 text-2xl font-bold text-foreground">Execution Dashboard</h1>
-
-    <section class="mb-8">
-      <h2 class="mb-3 text-lg font-semibold text-foreground">Live Order Status</h2>
-      <div class="overflow-x-auto rounded-lg border border-border">
-        <table class="w-full text-sm">
-          <thead>
-            <tr class="border-b border-border bg-muted/50">
-              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Symbol</th>
-              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Action</th>
-              <th class="px-4 py-2 text-right font-medium text-muted-foreground">Requested</th>
-              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Fill Status</th>
-              <th class="px-4 py-2 text-right font-medium text-muted-foreground">Filled Qty</th>
-              <th class="px-4 py-2 text-right font-medium text-muted-foreground">Avg Price</th>
-              <th class="px-4 py-2 text-left font-medium text-muted-foreground">Execution Time</th>
-            </tr>
-          </thead>
-          <tbody>
-            @for (trade of trades; track trade.id) {
-              <tr class="border-b border-border last:border-0">
-                <td class="px-4 py-2 font-medium text-foreground">{{ trade.symbol }}</td>
-                <td class="px-4 py-2 text-foreground">{{ trade.action }}</td>
-                <td class="px-4 py-2 text-right text-foreground">{{ trade.requestedQuantity }}</td>
-                <td class="px-4 py-2">
-                  <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
-                        [ngClass]="statusClass(trade.fillStatus)">
-                    {{ trade.fillStatus }}
-                  </span>
-                </td>
-                <td class="px-4 py-2 text-right text-foreground">{{ trade.filledQuantity }}</td>
-                <td class="px-4 py-2 text-right text-foreground">
-                  {{ trade.averageFillPrice ? ('$' + trade.averageFillPrice.toFixed(2)) : '—' }}
-                </td>
-                <td class="px-4 py-2 text-muted-foreground">
-                  {{ trade.executionTime ? (trade.executionTime | date:'short') : '—' }}
-                </td>
-              </tr>
-            }
-            @if (trades.length === 0) {
-              <tr>
-                <td colspan="7" class="px-4 py-8 text-center text-muted-foreground">No trades found</td>
-              </tr>
-            }
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <div class="flex items-center gap-2">
-      <button (click)="prevPage()" [disabled]="page <= 1"
-              class="rounded border border-border bg-card px-3 py-1 text-sm text-foreground disabled:opacity-50">
-        Previous
-      </button>
-      <span class="text-sm text-muted-foreground">Page {{ page }}</span>
-      <button (click)="nextPage()" [disabled]="trades.length < pageSize"
-              class="rounded border border-border bg-card px-3 py-1 text-sm text-foreground disabled:opacity-50">
-        Next
-      </button>
-    </div>
-  `,
+  templateUrl: './execution.component.html',
   styles: []
 })
 export class ExecutionComponent implements OnInit, OnDestroy {
