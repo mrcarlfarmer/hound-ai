@@ -16,7 +16,7 @@ describe('GraphRunsComponent', () => {
     refinementCount: 0,
     monitorCycleCount: 0,
     nodes: [
-      { nodeId: 'data-node', status: 'Completed', outputJson: '{"symbol":"AAPL","lastPrice":190.5,"volumeChange":1.2,"trend":"Bullish","confidenceScore":0.85,"summary":"Strong uptrend"}' },
+      { nodeId: 'analysts-team-node', status: 'Completed', outputJson: '{"symbol":"AAPL","lastPrice":190.5,"volumeChange":1.2,"trend":"Bullish","confidenceScore":0.85,"summary":"Strong uptrend","marketReport":"Price is trending up","fundamentalsReport":"Solid fundamentals","newsReport":"Positive earnings","sentimentReport":"Bullish sentiment"}' },
       { nodeId: 'strategy-node', status: 'Completed', outputJson: '{"symbol":"AAPL","action":"Buy","quantity":10,"reasoning":"Momentum play","confidence":0.8}' },
       { nodeId: 'risk-node', status: 'Completed', outputJson: '{"verdict":"Approved","reasoning":"Within limits"}' },
       { nodeId: 'execution-node', status: 'Completed', outputJson: '{"success":true,"symbol":"AAPL","orderId":"order-1","message":"Filled"}' },
@@ -87,17 +87,17 @@ describe('GraphRunsComponent', () => {
   it('should expand completed nodes by default', () => {
     const { fixture } = createComponent([mockRun]);
     const component = fixture.componentInstance;
-    expect(component.isExpanded('data-node')).toBe(true);
+    expect(component.isExpanded('analysts-team-node')).toBe(true);
     expect(component.isExpanded('monitor-node')).toBe(false);
   });
 
   it('should toggle node expansion', () => {
     const { fixture } = createComponent([mockRun]);
     const component = fixture.componentInstance;
-    component.toggleNode('data-node');
-    expect(component.isExpanded('data-node')).toBe(false);
-    component.toggleNode('data-node');
-    expect(component.isExpanded('data-node')).toBe(true);
+    component.toggleNode('analysts-team-node');
+    expect(component.isExpanded('analysts-team-node')).toBe(false);
+    component.toggleNode('analysts-team-node');
+    expect(component.isExpanded('analysts-team-node')).toBe(true);
   });
 
   it('should parse node output JSON', () => {
@@ -118,5 +118,118 @@ describe('GraphRunsComponent', () => {
     const { mockSignalr } = createComponent([mockRun]);
     expect(mockSignalr.connect).toHaveBeenCalled();
     expect(mockSignalr.subscribeToPack).toHaveBeenCalledWith('trading-pack');
+  });
+
+  it('should parse analysts output', () => {
+    const { fixture } = createComponent([mockRun]);
+    const c = fixture.componentInstance;
+    const a = c.parseAnalystsOutput(mockRun.nodes[0].outputJson);
+    expect(a?.symbol).toBe('AAPL');
+    expect(a?.lastPrice).toBe(190.5);
+    expect(a?.marketReport).toBe('Price is trending up');
+  });
+
+  it('should return correct trend classes', () => {
+    const { fixture } = createComponent();
+    const c = fixture.componentInstance;
+    expect(c.trendClass('Bullish')).toContain('green');
+    expect(c.trendClass('Bearish')).toContain('red');
+    expect(c.trendClass('Neutral')).toContain('yellow');
+  });
+
+  it('should compute confidence width and color', () => {
+    const { fixture } = createComponent();
+    const c = fixture.componentInstance;
+    expect(c.confidenceWidth(0.85)).toBe('85%');
+    expect(c.confidenceColor(0.85)).toContain('green');
+    expect(c.confidenceColor(0.5)).toContain('yellow');
+    expect(c.confidenceColor(0.2)).toContain('red');
+  });
+
+  it('should normalize confidence values > 1 as percentages', () => {
+    const { fixture } = createComponent();
+    const c = fixture.componentInstance;
+    expect(c.confidenceWidth(72)).toBe('72%');
+    expect(c.confidencePercent(4.0)).toBe('40%');
+    expect(c.confidencePercent(7.2)).toBe('72%');
+    expect(c.confidencePercent(72)).toBe('72%');
+    expect(c.confidencePercent(0.85)).toBe('85%');
+    expect(c.confidencePercent(undefined)).toBe('—');
+  });
+
+  it('should detect analyst reports', () => {
+    const { fixture } = createComponent();
+    const c = fixture.componentInstance;
+    expect(c.hasAnalystReports({ marketReport: 'report' })).toBe(true);
+    expect(c.hasAnalystReports({})).toBe(false);
+  });
+
+  it('should render analysts team metrics when expanded', () => {
+    const { fixture } = createComponent([mockRun]);
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('$190.50');
+    expect(text).toContain('Bullish');
+    expect(text).toContain('85%');
+  });
+
+  it('should parse strategy output', () => {
+    const { fixture } = createComponent([mockRun]);
+    const c = fixture.componentInstance;
+    const s = c.parseStrategyOutput(mockRun.nodes[1].outputJson);
+    expect(s?.symbol).toBe('AAPL');
+    expect(s?.action).toBe('Buy');
+    expect(s?.quantity).toBe(10);
+  });
+
+  it('should return correct action classes', () => {
+    const { fixture } = createComponent();
+    const c = fixture.componentInstance;
+    expect(c.actionClass('Buy')).toContain('green');
+    expect(c.actionClass('Sell')).toContain('red');
+    expect(c.actionClass('Hold')).toContain('yellow');
+  });
+
+  it('should render strategy action badge when expanded', () => {
+    const { fixture } = createComponent([mockRun]);
+    fixture.detectChanges();
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Buy');
+    expect(text).toContain('Momentum play');
+  });
+
+  it('should show No action for downstream nodes when strategy is Hold', () => {
+    const holdRun: GraphRun = {
+      ...mockRun,
+      nodes: [
+        { nodeId: 'analysts-team-node', status: 'Completed', outputJson: '{}' },
+        { nodeId: 'strategy-node', status: 'Completed', outputJson: '{"action":"Hold","quantity":0,"reasoning":"No signal","confidence":0.3}' },
+        { nodeId: 'risk-node', status: 'Pending' },
+        { nodeId: 'execution-node', status: 'Pending' },
+        { nodeId: 'monitor-node', status: 'Pending' },
+      ],
+    };
+    const { fixture } = createComponent([holdRun]);
+    const c = fixture.componentInstance;
+    expect(c.displayStatus(holdRun.nodes[2])).toBe('No action');
+    expect(c.displayStatus(holdRun.nodes[3])).toBe('No action');
+    expect(c.displayStatus(holdRun.nodes[4])).toBe('No action');
+  });
+
+  it('should show Pending for downstream nodes when strategy is Buy', () => {
+    const buyRun: GraphRun = {
+      ...mockRun,
+      nodes: [
+        { nodeId: 'analysts-team-node', status: 'Completed', outputJson: '{}' },
+        { nodeId: 'strategy-node', status: 'Completed', outputJson: '{"action":"Buy","quantity":10,"reasoning":"Go","confidence":0.9}' },
+        { nodeId: 'risk-node', status: 'Pending' },
+        { nodeId: 'execution-node', status: 'Pending' },
+        { nodeId: 'monitor-node', status: 'Pending' },
+      ],
+    };
+    const { fixture } = createComponent([buyRun]);
+    const c = fixture.componentInstance;
+    expect(c.displayStatus(buyRun.nodes[2])).toBe('Pending');
+    expect(c.displayStatus(buyRun.nodes[3])).toBe('Pending');
   });
 });

@@ -10,7 +10,7 @@ using System.Text.Json.Serialization;
 namespace Hound.Trading.Nodes;
 
 /// <summary>
-/// Determines trading strategy based on market context from DataNode.
+/// Determines trading strategy based on market context from AnalystsTeamNode.
 /// On refinement loops, incorporates RiskNode rejection reasoning as additional context.
 /// Uses <c>qwen3:14b</c> via the <c>"strategy"</c> keyed IChatClient.
 /// </summary>
@@ -33,18 +33,23 @@ public class StrategyNode : INode
             chatClient,
             instructions: """
                 /no_think
-                You are StrategyNode, an algorithmic trading strategist.
-                Given a market analysis (JSON), decide whether to buy, sell, or hold.
-                Consider the trend, confidence score, and volume change.
-                - Confidence >= 0.7 and Bullish trend => Buy
-                - Confidence >= 0.7 and Bearish trend => Sell
-                - Otherwise => Hold
-                When action is Buy or Sell, quantity MUST be a positive integer (number of shares to trade).
-                When action is Hold, set quantity to 0.
-                If you receive risk rejection feedback, address the specific concerns raised
-                and adjust your strategy accordingly.
-                Respond strictly in JSON matching:
-                {"symbol":"...","action":"Buy|Sell|Hold","quantity":10,"reasoning":"...","confidence":0.0}
+                You are a JSON formatter that outputs trading decisions.
+                You MUST respond with ONLY a single JSON object — no markdown, no explanation, no preamble.
+                The JSON schema is:
+                {"symbol":"AAPL","action":"Buy","quantity":10,"reasoning":"One paragraph explanation.","confidence":0.85}
+
+                Decision rules:
+                - Confidence >= 0.7 and Bullish trend => action "Buy"
+                - Confidence >= 0.7 and Bearish trend => action "Sell"
+                - Otherwise => action "Hold"
+                - action must be exactly one of: "Buy", "Sell", "Hold"
+                - quantity must be a positive integer for Buy/Sell, 0 for Hold
+                - confidence is 0.0 to 1.0
+                - reasoning is a single paragraph, no markdown formatting
+                - Output raw JSON only. No ```json fences, no markdown, no extra text.
+
+                If you receive risk rejection feedback, adjust your decision to address
+                the specific concerns and output the revised JSON.
                 """,
             name: "StrategyNode",
             description: "Determines buy/sell/hold strategy based on market analysis",

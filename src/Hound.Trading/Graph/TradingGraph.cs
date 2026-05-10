@@ -22,7 +22,7 @@ public class TradingGraphSettings
     /// <summary>Maximum concurrent inference calls. Must be 1 for sequential inference on single GPU.</summary>
     public int MaxDegreeOfParallelism { get; set; } = 1;
 
-    /// <summary>Minimum confidence required from DataNode to proceed.</summary>
+    /// <summary>Minimum confidence required from AnalystsTeamNode to proceed.</summary>
     public double MinimumConfidence { get; set; } = 0.5;
 
     /// <summary>Minutes between full workflow runs.</summary>
@@ -32,10 +32,10 @@ public class TradingGraphSettings
 /// <summary>
 /// Cyclic graph executor for the trading pipeline.
 /// <para>
-/// <b>Entry phase:</b> DataNode → StrategyNode → RiskNode → ExecutionNode (with risk-rejection refinement loop).
+/// <b>Entry phase:</b> AnalystsTeamNode → StrategyNode → RiskNode → ExecutionNode (with risk-rejection refinement loop).
 /// </para>
 /// <para>
-/// <b>Monitor phase:</b> MonitorNode ↔ DataNode loop until the trade closes.
+/// <b>Monitor phase:</b> MonitorNode ↔ AnalystsTeamNode loop until the trade closes.
 /// </para>
 /// </summary>
 public class TradingGraph
@@ -236,8 +236,8 @@ public class TradingGraph
         return (state.Phase, state.CurrentNode) switch
         {
             // ── Entry phase ──────────────────────────────────────────────────
-            (GraphPhase.Entry, null) => "data-node",
-            (GraphPhase.Entry, "data-node") => ShouldSkipLowConfidence(state)
+            (GraphPhase.Entry, null) => "analysts-team-node",
+            (GraphPhase.Entry, "analysts-team-node") => ShouldSkipLowConfidence(state)
                 ? EndMarker
                 : "strategy-node",
             (GraphPhase.Entry, "strategy-node") => ShouldSkipHold(state)
@@ -248,7 +248,7 @@ public class TradingGraph
 
             // ── Monitor phase ────────────────────────────────────────────────
             (GraphPhase.Monitor, "monitor-node") => RouteAfterMonitor(state),
-            (GraphPhase.Monitor, "data-node") => "monitor-node",
+            (GraphPhase.Monitor, "analysts-team-node") => "monitor-node",
 
             _ => EndMarker,
         };
@@ -277,7 +277,7 @@ public class TradingGraph
 
         // Trade still open — delay, reset KV caches, and loop back to data
         // The actual delay and reset happen in the monitor node transition
-        return "data-node";
+        return "analysts-team-node";
     }
 
     private bool ShouldSkipLowConfidence(TradingGraphState state)

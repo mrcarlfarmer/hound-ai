@@ -22,7 +22,7 @@ import { HlmToaster } from '@spartan-ng/helm/sonner';
            class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Watchtower</a>
       </div>
     </nav>
-    <main class="mx-auto max-w-7xl p-4 sm:p-6">
+    <main class="px-4 py-4 sm:px-6 sm:py-6">
       <router-outlet />
     </main>
     <hlm-toaster />

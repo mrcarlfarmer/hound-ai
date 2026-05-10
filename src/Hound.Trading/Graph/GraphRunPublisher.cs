@@ -23,7 +23,7 @@ public class GraphRunPublisher
     };
 
     private static readonly string[] OrderedNodeIds =
-        ["data-node", "strategy-node", "risk-node", "execution-node", "monitor-node"];
+        ["analysts-team-node", "strategy-node", "risk-node", "execution-node", "monitor-node"];
 
     private readonly IDocumentStore _store;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -86,7 +86,7 @@ public class GraphRunPublisher
         {
             var (status, outputJson) = nodeId switch
             {
-                "data-node" => GetSlot(state.DataOutput, state.CurrentNode, nodeId),
+                "analysts-team-node" => GetSlot(state.DataOutput, state.CurrentNode, nodeId),
                 "strategy-node" => GetSlot(state.StrategyOutput, state.CurrentNode, nodeId),
                 "risk-node" => GetSlot(state.RiskOutput, state.CurrentNode, nodeId),
                 "execution-node" => GetExecutionSlot(state),

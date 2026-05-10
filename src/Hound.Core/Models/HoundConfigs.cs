@@ -12,7 +12,7 @@ public class BaseHoundConfig
 }
 
 /// <summary>
-/// Configuration for DataNode (formerly AnalysisHound) — analysis parameters, indicator weights and confidence thresholds.
+/// Configuration for AnalystsTeamNode (formerly AnalysisHound) — analysis parameters, indicator weights and confidence thresholds.
 /// </summary>
 public class AnalysisHoundConfig : BaseHoundConfig
 {

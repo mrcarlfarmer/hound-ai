@@ -1,4 +1,4 @@
-<div class="p-6 max-w-7xl mx-auto">
+<div>
   <h1 class="text-2xl font-bold mb-6">Graph Runs</h1>
 
   <!-- Ticker Input -->
@@ -148,7 +148,7 @@
                       'bg-blue-400 animate-pulse': node.status === 'Active',
                       'bg-green-400': node.status === 'Completed',
                       'bg-red-400': node.status === 'Failed',
-                      'bg-gray-500': node.status === 'Pending' || node.status === 'Skipped'
+                      'bg-gray-500': node.status === 'Pending' || node.status === 'Skipped' || isNoAction(node)
                     }">
                   </div>
 
@@ -160,7 +160,7 @@
                     <p class="text-xs opacity-70 mt-0.5">{{ nodeDescriptions[node.nodeId] }}</p>
                   </div>
 
-                  <span class="text-xs font-mono shrink-0">{{ node.status }}</span>
+                  <span class="text-xs font-mono shrink-0">{{ displayStatus(node) }}</span>
 
                   @if (node.outputJson || node.errorMessage) {
                     <svg class="w-4 h-4 transition-transform shrink-0" [class.rotate-180]="isExpanded(node.nodeId)"
@@ -177,7 +177,119 @@
                   @if (node.errorMessage) {
                     <div class="text-red-400 text-sm">{{ node.errorMessage }}</div>
                   }
-                  @if (parseOutput(node.outputJson); as output) {
+
+                  <!-- ── Analysts Team: custom layout ────────────────── -->
+                  @if (node.nodeId === 'analysts-team-node' && parseAnalystsOutput(node.outputJson); as a) {
+                    <!-- Metrics row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Last Price</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ a.lastPrice !== undefined ? ('$' + a.lastPrice.toFixed(2)) : '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Volume Change</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ a.volumeChange !== undefined ? (a.volumeChange > 0 ? '+' : '') + a.volumeChange.toFixed(2) + 'x' : '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Trend</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="trendClass(a.trend)">
+                          {{ a.trend ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Confidence</span>
+                        <div class="flex items-center gap-2">
+                          <div class="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                            <div class="h-full rounded-full transition-all"
+                              [ngClass]="confidenceColor(a.confidenceScore)"
+                              [style.width]="confidenceWidth(a.confidenceScore)">
+                            </div>
+                          </div>
+                          <span class="text-sm font-semibold font-mono">
+                            {{ confidencePercent(a.confidenceScore) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Summary -->
+                    @if (a.summary) {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3 mb-4">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Synthesis</span>
+                        <div class="prose text-sm max-h-64 overflow-y-auto" [innerHTML]="renderMarkdown(a.summary)"></div>
+                      </div>
+                    }
+
+                    <!-- Analyst report tabs -->
+                    @if (hasAnalystReports(a)) {
+                      <hlm-tabs tab="market" class="block">
+                        <div hlmTabsList class="w-full grid grid-cols-4">
+                          <button hlmTabsTrigger="market" class="text-xs sm:text-sm">Market</button>
+                          <button hlmTabsTrigger="fundamentals" class="text-xs sm:text-sm">Fundamentals</button>
+                          <button hlmTabsTrigger="news" class="text-xs sm:text-sm">News</button>
+                          <button hlmTabsTrigger="sentiment" class="text-xs sm:text-sm">Sentiment</button>
+                        </div>
+                        <div hlmTabsContent="market" class="pt-3">
+                          <div class="prose text-sm max-h-96 overflow-y-auto" [innerHTML]="renderMarkdown(a.marketReport ?? 'No market report available.')"></div>
+                        </div>
+                        <div hlmTabsContent="fundamentals" class="pt-3">
+                          <div class="prose text-sm max-h-96 overflow-y-auto" [innerHTML]="renderMarkdown(a.fundamentalsReport ?? 'No fundamentals report available.')"></div>
+                        </div>
+                        <div hlmTabsContent="news" class="pt-3">
+                          <div class="prose text-sm max-h-96 overflow-y-auto" [innerHTML]="renderMarkdown(a.newsReport ?? 'No news report available.')"></div>
+                        </div>
+                        <div hlmTabsContent="sentiment" class="pt-3">
+                          <div class="prose text-sm max-h-96 overflow-y-auto" [innerHTML]="renderMarkdown(a.sentimentReport ?? 'No sentiment report available.')"></div>
+                        </div>
+                      </hlm-tabs>
+                    }
+
+                  <!-- ── Strategy: custom layout ────────────────────── -->
+                  } @else if (node.nodeId === 'strategy-node' && parseStrategyOutput(node.outputJson); as s) {
+                    <!-- Metrics row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Action</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="actionClass(s.action)">
+                          {{ s.action ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Quantity</span>
+                        <span class="text-lg font-semibold font-mono">{{ s.quantity ?? 0 }}</span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Confidence</span>
+                        <div class="flex items-center gap-2">
+                          <div class="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                            <div class="h-full rounded-full transition-all"
+                              [ngClass]="confidenceColor(s.confidence)"
+                              [style.width]="confidenceWidth(s.confidence)">
+                            </div>
+                          </div>
+                          <span class="text-sm font-semibold font-mono">
+                            {{ confidencePercent(s.confidence) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Reasoning -->
+                    @if (s.reasoning) {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Reasoning</span>
+                        <div class="prose text-sm max-h-64 overflow-y-auto" [innerHTML]="renderMarkdown(s.reasoning)"></div>
+                      </div>
+                    }
+
+                  <!-- ── All other nodes: generic key-value grid ───── -->
+                  } @else if (parseOutput(node.outputJson); as output) {
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       @for (entry of (output | keyvalue); track entry.key) {
                         <div class="text-sm">

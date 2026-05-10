@@ -132,7 +132,7 @@ public class TradingWorker : BackgroundService
             Name = "Trading Pack",
             Hounds =
             [
-                new() { Id = "data-node", Name = "DataNode" },
+                new() { Id = "analysts-team-node", Name = "AnalystsTeam" },
                 new() { Id = "strategy-node", Name = "StrategyNode" },
                 new() { Id = "risk-node", Name = "RiskNode" },
                 new() { Id = "execution-node", Name = "ExecutionNode" },

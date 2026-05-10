@@ -190,10 +190,11 @@ public class EvalRunner
                 return JsonSerializer.Serialize(result.StrategyOutput, JsonOptions);
             }
 
+            case "AnalystsTeamNode":
             case "DataNode":
             case "AnalysisHound":
             {
-                var node = new DataNode(chatClient, alpacaService, activityLogger);
+                var node = new AnalystsTeamNode(chatClient, alpacaService, activityLogger);
                 var symbol = GetContextString(scenario.Input.Context, "symbol") ?? "AAPL";
                 var state = TradingGraphState.Initial(symbol);
                 var result = await node.ExecuteAsync(state, ct);

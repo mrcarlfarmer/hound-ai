@@ -9,7 +9,11 @@ public record MarketAnalysis(
     string Trend,
     double ConfidenceScore,
     string Summary,
-    Dictionary<string, object>? Indicators = null);
+    Dictionary<string, object>? Indicators = null,
+    string? MarketReport = null,
+    string? FundamentalsReport = null,
+    string? NewsReport = null,
+    string? SentimentReport = null);
 
 public enum TradeAction { Buy, Sell, Hold }
 
@@ -40,7 +44,7 @@ public record ExecutionResult(
 
 /// <summary>
 /// Result produced by <see cref="MonitorNode"/>. When <see cref="TradeOpen"/> is
-/// <c>true</c> the graph loops back to DataNode for a refresh cycle.
+/// <c>true</c> the graph loops back to AnalystsTeamNode for a refresh cycle.
 /// </summary>
 public record MonitorResult(
     bool TradeOpen,

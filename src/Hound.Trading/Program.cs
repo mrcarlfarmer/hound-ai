@@ -73,7 +73,7 @@ builder.Services.AddSingleton<IResettableExecutor>(sp =>
 });
 
 // ── Nodes ─────────────────────────────────────────────────────────────────────
-builder.Services.AddSingleton<DataNode>(sp => new DataNode(
+builder.Services.AddSingleton<AnalystsTeamNode>(sp => new AnalystsTeamNode(
     sp.GetRequiredKeyedService<IChatClient>("default"),
     sp.GetRequiredService<IAlpacaService>(),
     sp.GetRequiredService<IActivityLogger>(),
@@ -114,7 +114,7 @@ builder.Services.AddSingleton<MonitorNode>(sp =>
 builder.Services.AddSingleton<IReadOnlyDictionary<string, INode>>(sp =>
     new Dictionary<string, INode>
     {
-        ["data-node"] = sp.GetRequiredService<DataNode>(),
+        ["analysts-team-node"] = sp.GetRequiredService<AnalystsTeamNode>(),
         ["strategy-node"] = sp.GetRequiredService<StrategyNode>(),
         ["risk-node"] = sp.GetRequiredService<RiskNode>(),
         ["execution-node"] = sp.GetRequiredService<ExecutionNode>(),

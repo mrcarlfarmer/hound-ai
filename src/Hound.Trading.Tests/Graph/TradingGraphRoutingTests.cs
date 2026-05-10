@@ -26,23 +26,23 @@ public sealed class TradingGraphRoutingTests
     }
 
     [TestMethod]
-    public void Route_EntryPhase_NullNode_ReturnsDataNode()
+    public void Route_EntryPhase_NullNode_ReturnsAnalystsTeamNode()
     {
         var graph = CreateGraph();
         var state = TradingGraphState.Initial("AAPL");
 
         var next = graph.Route(state);
 
-        Assert.AreEqual("data-node", next);
+        Assert.AreEqual("analysts-team-node", next);
     }
 
     [TestMethod]
-    public void Route_EntryPhase_DataNode_ReturnsStrategyNode()
+    public void Route_EntryPhase_AnalystsTeamNode_ReturnsStrategyNode()
     {
         var graph = CreateGraph();
         var state = TradingGraphState.Initial("AAPL") with
         {
-            CurrentNode = "data-node",
+            CurrentNode = "analysts-team-node",
             DataOutput = new MarketAnalysis("AAPL", 150, 0.05m, "Bullish", 0.8, "Strong uptrend"),
         };
 
@@ -52,12 +52,12 @@ public sealed class TradingGraphRoutingTests
     }
 
     [TestMethod]
-    public void Route_EntryPhase_DataNode_LowConfidence_ReturnsEnd()
+    public void Route_EntryPhase_AnalystsTeamNode_LowConfidence_ReturnsEnd()
     {
         var graph = CreateGraph();
         var state = TradingGraphState.Initial("AAPL") with
         {
-            CurrentNode = "data-node",
+            CurrentNode = "analysts-team-node",
             DataOutput = new MarketAnalysis("AAPL", 150, 0.01m, "Neutral", 0.3, "Weak signal"),
         };
 
@@ -161,7 +161,7 @@ public sealed class TradingGraphRoutingTests
     }
 
     [TestMethod]
-    public void Route_MonitorPhase_MonitorNode_TradeOpen_ReturnsDataNode()
+    public void Route_MonitorPhase_MonitorNode_TradeOpen_ReturnsAnalystsTeamNode()
     {
         var graph = CreateGraph();
         var state = TradingGraphState.Initial("AAPL") with
@@ -173,7 +173,7 @@ public sealed class TradingGraphRoutingTests
 
         var next = graph.Route(state);
 
-        Assert.AreEqual("data-node", next);
+        Assert.AreEqual("analysts-team-node", next);
     }
 
     [TestMethod]
@@ -193,13 +193,13 @@ public sealed class TradingGraphRoutingTests
     }
 
     [TestMethod]
-    public void Route_MonitorPhase_DataNode_ReturnsMonitorNode()
+    public void Route_MonitorPhase_AnalystsTeamNode_ReturnsMonitorNode()
     {
         var graph = CreateGraph();
         var state = TradingGraphState.Initial("AAPL") with
         {
             Phase = GraphPhase.Monitor,
-            CurrentNode = "data-node",
+            CurrentNode = "analysts-team-node",
         };
 
         var next = graph.Route(state);

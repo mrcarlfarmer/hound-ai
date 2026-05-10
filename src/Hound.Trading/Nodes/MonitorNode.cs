@@ -17,7 +17,7 @@ namespace Hound.Trading.Nodes;
 /// Absorbs the responsibilities of the former <c>OrderWatcherService</c>.
 /// <para>
 /// When <see cref="MonitorResult.TradeOpen"/> is <c>true</c>, the graph loops back
-/// to <see cref="DataNode"/> after a configured delay and KV cache reset.
+/// to <see cref="AnalystsTeamNode"/> after a configured delay and KV cache reset.
 /// </para>
 /// </summary>
 public class MonitorNode : INode
