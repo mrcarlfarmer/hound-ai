@@ -128,14 +128,14 @@ services:
     container_name: watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./infra/watchtower/docker-creds/config.json:/config.json
+      - ./infra/watchtower/docker-creds/config.json:/root/.docker/config.json:ro
     env_file:
       - infra/watchtower/config.env
     environment:
       - DOCKER_API_VERSION=1.40
       - WATCHTOWER_CLEANUP=true
       - WATCHTOWER_ROLLING_RESTART=true
-      - WATCHTOWER_NOTIFICATION_URL=generic://hound-api:8080/api/watchtower/webhook?template=json&useTls=no
+      - WATCHTOWER_NOTIFICATION_URL=generic+http://hound-api:8080/api/watchtower/webhook?template=json
       - WATCHTOWER_NOTIFICATION_REPORT=true
     depends_on:
       - hound-api

@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ApiService } from '../../services/api.service';
 import { SignalrService } from '../../services/signalr.service';
@@ -48,15 +48,23 @@ export class WatchtowerComponent implements OnInit, OnDestroy {
 
   constructor(
     private api: ApiService,
-    private signalr: SignalrService
+    private signalr: SignalrService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
-    this.api.getWatchtowerEvents().subscribe(events => this.events = events);
+    this.api.getWatchtowerEvents().subscribe({
+      next: events => {
+        this.events = events;
+        this.cdr.detectChanges();
+      },
+      error: err => console.error('Watchtower API error:', err)
+    });
 
     this.signalr.connect();
     this.sub = this.signalr.onWatchtowerEvent$.subscribe(evt => {
       this.events.unshift(evt);
+      this.cdr.detectChanges();
     });
   }
 
