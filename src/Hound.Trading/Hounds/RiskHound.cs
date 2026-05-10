@@ -21,6 +21,7 @@ public class RiskHound
     private const decimal MaxExposurePct = 0.80m;
     private const decimal MaxDrawdownPct = 0.10m;
     private const decimal MaxSharesPerOrder = 1000m;
+    private const int FractionalSharePrecision = 3;
 
     private readonly ChatClientAgent _agent;
     private readonly IAlpacaService _alpacaService;
@@ -38,7 +39,7 @@ public class RiskHound
         var tools = new List<AITool>
         {
             AIFunctionFactory.Create(
-                () => GetPortfolioSummaryAsync(),
+                () => GetPortfolioSummaryAsync(CancellationToken.None),
                 "get_portfolio",
                 "Retrieves current account equity and open positions"),
         };
@@ -79,8 +80,8 @@ public class RiskHound
             Severity = ActivitySeverity.Info,
         }, cancellationToken);
 
-        var snapshot = await GetPortfolioSnapshotAsync(decision.Symbol, cancellationToken);
-        var rulesAssessment = EvaluatePortfolioRules(decision, snapshot);
+        var snapshot = await GetPortfolioSnapshotAsync(cancellationToken);
+        var rulesAssessment = await EvaluatePortfolioRulesAsync(decision, snapshot, cancellationToken);
 
         if (rulesAssessment is not null)
         {
@@ -96,7 +97,6 @@ public class RiskHound
             snapshot.LastEquity,
             snapshot.CurrentDrawdownPct,
             snapshot.CurrentExposureValue,
-            snapshot.ReferencePrice,
             Positions = snapshot.Positions.Select(position => new
             {
                 position.Symbol,
@@ -104,7 +104,7 @@ public class RiskHound
                 position.AvailableQuantity,
                 position.MarketValue,
                 position.AssetCurrentPrice,
-            }),
+            }).ToArray(),
         });
 
         var session = await _agent.CreateSessionAsync(cancellationToken);
@@ -132,9 +132,9 @@ public class RiskHound
         }
     }
 
-    private async Task<string> GetPortfolioSummaryAsync()
+    private async Task<string> GetPortfolioSummaryAsync(CancellationToken cancellationToken)
     {
-        var snapshot = await GetPortfolioSnapshotAsync(string.Empty, CancellationToken.None);
+        var snapshot = await GetPortfolioSnapshotAsync(cancellationToken);
 
         var positionSummary = snapshot.Positions.Select(p =>
             $"{p.Symbol}: {p.Quantity} shares, market value ${p.MarketValue:F2}");
@@ -146,16 +146,10 @@ public class RiskHound
                $"Positions:\n{string.Join("\n", positionSummary)}";
     }
 
-    private async Task<PortfolioSnapshot> GetPortfolioSnapshotAsync(
-        string symbol,
-        CancellationToken cancellationToken)
+    private async Task<PortfolioSnapshot> GetPortfolioSnapshotAsync(CancellationToken cancellationToken)
     {
         var account = await _alpacaService.GetAccountAsync(cancellationToken);
         var positions = await _alpacaService.ListPositionsAsync(cancellationToken);
-        var referencePrice = string.IsNullOrWhiteSpace(symbol)
-            ? 0m
-            : await ResolveReferencePriceAsync(symbol, positions, cancellationToken);
-
         var equity = account.Equity ?? 0m;
         var lastEquity = account.LastEquity;
         var tradableCash = account.TradableCash;
@@ -170,7 +164,6 @@ public class RiskHound
             lastEquity,
             currentDrawdownPct,
             currentExposureValue,
-            referencePrice,
             positions);
     }
 
@@ -195,9 +188,10 @@ public class RiskHound
         return bars.Count > 0 ? bars[^1].Close : 0m;
     }
 
-    private static RiskAssessment? EvaluatePortfolioRules(
+    private async Task<RiskAssessment?> EvaluatePortfolioRulesAsync(
         TradingDecision decision,
-        PortfolioSnapshot snapshot)
+        PortfolioSnapshot snapshot,
+        CancellationToken cancellationToken)
     {
         if (decision.Quantity <= 0m)
             return Reject(decision, "Quantity must be greater than zero.");
@@ -243,11 +237,20 @@ public class RiskHound
                 $"Account drawdown of {snapshot.CurrentDrawdownPct:P2} exceeds the maximum allowed drawdown of {MaxDrawdownPct:P0} for adding new risk.");
         }
 
-        if (snapshot.ReferencePrice <= 0m)
-            return null;
+        var referencePrice = await ResolveReferencePriceAsync(
+            decision.Symbol,
+            snapshot.Positions,
+            cancellationToken);
+
+        if (referencePrice <= 0m)
+        {
+            return Reject(
+                decision,
+                $"Unable to determine a reference price for {decision.Symbol}, so the trade cannot be validated against portfolio limits.");
+        }
 
         var currentSymbolValue = Math.Abs(existingPosition?.MarketValue ?? 0m);
-        var proposedTradeValue = decision.Quantity * snapshot.ReferencePrice;
+        var proposedTradeValue = decision.Quantity * referencePrice;
         var maxPositionValue = snapshot.Equity * MaxPositionPct;
         var maxExposureValue = snapshot.Equity * MaxExposurePct;
         var positionCapacity = Math.Max(0m, maxPositionValue - currentSymbolValue);
@@ -262,13 +265,16 @@ public class RiskHound
                 $"No buy capacity remains for {decision.Symbol}. Position capacity=${positionCapacity:F2}, exposure capacity=${exposureCapacity:F2}, cash=${cashCapacity:F2}.");
         }
 
-        var allowedQuantity = Math.Round(allowedTradeValue / snapshot.ReferencePrice, 4, MidpointRounding.ToZero);
+        var allowedQuantity = Math.Round(
+            allowedTradeValue / referencePrice,
+            FractionalSharePrecision,
+            MidpointRounding.ToZero);
 
         if (allowedQuantity <= 0m)
         {
             return Reject(
                 decision,
-                $"Reference price of ${snapshot.ReferencePrice:F2} leaves no executable quantity within risk limits.");
+                $"Reference price of ${referencePrice:F2} leaves no executable quantity within risk limits.");
         }
 
         if (decision.Quantity > allowedQuantity)
@@ -276,7 +282,7 @@ public class RiskHound
             return new RiskAssessment(
                 RiskVerdict.Modified,
                 decision,
-                $"Buy quantity reduced to {allowedQuantity} shares using a reference price of ${snapshot.ReferencePrice:F2} to stay within the 20% position limit, 80% exposure limit, and available cash.",
+                $"Buy quantity reduced to {allowedQuantity} shares using a reference price of ${referencePrice:F2} to stay within the 20% position limit, 80% exposure limit, and available cash.",
                 allowedQuantity);
         }
 
@@ -286,7 +292,7 @@ public class RiskHound
         return new RiskAssessment(
             RiskVerdict.Approved,
             decision,
-            $"Approved using a reference price of ${snapshot.ReferencePrice:F2}. Projected {decision.Symbol} position=${projectedPositionValue:F2} ({projectedPositionValue / snapshot.Equity:P1} of equity) and projected total exposure=${projectedExposureValue:F2} ({projectedExposureValue / snapshot.Equity:P1} of equity).");
+            $"Approved using a reference price of ${referencePrice:F2}. Projected {decision.Symbol} position=${projectedPositionValue:F2} ({projectedPositionValue / snapshot.Equity:P1} of equity) and projected total exposure=${projectedExposureValue:F2} ({projectedExposureValue / snapshot.Equity:P1} of equity).");
     }
 
     private async Task LogAssessmentAsync(RiskAssessment assessment, CancellationToken cancellationToken)
@@ -310,6 +316,5 @@ public class RiskHound
         decimal LastEquity,
         decimal CurrentDrawdownPct,
         decimal CurrentExposureValue,
-        decimal ReferencePrice,
         IReadOnlyList<IPosition> Positions);
 }

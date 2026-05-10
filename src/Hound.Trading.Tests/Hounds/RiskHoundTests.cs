@@ -45,8 +45,11 @@ public sealed class RiskHoundTests
 
         Assert.AreEqual(RiskVerdict.Rejected, assessment.Verdict);
         Assert.AreEqual(decision, assessment.Decision);
-        Assert.IsTrue(assessment.Reasoning.Contains("1000", StringComparison.Ordinal));
+        Assert.IsTrue(assessment.Reasoning.Contains("hard limit", StringComparison.OrdinalIgnoreCase));
         Assert.IsNull(assessment.AdjustedQuantity);
+        _mockAlpacaService.Verify(
+            service => service.GetBarsAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<BarTimeFrame>(), It.IsAny<CancellationToken>()),
+            Times.Never);
         _mockActivityLogger.Verify(
             logger => logger.LogActivityAsync(It.IsAny<ActivityLog>(), It.IsAny<CancellationToken>()),
             Times.Exactly(2));
@@ -65,6 +68,9 @@ public sealed class RiskHoundTests
         Assert.AreEqual(RiskVerdict.Rejected, assessment.Verdict);
         Assert.IsTrue(assessment.Reasoning.Contains("drawdown", StringComparison.OrdinalIgnoreCase));
         Assert.IsNull(assessment.AdjustedQuantity);
+        _mockAlpacaService.Verify(
+            service => service.GetBarsAsync(It.IsAny<string>(), It.IsAny<DateTime>(), It.IsAny<DateTime>(), It.IsAny<BarTimeFrame>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     [TestMethod]
@@ -127,8 +133,8 @@ public sealed class RiskHoundTests
         position.SetupGet(value => value.Symbol).Returns(symbol);
         position.SetupGet(value => value.Quantity).Returns(quantity);
         position.SetupGet(value => value.AvailableQuantity).Returns(availableQuantity);
-        position.SetupGet(value => value.MarketValue).Returns(marketValue);
-        position.SetupGet(value => value.AssetCurrentPrice).Returns(currentPrice);
+        position.SetupGet(value => value.MarketValue).Returns((decimal?)marketValue);
+        position.SetupGet(value => value.AssetCurrentPrice).Returns((decimal?)currentPrice);
         return position.Object;
     }
 }
