@@ -2,7 +2,7 @@
 set -e
 
 MODELS="qwen3:14b qwen3.5:9b"
-API_URL="${HOUND_API_URL:-http://hound-api:5000}/api/activity"
+API_URL="${HOUND_API_URL:-http://hound-api:8080}/api/activity"
 
 notify() {
   severity="$1"

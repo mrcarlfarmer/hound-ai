@@ -13,11 +13,11 @@ services:
       dockerfile: src/Hound.Trading/Dockerfile
       target: build
     volumes:
-      - ./src/Hound.Core:/app/Hound.Core
-      - ./src/Hound.Trading:/app/Hound.Trading
-      - ${HOME}/.nuget/packages:/root/.nuget/packages:ro
-    working_dir: /app/Hound.Trading
-    command: ["dotnet", "watch", "run"]
+      - ./src/Hound.Core:/src/Hound.Core
+      - ./src/Hound.Trading:/src/Hound.Trading
+      - ./Directory.Build.props:/Directory.Build.props:ro
+    working_dir: /src/Hound.Trading
+    command: ["dotnet", "watch", "run", "--no-launch-profile", "--urls", "http://0.0.0.0:8080"]
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_WATCH_RESTART_ON_RUDE_EDIT=true
@@ -28,11 +28,11 @@ services:
       dockerfile: src/Hound.Api/Dockerfile
       target: build
     volumes:
-      - ./src/Hound.Core:/app/Hound.Core
-      - ./src/Hound.Api:/app/Hound.Api
-      - ${HOME}/.nuget/packages:/root/.nuget/packages:ro
-    working_dir: /app/Hound.Api
-    command: ["dotnet", "watch", "run"]
+      - ./src/Hound.Core:/src/Hound.Core
+      - ./src/Hound.Api:/src/Hound.Api
+      - ./Directory.Build.props:/Directory.Build.props:ro
+    working_dir: /src/Hound.Api
+    command: ["dotnet", "watch", "run", "--no-launch-profile", "--urls", "http://0.0.0.0:8080"]
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_WATCH_RESTART_ON_RUDE_EDIT=true
