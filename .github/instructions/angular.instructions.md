@@ -55,6 +55,13 @@ beforeEach(async () => {
 });
 ```
 
+## UI Component Library — Spartan-ng
+- Uses `@spartan-ng/brain` (headless behavior) + `@spartan-ng/helm` (styled primitives)
+- Primitives live in `src/app/components/ui/` — alert, badge, button, card, dialog, icon, input, label, pagination, scroll-area, select, separator, skeleton, sonner (toasts), table, tabs, tooltip
+- Import Helm directives from `@spartan-ng/helm/<component>` (e.g., `@spartan-ng/helm/button`)
+- Use existing primitives before creating custom components
+- `HlmToaster` registered in root `AppComponent` for toast notifications
+
 ## Styling
 - SCSS (configured in `angular.json`)
 - 2-space indentation

@@ -34,11 +34,12 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ```
 
 ## Architecture
-6 Docker containers on a `hound-net` bridge network:
+7 Docker containers on a `hound-net` bridge network:
 - `ollama` — Local LLM server (GPU passthrough, port 11434)
+- `ollama-init` — One-shot init container that pulls models via `infra/ollama/pull-models.sh`
 - `ravendb` — Document DB for activity logging (port 8080)
 - `trading-pack` — Trading hounds: Analysis → Strategy → Risk → Execution (+ Tuner)
-- `hound-api` — ASP.NET Core API + SignalR hub (port 5000)
+- `hound-api` — ASP.NET Core API + SignalR hub (port 5000, internal 8080)
 - `hound-ui` — Angular SPA via nginx (port 4200)
 - `watchtower` — GitOps auto-deploy from GHCR
 
@@ -49,8 +50,10 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 - **`IOllamaClientFactory`** — creates `IChatClient` per hound via `ChatClientAgent`
 - **SignalR** hub at `/hubs/activity` for real-time dashboard updates
 - **`IOptions<T>`** for configuration binding; externalized hound configs in `Config/*.json`
-- **Records** for hound response DTOs (`MarketAnalysis`, `TradingDecision`, `RiskAssessment`)
+- **Records** for hound response DTOs in pack-level `HoundModels.cs` (`MarketAnalysis`, `TradingDecision`, `RiskAssessment`); config models in `Hound.Core/Models/HoundConfigs.cs`
 - **Controllers** use `[ApiController]`, `[Route("api/[controller]")]`, `CancellationToken` on all methods
+- **Activity logging path**: Hounds → `HttpActivityLogger` → API → `RavenActivityService` → single `HoundAI` database
+- **Angular UI**: Spartan-ng (`@spartan-ng/brain` + `@spartan-ng/helm`) component library — primitives in `ui/hound-dashboard/src/app/components/ui/`
 
 ## Solution Structure
 ```
@@ -80,6 +83,17 @@ ui/
 5. Create ≥5 eval scenarios in `Hound.Eval/Scenarios/{HoundName}/` (see hound-eval skill)
 6. Add MSTest unit tests
 7. Validate with `dotnet run --project src/Hound.Eval -- --dry-run`
+
+## CI/CD
+- **`build-and-push.yml`** — On push/PR: restore, build, test (.NET + Angular); builds + pushes Docker images to GHCR on `main`
+- **`eval.yml`** — Manual `workflow_dispatch` to run eval scenarios with Ollama
+
+## Customization Assets
+- **Instructions**: `.github/instructions/` — scoped guides for API, Angular, C#, Docker, tests, services
+- **Skills**: `.github/skills/hound-eval/`, `.github/skills/csharp-mstest/`
+- **Agents**: `.github/agents/reviewer.agent.md` — read-only convention reviewer
+- **Prompts**: `.github/prompts/new-hound.prompt.md` — hound scaffolding
+- **Hooks**: `.github/hooks/eval-reminder.json`, `model-sync-reminder.json`
 
 ## Do NOT
 - Commit secrets or API keys (use `.env` / user-secrets)
