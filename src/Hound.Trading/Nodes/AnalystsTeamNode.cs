@@ -232,18 +232,7 @@ public class AnalystsTeamNode : INode
             cancellationToken: cancellationToken);
 
         var json = LlmResponseParser.ExtractJson(synthResponse.Text ?? "{}");
-        MarketAnalysis analysis;
-
-        try
-        {
-            var result = JsonSerializer.Deserialize<MarketAnalysis>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter() } });
-            analysis = result ?? new MarketAnalysis(state.Symbol, 0, 0, "Unknown", 0, "No analysis available");
-        }
-        catch (JsonException)
-        {
-            analysis = new MarketAnalysis(state.Symbol, 0, 0, "Unknown", 0, json);
-        }
+        var analysis = ParseSynthesisJson(json, state.Symbol);
 
         // Attach individual reports
         analysis = analysis with
@@ -286,6 +275,32 @@ public class AnalystsTeamNode : INode
             cancellationToken: cancellationToken);
 
         return response.Text ?? $"No report from {analystName}";
+    }
+
+    private static MarketAnalysis ParseSynthesisJson(string json, string symbol)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+
+            decimal? lastPrice = root.TryGetProperty("lastPrice", out var lp) && lp.ValueKind == JsonValueKind.Number
+                ? lp.GetDecimal() : null;
+            decimal? volumeChange = root.TryGetProperty("volumeChange", out var vc) && vc.ValueKind == JsonValueKind.Number
+                ? vc.GetDecimal() : null;
+            string trend = root.TryGetProperty("trend", out var tr) && tr.ValueKind == JsonValueKind.String
+                ? tr.GetString() ?? "Unknown" : "Unknown";
+            double? confidence = root.TryGetProperty("confidenceScore", out var cs) && cs.ValueKind == JsonValueKind.Number
+                ? cs.GetDouble() : null;
+            string summary = root.TryGetProperty("summary", out var su) && su.ValueKind == JsonValueKind.String
+                ? su.GetString() ?? "No summary" : "No summary";
+
+            return new MarketAnalysis(symbol, lastPrice, volumeChange, trend, confidence, summary);
+        }
+        catch
+        {
+            return new MarketAnalysis(symbol, null, null, "Unknown", null, json);
+        }
     }
 
     // ── Tool implementations ─────────────────────────────────────────────────

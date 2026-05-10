@@ -185,13 +185,13 @@
                       <div class="rounded-lg bg-muted/40 p-3">
                         <span class="block text-xs text-muted-foreground mb-1">Last Price</span>
                         <span class="text-lg font-semibold font-mono">
-                          {{ a.lastPrice !== undefined ? ('$' + a.lastPrice.toFixed(2)) : '—' }}
+                          {{ a.lastPrice != null ? ('$' + a.lastPrice.toFixed(2)) : '—' }}
                         </span>
                       </div>
                       <div class="rounded-lg bg-muted/40 p-3">
                         <span class="block text-xs text-muted-foreground mb-1">Volume Change</span>
                         <span class="text-lg font-semibold font-mono">
-                          {{ a.volumeChange !== undefined ? (a.volumeChange > 0 ? '+' : '') + a.volumeChange.toFixed(2) + 'x' : '—' }}
+                          {{ a.volumeChange != null ? (a.volumeChange > 0 ? '+' : '') + a.volumeChange.toFixed(2) + 'x' : '—' }}
                         </span>
                       </div>
                       <div class="rounded-lg bg-muted/40 p-3">

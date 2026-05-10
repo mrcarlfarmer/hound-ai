@@ -189,11 +189,10 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
   }
 
   trendClass(trend?: string): string {
-    switch (trend?.toLowerCase()) {
-      case 'bullish': return 'bg-green-900/40 text-green-400 border-green-600';
-      case 'bearish': return 'bg-red-900/40 text-red-400 border-red-600';
-      default: return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
-    }
+    const t = trend?.toLowerCase() ?? '';
+    if (t.includes('bullish')) return 'bg-green-900/40 text-green-400 border-green-600';
+    if (t.includes('bearish')) return 'bg-red-900/40 text-red-400 border-red-600';
+    return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
   }
 
   private normalizeConfidence(score?: number): number {

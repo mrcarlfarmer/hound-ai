@@ -4,10 +4,10 @@ namespace Hound.Trading.Nodes;
 
 public record MarketAnalysis(
     string Symbol,
-    decimal LastPrice,
-    decimal VolumeChange,
+    decimal? LastPrice,
+    decimal? VolumeChange,
     string Trend,
-    double ConfidenceScore,
+    double? ConfidenceScore,
     string Summary,
     Dictionary<string, object>? Indicators = null,
     string? MarketReport = null,
