@@ -21,6 +21,9 @@ builder.Services.Configure<TradingWorkflowSettings>(
 builder.Services.Configure<TunerSettings>(
     builder.Configuration.GetSection(TunerSettings.SectionName));
 
+builder.Services.Configure<ExecutionHoundConfig>(
+    builder.Configuration.GetSection("ExecutionHound"));
+
 // ── RavenDB ──────────────────────────────────────────────────────────────────
 var ravenUrl = builder.Configuration["RavenDb:Url"] ?? "http://ravendb:8080";
 builder.Services.AddSingleton<IDocumentStore>(_ =>
@@ -85,12 +88,14 @@ builder.Services.AddSingleton<ExecutionHound>(sp =>
     var factory = sp.GetRequiredService<IOllamaClientFactory>();
     var chatClient = ((OllamaClientFactory)factory).CreateChatClient(executionModel);
     return new ExecutionHound(chatClient, sp.GetRequiredService<IAlpacaService>(),
-        sp.GetRequiredService<IActivityLogger>(), sp.GetService<ILoggerFactory>());
+        sp.GetRequiredService<IActivityLogger>(), sp.GetRequiredService<IDocumentStore>(),
+        sp.GetService<ILoggerFactory>());
 });
 
 // ── Workflow & Worker ─────────────────────────────────────────────────────────
 builder.Services.AddSingleton<TradingWorkflow>();
 builder.Services.AddHostedService<TradingWorker>();
+builder.Services.AddHostedService<OrderWatcherService>();
 
 // ── TunerHound & TunerHostedService ──────────────────────────────────────────
 var tunerModel = builder.Configuration["Hounds:Tuner:Model"] ?? "gemma3";

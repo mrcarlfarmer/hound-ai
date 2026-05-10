@@ -58,6 +58,7 @@ builder.Services.AddScoped<IPackRepository, RavenPackRepository>();
 builder.Services.AddScoped<IActivityLogger, RavenActivityService>();
 builder.Services.AddScoped<ITunerExperimentRepository, RavenTunerExperimentRepository>();
 builder.Services.AddScoped<IWatchtowerRepository, RavenWatchtowerRepository>();
+builder.Services.AddScoped<ITradeRepository, RavenTradeRepository>();
 builder.Services.AddSingleton<TunerStateService>();
 builder.Services.AddHttpClient("health");
 builder.Services.AddScoped<IHealthCheckService, HealthCheckService>();

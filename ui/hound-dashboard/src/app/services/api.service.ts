@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, WatchtowerEvent, HealthReport } from '../models';
+import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, WatchtowerEvent, HealthReport, TradeDocument, FillStatus } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -41,5 +41,18 @@ export class ApiService {
 
   getHealth(): Observable<HealthReport> {
     return this.http.get<HealthReport>(`${this.baseUrl}/api/health`);
+  }
+
+  getTrades(page = 1, pageSize = 20, symbol?: string, fillStatus?: FillStatus): Observable<TradeDocument[]> {
+    let params = new HttpParams()
+      .set('page', page.toString())
+      .set('pageSize', pageSize.toString());
+    if (symbol) params = params.set('symbol', symbol);
+    if (fillStatus) params = params.set('fillStatus', fillStatus);
+    return this.http.get<TradeDocument[]>(`${this.baseUrl}/api/trades`, { params });
+  }
+
+  getTrade(id: string): Observable<TradeDocument> {
+    return this.http.get<TradeDocument>(`${this.baseUrl}/api/trades/${id}`);
   }
 }

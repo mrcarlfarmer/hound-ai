@@ -44,6 +44,15 @@ internal sealed class StubAlpacaService : IAlpacaService
         };
         return Task.FromResult<IReadOnlyList<IBar>>(bars);
     }
+
+    public Task<IOrder> GetOrderAsync(Guid orderId, CancellationToken cancellationToken = default)
+        => Task.FromResult<IOrder>(new StubOrder("STUB", OrderSide.Buy, OrderQuantity.Fractional(1m), null));
+
+    public Task<IReadOnlyList<IOrder>> ListOrdersAsync(OrderStatusFilter? statusFilter = null, CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<IOrder>>(new List<IOrder>());
+
+    public Task<bool> CancelOrderAsync(Guid orderId, CancellationToken cancellationToken = default)
+        => Task.FromResult(true);
 }
 
 internal sealed class StubAccount : IAccount

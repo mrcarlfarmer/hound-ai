@@ -1,0 +1,11 @@
+{
+  "/api": {
+    "target": "http://hound-api:8080",
+    "secure": false
+  },
+  "/hubs": {
+    "target": "http://hound-api:8080",
+    "secure": false,
+    "ws": true
+  }
+}

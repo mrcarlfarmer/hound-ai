@@ -28,4 +28,13 @@ public class ActivityHub : Hub
     {
         await Clients.Group($"pack-{activity.PackId}").SendAsync("OnActivity", activity);
     }
+
+    /// <summary>
+    /// Broadcasts an order status update to clients subscribed to the trading pack.
+    /// Triggered by the OrderWatcherService via the Trades API.
+    /// </summary>
+    public async Task PublishOrderUpdate(object orderUpdate)
+    {
+        await Clients.Group("pack-trading-pack").SendAsync("OnOrderUpdate", orderUpdate);
+    }
 }

@@ -78,3 +78,31 @@ export interface HealthReport {
   timestamp: string;
   services: ServiceHealth[];
 }
+
+export type FillStatus = 'Pending' | 'PartiallyFilled' | 'Filled' | 'Canceled' | 'Expired' | 'Rejected';
+
+export interface TradeDocument {
+  id: string;
+  symbol: string;
+  action: string;
+  requestedQuantity: number;
+  orderId: string;
+  fillStatus: FillStatus;
+  filledQuantity: number;
+  averageFillPrice?: number;
+  executionTime?: string;
+  createdAt: string;
+  updatedAt: string;
+  riskAssessmentSummary: string;
+  packId: string;
+  houndId: string;
+}
+
+export interface OrderUpdate {
+  tradeDocumentId: string;
+  symbol: string;
+  fillStatus: string;
+  filledQuantity: number;
+  averageFillPrice?: number;
+  executionTime?: string;
+}

@@ -47,13 +47,19 @@ public class RiskHoundConfig : BaseHoundConfig
 }
 
 /// <summary>
-/// Configuration for ExecutionHound — order types and slippage tolerance.
+/// Configuration for ExecutionHound — order types, slippage tolerance, and order watcher settings.
 /// </summary>
 public class ExecutionHoundConfig : BaseHoundConfig
 {
     public string OrderType { get; set; } = "Market";
     public double SlippageTolerance { get; set; } = 0.001;
     public string TimeInForce { get; set; } = "Day";
+
+    /// <summary>Seconds between order status polls. Default: 5.</summary>
+    public int OrderWatchIntervalSeconds { get; set; } = 5;
+
+    /// <summary>Minutes before the watcher gives up on a pending order. Default: 30.</summary>
+    public int OrderWatchTimeoutMinutes { get; set; } = 30;
 }
 
 /// <summary>

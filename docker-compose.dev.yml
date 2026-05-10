@@ -38,15 +38,17 @@ services:
       - DOTNET_WATCH_RESTART_ON_RUDE_EDIT=true
 
   hound-ui:
+    build: !reset {}
     image: node:22-alpine
     container_name: hound-ui
     ports:
-      - "4200:4200"
+      - "4201:4200"
     volumes:
       - ./ui/hound-dashboard:/app
-      - /app/node_modules  # anonymous volume prevents host node_modules from shadowing the container's (critical for WSL2 cross-platform compat)
+      - /app/node_modules
     working_dir: /app
-    command: ["npx", "ng", "serve", "--host", "0.0.0.0", "--port", "4200", "--proxy-config", "proxy.conf.json"]
+    entrypoint: ["sh", "-c"]
+    command: ["npm install && npx ng serve --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.json"]
     environment:
       - NODE_ENV=development
     depends_on:

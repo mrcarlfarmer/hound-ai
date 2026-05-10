@@ -33,4 +33,5 @@ public record ExecutionResult(
     decimal Quantity,
     decimal? FilledPrice,
     string OrderId,
-    string Message);
+    string Message,
+    string TradeDocumentId = "");

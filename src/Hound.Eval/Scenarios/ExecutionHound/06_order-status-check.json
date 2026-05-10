@@ -1,0 +1,32 @@
+{
+  "scenarioName": "Order Status Check After Placement",
+  "description": "ExecutionHound should be able to use the get_order_status tool to check fill progress on a previously placed order. This tests the lifecycle management capability.",
+  "houndName": "ExecutionHound",
+  "category": "tool-usage",
+  "input": {
+    "userMessage": "Check the status of the order you just placed for AAPL. The order ID is 550e8400-e29b-41d4-a716-446655440000.",
+    "context": {
+      "verdict": "Approved",
+      "decision": {
+        "symbol": "AAPL",
+        "action": "Buy",
+        "quantity": 25,
+        "reasoning": "Bullish signal confirmed.",
+        "confidence": 0.88
+      },
+      "reasoning": "Trade approved. Checking fill status after placement.",
+      "orderId": "550e8400-e29b-41d4-a716-446655440000"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_order_status"],
+    "outputMustContain": ["AAPL"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with order status details including filledQuantity and averageFillPrice",
+    "decisionCriteria": "ExecutionHound should call get_order_status with the provided orderId to retrieve current fill information."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output references the order status or fill progress for AAPL."
+  }
+}

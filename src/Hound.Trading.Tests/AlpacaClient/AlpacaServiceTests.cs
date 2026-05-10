@@ -111,4 +111,32 @@ public sealed class AlpacaServiceTests
             to: to,
             timeFrame: BarTimeFrame.Hour);
     }
+
+    [TestMethod]
+    [Ignore("Requires live Alpaca API credentials and network access")]
+    public async Task GetOrderAsync_RequiresCredentials()
+    {
+        await _service.GetOrderAsync(Guid.NewGuid());
+    }
+
+    [TestMethod]
+    [Ignore("Requires live Alpaca API credentials and network access")]
+    public async Task ListOrdersAsync_RequiresCredentials()
+    {
+        await _service.ListOrdersAsync();
+    }
+
+    [TestMethod]
+    [Ignore("Requires live Alpaca API credentials and network access")]
+    public async Task ListOrdersAsync_WithFilter_RequiresCredentials()
+    {
+        await _service.ListOrdersAsync(OrderStatusFilter.Open);
+    }
+
+    [TestMethod]
+    [Ignore("Requires live Alpaca API credentials and network access")]
+    public async Task CancelOrderAsync_RequiresCredentials()
+    {
+        await _service.CancelOrderAsync(Guid.NewGuid());
+    }
 }
