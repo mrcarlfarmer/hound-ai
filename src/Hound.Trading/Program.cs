@@ -69,6 +69,7 @@ builder.Services.AddSingleton<StrategyHound>(sp =>
     var factory = sp.GetRequiredService<IOllamaClientFactory>();
     var chatClient = ((OllamaClientFactory)factory).CreateChatClient(strategyModel);
     return new StrategyHound(chatClient, sp.GetRequiredService<IActivityLogger>(),
+        sp.GetRequiredService<IDocumentStore>(),
         sp.GetService<ILoggerFactory>());
 });
 

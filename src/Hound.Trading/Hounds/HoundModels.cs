@@ -18,6 +18,30 @@ public record TradingDecision(
     string Reasoning,
     double Confidence);
 
+public record WorldState(
+    string Symbol,
+    decimal LastPrice,
+    decimal VolumeChange,
+    string Trend,
+    double ConfidenceScore,
+    string Summary,
+    Dictionary<string, object>? Indicators = null,
+    DateTime? CapturedAtUtc = null);
+
+public record ProposedTradeSignal(
+    string Symbol,
+    TradeAction Action,
+    decimal Quantity,
+    string Reasoning,
+    double Confidence,
+    string Status,
+    string SourceHound,
+    DateTime CreatedAtUtc,
+    WorldState WorldState)
+{
+    public string Id { get; init; } = string.Empty;
+}
+
 public enum RiskVerdict { Approved, Rejected, Modified }
 
 public record RiskAssessment(
