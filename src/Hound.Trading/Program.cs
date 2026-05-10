@@ -42,7 +42,7 @@ builder.Services.AddHttpClient();
 // ── Activity Logger ───────────────────────────────────────────────────────────
 // Forward activity events to the Hound.Api, which persists them and broadcasts
 // to SignalR clients for real-time monitoring in the dashboard.
-var houndApiUrl = builder.Configuration["HoundApi:BaseUrl"] ?? "http://hound-api:5000";
+var houndApiUrl = builder.Configuration["HoundApi:BaseUrl"] ?? "http://hound-api:8080";
 builder.Services.AddSingleton<IActivityLogger>(sp =>
     new HttpActivityLogger(sp.GetRequiredService<IHttpClientFactory>(), houndApiUrl));
 

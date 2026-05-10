@@ -5,7 +5,7 @@ import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, WatchtowerEv
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  private readonly baseUrl = 'http://localhost:5000';
+  private readonly baseUrl = '';
 
   constructor(private http: HttpClient) {}
 

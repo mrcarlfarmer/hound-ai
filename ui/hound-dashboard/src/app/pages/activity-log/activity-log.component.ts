@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -16,7 +16,7 @@ export class ActivityLogComponent implements OnInit {
   filter: ActivityFilter = {};
   loading = false;
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadActivity();
@@ -27,6 +27,7 @@ export class ActivityLogComponent implements OnInit {
     this.api.getActivity(this.filter).subscribe(result => {
       this.activities = result.items;
       this.loading = false;
+      this.cdr.detectChanges();
     });
   }
 }

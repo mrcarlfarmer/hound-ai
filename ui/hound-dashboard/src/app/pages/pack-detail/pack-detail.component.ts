@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { ApiService } from '../../services/api.service';
@@ -22,18 +22,20 @@ export class PackDetailComponent implements OnInit, OnDestroy {
   constructor(
     private route: ActivatedRoute,
     private api: ApiService,
-    private signalr: SignalrService
+    private signalr: SignalrService,
+    private cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
     const packId = this.route.snapshot.paramMap.get('id')!;
-    this.api.getPack(packId).subscribe(p => this.pack = p);
-    this.api.getHounds(packId).subscribe(h => this.hounds = h);
+    this.api.getPack(packId).subscribe(p => { this.pack = p; this.cdr.detectChanges(); });
+    this.api.getHounds(packId).subscribe(h => { this.hounds = h; this.cdr.detectChanges(); });
 
     this.signalr.connect();
     this.signalr.subscribeToPack(packId);
     this.sub = this.signalr.onActivity$.subscribe(a => {
       this.activities.unshift(a);
+      this.cdr.detectChanges();
     });
   }
 

@@ -1,7 +1,9 @@
+using Hound.Core.Models;
 using Hound.Trading.Workflows;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Net.Http.Json;
 
 namespace Hound.Trading;
 
@@ -10,22 +12,32 @@ namespace Hound.Trading;
 /// </summary>
 public class TradingWorker : BackgroundService
 {
+    private const string PackId = "trading-pack";
+
     private readonly TradingWorkflow _workflow;
     private readonly TradingWorkflowSettings _settings;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly string _apiBaseUrl;
     private readonly ILogger<TradingWorker> _logger;
 
     public TradingWorker(
         TradingWorkflow workflow,
         IOptions<TradingWorkflowSettings> settings,
+        IHttpClientFactory httpClientFactory,
+        IConfiguration configuration,
         ILogger<TradingWorker> logger)
     {
         _workflow = workflow;
         _settings = settings.Value;
+        _httpClientFactory = httpClientFactory;
+        _apiBaseUrl = (configuration["HoundApi:BaseUrl"] ?? "http://hound-api:8080").TrimEnd('/');
         _logger = logger;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        await RegisterPackAsync(stoppingToken);
+
         _logger.LogInformation("TradingWorker starting. Interval: {Interval} minutes", _settings.RunIntervalMinutes);
 
         while (!stoppingToken.IsCancellationRequested)
@@ -51,5 +63,42 @@ public class TradingWorker : BackgroundService
         }
 
         _logger.LogInformation("TradingWorker stopped");
+    }
+
+    private async Task RegisterPackAsync(CancellationToken cancellationToken)
+    {
+        var registration = new PackRegistration
+        {
+            Id = PackId,
+            Name = "Trading Pack",
+            Hounds =
+            [
+                new() { Id = "analysis-hound", Name = "AnalysisHound" },
+                new() { Id = "strategy-hound", Name = "StrategyHound" },
+                new() { Id = "risk-hound", Name = "RiskHound" },
+                new() { Id = "execution-hound", Name = "ExecutionHound" },
+                new() { Id = "tuner-hound", Name = "TunerHound" },
+            ]
+        };
+
+        for (var attempt = 1; attempt <= 10; attempt++)
+        {
+            try
+            {
+                var client = _httpClientFactory.CreateClient();
+                var response = await client.PostAsJsonAsync(
+                    $"{_apiBaseUrl}/api/packs/register", registration, cancellationToken);
+                response.EnsureSuccessStatusCode();
+                _logger.LogInformation("Pack '{PackId}' registered with API", PackId);
+                return;
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                _logger.LogWarning(ex, "Pack registration attempt {Attempt}/10 failed, retrying...", attempt);
+                await Task.Delay(TimeSpan.FromSeconds(3 * attempt), cancellationToken);
+            }
+        }
+
+        _logger.LogError("Failed to register pack '{PackId}' after 10 attempts", PackId);
     }
 }

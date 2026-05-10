@@ -5,7 +5,7 @@ import { TunerExperiment, PagedResult } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class TunerService {
-  private readonly baseUrl = 'http://localhost:5000';
+  private readonly baseUrl = '';
 
   constructor(private http: HttpClient) {}
 

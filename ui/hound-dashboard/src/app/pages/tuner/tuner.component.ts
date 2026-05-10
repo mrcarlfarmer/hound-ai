@@ -1,4 +1,4 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TunerService } from '../../services/tuner.service';
 import { TunerExperiment } from '../../models';
@@ -19,7 +19,7 @@ export class TunerComponent implements OnInit {
   error: string | null = null;
   loading = false;
 
-  constructor(private tuner: TunerService) {}
+  constructor(private tuner: TunerService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loadExperiments();
@@ -33,10 +33,12 @@ export class TunerComponent implements OnInit {
         this.experiments = result.items;
         this.totalCount = result.totalCount;
         this.loading = false;
+        this.cdr.detectChanges();
       },
       error: () => {
         this.error = 'Failed to load experiments. Please try again.';
         this.loading = false;
+        this.cdr.detectChanges();
       },
     });
   }

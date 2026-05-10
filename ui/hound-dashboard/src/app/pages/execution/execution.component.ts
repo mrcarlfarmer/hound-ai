@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Subscription } from 'rxjs';
 import { ApiService } from '../../services/api.service';
@@ -22,6 +22,7 @@ export class ExecutionComponent implements OnInit, OnDestroy {
   constructor(
     private api: ApiService,
     private signalr: SignalrService,
+    private cdr: ChangeDetectorRef,
   ) {}
 
   ngOnInit(): void {
@@ -41,6 +42,7 @@ export class ExecutionComponent implements OnInit, OnDestroy {
   loadTrades(): void {
     this.api.getTrades(this.page, this.pageSize).subscribe(trades => {
       this.trades = trades;
+      this.cdr.detectChanges();
     });
   }
 

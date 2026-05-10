@@ -40,4 +40,12 @@ public class PacksController : ControllerBase
         var hounds = await _packs.GetHoundsAsync(packId, cancellationToken);
         return Ok(hounds);
     }
+
+    /// <summary>POST /api/packs/register — Register or update a pack and its hounds.</summary>
+    [HttpPost("register")]
+    public async Task<ActionResult> Register([FromBody] PackRegistration registration, CancellationToken cancellationToken)
+    {
+        await _packs.RegisterPackAsync(registration, cancellationToken);
+        return Ok();
+    }
 }

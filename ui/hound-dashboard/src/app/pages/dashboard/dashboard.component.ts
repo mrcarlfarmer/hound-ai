@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../services/api.service';
@@ -18,13 +18,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
   healthError = false;
   private refreshInterval?: ReturnType<typeof setInterval>;
 
-  constructor(private api: ApiService) {}
+  constructor(private api: ApiService, private cdr: ChangeDetectorRef) {}
 
   ngOnInit(): void {
     this.loading = true;
-    this.api.getPacks().subscribe(packs => {
-      this.packs = packs;
-      this.loading = false;
+    this.api.getPacks().subscribe({
+      next: packs => {
+        this.packs = packs;
+        this.loading = false;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.loading = false;
+        this.cdr.detectChanges();
+      },
     });
     this.loadHealth();
     this.refreshInterval = setInterval(() => this.loadHealth(), 30000);
@@ -39,9 +46,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
       next: report => {
         this.healthReport = report;
         this.healthError = false;
+        this.cdr.detectChanges();
       },
       error: () => {
         this.healthError = true;
+        this.cdr.detectChanges();
       }
     });
   }

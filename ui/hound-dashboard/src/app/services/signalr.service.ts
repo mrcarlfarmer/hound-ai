@@ -8,7 +8,7 @@ export const SIGNALR_CONNECTION_FACTORY = new InjectionToken<() => signalR.HubCo
   {
     factory: () => () =>
       new signalR.HubConnectionBuilder()
-        .withUrl('http://localhost:5000/hubs/activity')
+        .withUrl('/hubs/activity')
         .withAutomaticReconnect()
         .build(),
   },
