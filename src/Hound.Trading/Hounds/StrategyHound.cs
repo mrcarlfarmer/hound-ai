@@ -20,7 +20,7 @@ public class StrategyHound
 {
     private const string HoundId = "strategy-hound";
     private const string PackId = "trading-pack";
-    private const string TradingDatabase = "hound-trading-pack";
+    private const string DatabaseName = "hound-trading-pack";
 
     private readonly ChatClientAgent _agent;
     private readonly IActivityLogger _activityLogger;
@@ -148,11 +148,11 @@ public class StrategyHound
 
         try
         {
-            await EnsureDatabaseExistsAsync(TradingDatabase, cancellationToken);
+            await EnsureDatabaseExistsAsync(DatabaseName, cancellationToken);
 
-            using var session = _documentStore.OpenAsyncSession(TradingDatabase);
+            using var session = _documentStore.OpenAsyncSession(DatabaseName);
             await session.StoreAsync(proposal, proposal.Id, cancellationToken);
-            session.Advanced.GetMetadataFor(proposal)["@collection"] = "Hounds/Proposed";
+            session.Advanced.GetMetadataFor(proposal)["@collection"] = StrategySignalProposalFactory.ProposedSignalsCollection;
             await session.SaveChangesAsync(cancellationToken);
         }
         catch (Exception ex)

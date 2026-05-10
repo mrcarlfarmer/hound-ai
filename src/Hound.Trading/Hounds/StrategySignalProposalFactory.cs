@@ -5,6 +5,8 @@ namespace Hound.Trading.Hounds;
 /// </summary>
 public static class StrategySignalProposalFactory
 {
+    public const string ProposedSignalsCollection = "Hounds/Proposed";
+
     private const double ConfidenceThreshold = 0.7;
     private const decimal DefaultTargetNotional = 1000m;
 
@@ -114,7 +116,7 @@ public static class StrategySignalProposalFactory
             CreatedAtUtc: createdAtUtc ?? DateTime.UtcNow,
             WorldState: worldState)
         {
-            Id = $"Hounds/Proposed/{Guid.NewGuid():N}"
+            Id = $"{ProposedSignalsCollection}/{Guid.NewGuid():N}"
         };
     }
 
