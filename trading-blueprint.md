@@ -26,7 +26,7 @@ The pack trades a configured watchlist of symbols (default: AAPL, MSFT, SPY) usi
 
 **Configuration:**
 
-- Model: `gemma3` at temperature 0.2
+- Model: `qwen3` at temperature 0.2
 - Lookback window: 7 days
 - Confidence threshold: 0.5
 
@@ -48,7 +48,7 @@ The pack trades a configured watchlist of symbols (default: AAPL, MSFT, SPY) usi
 
 **Configuration:**
 
-- Model: `gemma3` at temperature 0.1
+- Model: `qwen3` at temperature 0.1
 - Bullish confidence threshold: 0.7
 - Bearish confidence threshold: 0.7
 - Entry threshold: 0.7
@@ -75,7 +75,7 @@ The pack trades a configured watchlist of symbols (default: AAPL, MSFT, SPY) usi
 
 **Configuration:**
 
-- Model: `gemma3` at temperature 0.1
+- Model: `qwen3` at temperature 0.1
 - Max position: 20% of equity
 - Max exposure: 80% of equity
 - Max shares per order: 1,000
