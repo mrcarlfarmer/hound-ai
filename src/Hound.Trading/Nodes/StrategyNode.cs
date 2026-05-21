@@ -57,6 +57,10 @@ public class StrategyNode : INode
                 The JSON schema is:
                 {"symbol":"AAPL","action":"Buy","quantity":10,"reasoning":"One paragraph explanation.","confidence":0.85}
 
+                LANGUAGE: The `reasoning` field MUST be written in ENGLISH. Do not
+                use Chinese, Mandarin, or any other non-English characters. Prices
+                are in US dollars (USD, $) — never yuan/元, euro, or any other currency.
+
                 Decision rules:
                 - Confidence >= 0.7 and Bullish trend => action "Buy"
                 - Confidence >= 0.7 and Bearish trend => action "Sell"

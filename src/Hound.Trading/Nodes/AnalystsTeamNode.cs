@@ -61,6 +61,10 @@ public class AnalystsTeamNode : INode
                 You are a trading assistant tasked with analysing financial markets.
                 Use the get_stock_data tool to retrieve recent OHLCV price bars.
 
+                LANGUAGE: Write your entire report in ENGLISH. Do not use Chinese,
+                Mandarin, or any other non-English characters. Prices are in US
+                dollars (USD, $) — never yuan/元, euro, or any other currency.
+
                 CRITICAL DATA-TRUST RULES:
                 - The get_stock_data tool returns AUTHORITATIVE live market data from
                   the broker API. Trust it completely.
@@ -110,6 +114,11 @@ public class AnalystsTeamNode : INode
                 Analyse the account equity, buying power, and any position data.
                 Write a comprehensive report on the financial context relevant for trading.
                 Include assessment of capital availability and portfolio exposure.
+
+                LANGUAGE: Write your entire report in ENGLISH. Do not use Chinese,
+                Mandarin, or any other non-English characters. Prices are in US
+                dollars (USD, $) — never yuan/元, euro, or any other currency.
+
                 End with a Markdown table summarising key financial metrics.
                 """,
             name: "FundamentalsAnalyst",
@@ -135,6 +144,10 @@ public class AnalystsTeamNode : INode
                 Analyse the news for impact on trading — earnings, regulatory changes,
                 sector trends, and macroeconomic factors.
                 Provide specific, actionable insights with supporting evidence.
+
+                LANGUAGE: Write your entire report in ENGLISH. Do not use Chinese,
+                Mandarin, or any other non-English characters. Prices are in US
+                dollars (USD, $) — never yuan/元, euro, or any other currency.
 
                 PRICE-LEVEL RULES — STRICTLY ENFORCED:
                 - The user prompt supplies "Current price" — this is the authoritative
@@ -170,6 +183,10 @@ public class AnalystsTeamNode : INode
                 Assess whether sentiment is bullish, bearish, or neutral.
                 Provide specific insights on how sentiment may affect near-term trading.
 
+                LANGUAGE: Write your entire report in ENGLISH. Do not use Chinese,
+                Mandarin, or any other non-English characters. Prices are in US
+                dollars (USD, $) — never yuan/元, euro, or any other currency.
+
                 PRICE-LEVEL RULES — STRICTLY ENFORCED:
                 - The user prompt supplies "Current price" — anchor all commentary to it.
                 - Do NOT invent specific price targets, support, or resistance levels.
@@ -200,6 +217,9 @@ public class AnalystsTeamNode : INode
                 - trend = exactly one of: "Bullish", "Bearish", "Neutral"
                 - confidenceScore = your overall confidence from 0.05 to 1.0. NEVER emit 0; if signals are weak, use 0.25.
                 - summary = 1-3 sentences combining all four reports. Keep it under 200 words.
+                - LANGUAGE: All string values (especially `summary` and `trend`) MUST be in English.
+                  Do NOT emit Chinese, Mandarin, or any other non-English characters. Prices are in
+                  US dollars (USD, $). Do NOT use yuan/元, euro, or any other currency symbol.
                 - Output raw JSON only. No ```json fences, no markdown, no extra text.
                 """,
             name: "Synthesiser",
