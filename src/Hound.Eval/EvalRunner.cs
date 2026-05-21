@@ -215,7 +215,7 @@ public class EvalRunner
             case "ExecutionNode":
             case "ExecutionHound":
             {
-                var node = new ExecutionNode(chatClient, alpacaService, activityLogger, StubDocumentStoreFactory.Create());
+                var node = new ExecutionNode(alpacaService, activityLogger, StubDocumentStoreFactory.Create());
                 var assessment = DeserializeContext<RiskAssessment>(scenario.Input.Context)
                     ?? new RiskAssessment(RiskVerdict.Rejected,
                         new TradingDecision("AAPL", TradeAction.Buy, 10, "", 0),

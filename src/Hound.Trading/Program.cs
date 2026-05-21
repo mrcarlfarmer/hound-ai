@@ -102,7 +102,6 @@ builder.Services.AddSingleton<RiskNode>(sp => new RiskNode(
     sp.GetService<ILoggerFactory>()));
 
 builder.Services.AddSingleton<ExecutionNode>(sp => new ExecutionNode(
-    sp.GetRequiredKeyedService<IChatClient>("default"),
     sp.GetRequiredService<IAlpacaService>(),
     sp.GetRequiredService<IActivityLogger>(),
     sp.GetRequiredService<IDocumentStore>(),

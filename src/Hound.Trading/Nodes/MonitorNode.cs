@@ -32,6 +32,7 @@ public class MonitorNode : INode
     private readonly IDocumentStore _documentStore;
     private readonly IResettableExecutor _resetter;
     private readonly int _monitorDelaySeconds;
+    private readonly ILogger<MonitorNode>? _logger;
 
     public MonitorNode(
         IChatClient chatClient,
@@ -47,6 +48,7 @@ public class MonitorNode : INode
         _documentStore = documentStore;
         _resetter = resetter;
         _monitorDelaySeconds = monitorDelaySeconds;
+        _logger = loggerFactory?.CreateLogger<MonitorNode>();
 
         var tools = new List<AITool>
         {
@@ -86,6 +88,42 @@ public class MonitorNode : INode
     {
         var execution = state.ExecutionOutput!;
 
+        // Short-circuit: if Execution never produced a valid order ID there is
+        // nothing to monitor. Log an Error (not a Success) and end the run so
+        // a hallucinated "trade closed" cannot leak into the dashboard.
+        if (string.IsNullOrWhiteSpace(execution.OrderId)
+            || !Guid.TryParse(execution.OrderId, out var orderGuid)
+            || orderGuid == Guid.Empty)
+        {
+            await _activityLogger.LogActivityAsync(new ActivityLog
+            {
+                PackId = PackId,
+                HoundId = NodeId,
+                HoundName = "MonitorNode",
+                Message = $"No valid order ID for {state.Symbol} — nothing to monitor. Treating run as failed.",
+                Severity = ActivitySeverity.Error,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["orderId"] = execution.OrderId ?? string.Empty,
+                    ["monitorCycle"] = state.MonitorCycleCount,
+                },
+            }, cancellationToken);
+
+            var noOrder = new MonitorResult(
+                TradeOpen: false,
+                CurrentStatus: FillStatus.Rejected,
+                CurrentPrice: null,
+                UnrealizedPnL: null,
+                Summary: "No order was placed; nothing to monitor.");
+
+            return state with
+            {
+                MonitorOutput = noOrder,
+                MonitorCycleCount = state.MonitorCycleCount + 1,
+                IsComplete = true,
+            };
+        }
+
         await _activityLogger.LogActivityAsync(new ActivityLog
         {
             PackId = PackId,
@@ -98,8 +136,74 @@ public class MonitorNode : INode
         // Update TradeDocument status from Alpaca
         await UpdateTradeDocumentAsync(execution, cancellationToken);
 
-        var prompt = $"Check the status of order {execution.OrderId} for {state.Symbol} " +
-                     $"and the current position. Trade document: {execution.TradeDocumentId}";
+        // Fetch authoritative facts from Alpaca BEFORE invoking the LLM so we
+        // can both ground the model's narrative and overwrite any bookkeeping
+        // fields it tries to confabulate. The LLM never gets to decide
+        // tradeOpen or currentStatus — those come straight from the broker.
+        FillStatus authoritativeStatus = FillStatus.Pending;
+        decimal? currentPrice = null;
+        decimal? unrealizedPnL = null;
+        var tradeOpen = false;
+        string? orderFacts = null;
+        string? positionFacts = null;
+
+        try
+        {
+            var order = await _alpacaService.GetOrderAsync(orderGuid, cancellationToken);
+            authoritativeStatus = MapOrderStatus(order.OrderStatus);
+            orderFacts = JsonSerializer.Serialize(new
+            {
+                orderId = order.OrderId.ToString(),
+                status = order.OrderStatus.ToString(),
+                filledQuantity = order.FilledQuantity,
+                averageFillPrice = order.AverageFillPrice,
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "MonitorNode failed to fetch order {OrderId}", execution.OrderId);
+            orderFacts = $"{{\"error\":\"order lookup failed: {ex.Message}\"}}";
+        }
+
+        try
+        {
+            var positions = await _alpacaService.ListPositionsAsync(cancellationToken);
+            var position = positions.FirstOrDefault(p =>
+                string.Equals(p.Symbol, state.Symbol, StringComparison.OrdinalIgnoreCase));
+            if (position is not null && position.Quantity != 0)
+            {
+                tradeOpen = true;
+                currentPrice = position.AssetCurrentPrice;
+                unrealizedPnL = position.UnrealizedProfitLoss;
+                positionFacts = JsonSerializer.Serialize(new
+                {
+                    hasPosition = true,
+                    quantity = position.Quantity,
+                    marketValue = position.MarketValue,
+                    unrealizedPnL = position.UnrealizedProfitLoss,
+                    currentPrice = position.AssetCurrentPrice,
+                    averageEntryPrice = position.AverageEntryPrice,
+                });
+            }
+            else
+            {
+                positionFacts = JsonSerializer.Serialize(new { hasPosition = false, quantity = 0m });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex, "MonitorNode failed to fetch position for {Symbol}", state.Symbol);
+            positionFacts = $"{{\"error\":\"position lookup failed: {ex.Message}\"}}";
+        }
+
+        var prompt =
+            $"Trade lifecycle check for {state.Symbol}.\n\n" +
+            $"Authoritative facts (already fetched from Alpaca — do NOT call tools, just summarise):\n" +
+            $"  order: {orderFacts}\n" +
+            $"  position: {positionFacts}\n" +
+            $"  derived tradeOpen: {tradeOpen}\n" +
+            $"  derived currentStatus: {authoritativeStatus}\n\n" +
+            "Produce the JSON response. The `tradeOpen` and `currentStatus` fields MUST mirror the derived values above exactly — they will be overwritten otherwise. Use `summary` to describe the situation in one or two sentences.";
 
         var session = await _agent.CreateSessionAsync(cancellationToken);
         var response = await _agent.RunAsync(
@@ -108,17 +212,50 @@ public class MonitorNode : INode
             cancellationToken: cancellationToken);
 
         var json = LlmResponseParser.ExtractJson(response.Text ?? "{}");
-        MonitorResult monitor;
-
+        string summary;
         try
         {
-            var result = JsonSerializer.Deserialize<MonitorResult>(json,
+            var parsed = JsonSerializer.Deserialize<MonitorResult>(json,
                 new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter() } });
-            monitor = result ?? new MonitorResult(false, FillStatus.Pending, null, null, "Unable to parse monitor response");
+            summary = parsed?.Summary ?? "No summary produced.";
         }
         catch (JsonException)
         {
-            monitor = new MonitorResult(false, FillStatus.Pending, null, null, json);
+            summary = json;
+        }
+
+        // Overwrite LLM-supplied bookkeeping with the authoritative values.
+        var monitor = new MonitorResult(
+            TradeOpen: tradeOpen,
+            CurrentStatus: authoritativeStatus,
+            CurrentPrice: currentPrice,
+            UnrealizedPnL: unrealizedPnL,
+            Summary: summary);
+
+        // Severity policy: Success only when the order filled AND the position
+        // has been fully closed (a real round-trip). Anything else is Info or
+        // worse so the dashboard never glosses over a non-trade.
+        ActivitySeverity severity;
+        string message;
+        if (authoritativeStatus is FillStatus.Rejected or FillStatus.Canceled or FillStatus.Expired)
+        {
+            severity = ActivitySeverity.Error;
+            message = $"Order {authoritativeStatus} for {state.Symbol}: {summary}";
+        }
+        else if (tradeOpen)
+        {
+            severity = ActivitySeverity.Info;
+            message = $"Trade still open for {state.Symbol}: {summary}";
+        }
+        else if (authoritativeStatus == FillStatus.Filled)
+        {
+            severity = ActivitySeverity.Success;
+            message = $"Trade closed for {state.Symbol}: {summary}";
+        }
+        else
+        {
+            severity = ActivitySeverity.Info;
+            message = $"Trade pending for {state.Symbol} (status: {authoritativeStatus}): {summary}";
         }
 
         await _activityLogger.LogActivityAsync(new ActivityLog
@@ -126,10 +263,8 @@ public class MonitorNode : INode
             PackId = PackId,
             HoundId = NodeId,
             HoundName = "MonitorNode",
-            Message = monitor.TradeOpen
-                ? $"Trade still open for {state.Symbol}: {monitor.Summary}"
-                : $"Trade closed for {state.Symbol}: {monitor.Summary}",
-            Severity = monitor.TradeOpen ? ActivitySeverity.Info : ActivitySeverity.Success,
+            Message = message,
+            Severity = severity,
             Metadata = new Dictionary<string, object>
             {
                 ["tradeOpen"] = monitor.TradeOpen,
