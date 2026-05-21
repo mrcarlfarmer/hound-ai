@@ -53,11 +53,16 @@ public class RiskNode : INode
                 Evaluate the proposed trade against these rules:
                 - Maximum single-position size: 20% of portfolio equity
                 - Maximum total exposure: 80% of equity in equities
-                - Never exceed quantity of 1000 shares per order
+                - Maximum notional per order: $50,000 (sum of quantity × price)
+                - Quantity may be fractional (decimal values are valid — Alpaca
+                  supports fractional shares down to 4 decimal places with a $1
+                  notional minimum). Do NOT round fractional quantities to whole
+                  shares unless explicitly required.
                 Use the get_portfolio tool to check current state.
                 Respond strictly in JSON matching:
                 {"verdict":"Approved|Rejected|Modified","decision":{...original decision...},"reasoning":"...","adjustedQuantity":null}
-                Set adjustedQuantity only when verdict is Modified.
+                Set adjustedQuantity only when verdict is Modified. adjustedQuantity
+                may be a decimal (e.g. 1.25, 0.5).
                 """,
             name: "RiskNode",
             description: "Evaluates proposed trades against risk limits and portfolio exposure",

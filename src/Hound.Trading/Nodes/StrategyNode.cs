@@ -55,7 +55,7 @@ public class StrategyNode : INode
                 You are a JSON formatter that outputs trading decisions.
                 You MUST respond with ONLY a single JSON object — no markdown, no explanation, no preamble.
                 The JSON schema is:
-                {"symbol":"AAPL","action":"Buy","quantity":10,"reasoning":"One paragraph explanation.","confidence":0.85}
+                {"symbol":"AAPL","action":"Buy","quantity":1.5,"reasoning":"One paragraph explanation.","confidence":0.85}
 
                 LANGUAGE: The `reasoning` field MUST be written in ENGLISH. Do not
                 use Chinese, Mandarin, or any other non-English characters. Prices
@@ -66,8 +66,10 @@ public class StrategyNode : INode
                 - Confidence >= 0.7 and Bearish trend => action "Sell"
                 - Otherwise => action "Hold"
                 - action must be exactly one of: "Buy", "Sell", "Hold"
-                - quantity must be a positive integer for Buy/Sell, 0 for Hold
-                - For Buy/Sell, quantity must NOT exceed the "Suggested max shares" value supplied in the prompt
+                - quantity must be a positive number for Buy/Sell, 0 for Hold. Fractional
+                  shares are supported (e.g. 0.25, 0.5, 1.75, 10). Round to at most 4
+                  decimal places.
+                - For Buy/Sell, quantity must NOT exceed the "Suggested max position size" value supplied in the prompt
                 - confidence is 0.0 to 1.0
                 - reasoning is a single paragraph, no markdown formatting
                 - Output raw JSON only. No ```json fences, no markdown, no extra text.
@@ -148,10 +150,24 @@ public class StrategyNode : INode
             decision = new TradingDecision(state.Symbol, TradeAction.Hold, 0, json, 0);
         }
 
-        // Treat Buy/Sell with zero quantity as Hold to avoid pointless refinement loops
-        if (decision.Action != TradeAction.Hold && decision.Quantity <= 0)
+        // Treat Buy/Sell with effectively-zero quantity as Hold to avoid
+        // pointless refinement loops. Use an epsilon so genuine fractional
+        // orders (e.g. 0.001) aren't silently neutralised, but anything below
+        // Alpaca's minimum 0.0001 share precision is treated as zero.
+        if (decision.Action != TradeAction.Hold && decision.Quantity < 0.0001m)
         {
-            decision = decision with { Action = TradeAction.Hold, Reasoning = $"Converted to Hold: {decision.Action} with quantity 0 is not actionable. {decision.Reasoning}" };
+            decision = decision with { Action = TradeAction.Hold, Reasoning = $"Converted to Hold: {decision.Action} with quantity {decision.Quantity} is not actionable. {decision.Reasoning}" };
+        }
+
+        // Enforce Alpaca's $1 notional minimum for fractional orders. If the
+        // resulting position is worth less than $1 at the current price, the
+        // broker will reject it — coerce to Hold here so we don't waste a risk
+        // assessment + execution round-trip.
+        if (decision.Action != TradeAction.Hold
+            && analysis?.LastPrice is decimal currentPrice && currentPrice > 0
+            && decision.Quantity * currentPrice < 1m)
+        {
+            decision = decision with { Action = TradeAction.Hold, Reasoning = $"Converted to Hold: notional ${decision.Quantity * currentPrice:F2} below Alpaca's $1 fractional minimum. {decision.Reasoning}" };
         }
 
         // Price-sanity check (recommendation #7): scan reasoning for dollar
@@ -249,7 +265,9 @@ public class StrategyNode : INode
             : "n/a");
 
         // Suggested cap: at most 30% of buying power or 20% of equity per
-        // single position, converted to whole shares using the current price.
+        // single position. Expressed in fractional shares (Alpaca supports
+        // fractional market/Day orders down to 4 dp with a $1 notional floor),
+        // so we never need to round the cap to zero for high-priced symbols.
         // This is just an anchor for the model — the Risk node enforces final
         // sizing constraints.
         if (lastPrice is decimal price && price > 0)
@@ -263,14 +281,26 @@ public class StrategyNode : INode
                 (null, decimal eq) => eq,
                 _ => null,
             };
-            if (dollarCap is decimal cap && cap > 0)
+            if (dollarCap is decimal cap && cap >= 1m)
             {
-                var maxShares = (int)Math.Floor(cap / price);
-                sb.Append("Suggested max shares for a new position: ")
-                  .Append(maxShares.ToString(CultureInfo.InvariantCulture))
-                  .Append(" (~$")
-                  .Append(cap.ToString("F2", CultureInfo.InvariantCulture))
-                  .AppendLine(" notional). Do NOT exceed this for Buy/Sell.");
+                // Floor to 4 dp so we never quote a cap the broker would reject.
+                var maxQty = Math.Floor(cap / price * 10000m) / 10000m;
+                if (maxQty >= 0.0001m)
+                {
+                    sb.Append("Suggested max position size: ")
+                      .Append(maxQty.ToString("0.####", CultureInfo.InvariantCulture))
+                      .Append(" shares (~$")
+                      .Append((maxQty * price).ToString("F2", CultureInfo.InvariantCulture))
+                      .AppendLine(" notional). Fractional shares are supported — values like 0.25, 0.5, 1.75 are valid. Do NOT exceed this for Buy/Sell.");
+                }
+                else
+                {
+                    sb.AppendLine("Suggested max position size: 0 (notional cap below Alpaca's $1 fractional minimum). Buy/Sell is not feasible — output Hold.");
+                }
+            }
+            else if (buyingPower is decimal bpAvail && bpAvail < 1m)
+            {
+                sb.AppendLine("Suggested max position size: 0 (insufficient buying power for the $1 fractional-order minimum). Buy/Sell is not feasible — output Hold.");
             }
         }
 

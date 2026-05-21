@@ -109,6 +109,55 @@ public class ExecutionNode : INode
 
         var effectiveQuantity = assessment.AdjustedQuantity ?? assessment.Decision.Quantity;
 
+        // Fractional-share guard: if the requested quantity is non-integer we
+        // must confirm the symbol is fractionable on Alpaca. Whole-share orders
+        // pass through unchanged. Failures are logged loudly so Tuner can learn
+        // to avoid non-fractionable symbols when the account can only afford a
+        // partial share.
+        var isFractional = effectiveQuantity != Math.Truncate(effectiveQuantity);
+        if (isFractional)
+        {
+            IAsset? asset = null;
+            try
+            {
+                asset = await _alpacaService.GetAssetAsync(assessment.Decision.Symbol, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                await _activityLogger.LogActivityAsync(new ActivityLog
+                {
+                    PackId = PackId,
+                    HoundId = NodeId,
+                    HoundName = "ExecutionNode",
+                    Message = $"Asset lookup failed for {assessment.Decision.Symbol}: {ex.Message}. Cannot verify fractionable support.",
+                    Severity = ActivitySeverity.Error,
+                }, cancellationToken);
+            }
+
+            if (asset is { Fractionable: false })
+            {
+                await _activityLogger.LogActivityAsync(new ActivityLog
+                {
+                    PackId = PackId,
+                    HoundId = NodeId,
+                    HoundName = "ExecutionNode",
+                    Message = $"Rejected fractional order: {assessment.Decision.Symbol} is not fractionable on Alpaca (requested quantity {effectiveQuantity}). Whole-share orders only for this symbol.",
+                    Severity = ActivitySeverity.Error,
+                }, cancellationToken);
+
+                var rejectResult = new ExecutionResult(
+                    false,
+                    assessment.Decision.Symbol,
+                    assessment.Decision.Action,
+                    effectiveQuantity,
+                    null,
+                    string.Empty,
+                    $"Symbol {assessment.Decision.Symbol} does not support fractional shares on Alpaca; requested quantity {effectiveQuantity} requires a whole-share order.");
+
+                return state with { ExecutionOutput = rejectResult, IsComplete = true };
+            }
+        }
+
         // Create TradeDocument with Pending status before placing the order
         var tradeDoc = new TradeDocument
         {

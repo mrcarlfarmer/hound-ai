@@ -33,6 +33,13 @@ interface StrategyOutput {
   confidence?: number;
 }
 
+interface RiskOutput {
+  verdict?: string;
+  decision?: StrategyOutput;
+  reasoning?: string;
+  adjustedQuantity?: number | null;
+}
+
 @Component({
   selector: 'app-graph-runs',
   standalone: true,
@@ -379,6 +386,24 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       return JSON.parse(json) as StrategyOutput;
     } catch {
       return null;
+    }
+  }
+
+  parseRiskOutput(json?: string): RiskOutput | null {
+    if (!json) return null;
+    try {
+      return JSON.parse(json) as RiskOutput;
+    } catch {
+      return null;
+    }
+  }
+
+  verdictClass(verdict?: string): string {
+    switch (verdict?.toLowerCase()) {
+      case 'approved': return 'bg-green-900/40 text-green-400 border-green-600';
+      case 'rejected': return 'bg-red-900/40 text-red-400 border-red-600';
+      case 'modified': return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
+      default: return 'bg-muted text-muted-foreground border-border';
     }
   }
 

@@ -20,14 +20,14 @@
           <tr class="border-b border-border last:border-0">
             <td class="px-4 py-2 font-medium text-foreground">{{ trade.symbol }}</td>
             <td class="px-4 py-2 text-foreground">{{ trade.action }}</td>
-            <td class="px-4 py-2 text-right text-foreground">{{ trade.requestedQuantity }}</td>
+            <td class="px-4 py-2 text-right text-foreground">{{ trade.requestedQuantity | number:'1.0-4' }}</td>
             <td class="px-4 py-2">
               <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium"
                     [ngClass]="statusClass(trade.fillStatus)">
                 {{ trade.fillStatus }}
               </span>
             </td>
-            <td class="px-4 py-2 text-right text-foreground">{{ trade.filledQuantity }}</td>
+            <td class="px-4 py-2 text-right text-foreground">{{ trade.filledQuantity | number:'1.0-4' }}</td>
             <td class="px-4 py-2 text-right text-foreground">
               {{ trade.averageFillPrice ? ('$' + trade.averageFillPrice.toFixed(2)) : '—' }}
             </td>
