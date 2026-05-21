@@ -12,6 +12,7 @@ import { HlmTabsImports } from '@spartan-ng/helm/tabs';
 
 interface AnalystsOutput {
   symbol?: string;
+  companyName?: string;
   lastPrice?: number;
   volumeChange?: number;
   trend?: string;
@@ -57,15 +58,6 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
   private marked = new Marked({ gfm: true, async: false });
   /** Reasoning <pre> elements, used to auto-scroll as chunks arrive. */
   @ViewChildren('reasoningBox') private reasoningBoxes?: QueryList<ElementRef<HTMLElement>>;
-  /**
-   * Per-element "stick to bottom" flag. Defaults to true; only flips to false
-   * when the user actively scrolls the box away from the bottom. This is more
-   * robust than re-checking distance-from-bottom on every chunk, because a
-   * single large chunk can push the bottom far enough away to latch the
-   * threshold-based approach off permanently.
-   */
-  private reasoningStick = new WeakMap<HTMLElement, boolean>();
-  private reasoningScrollListeners = new WeakSet<HTMLElement>();
 
   readonly nodeLabels: Record<string, string> = {
     'analysts-team-node': 'Analysts Team',
@@ -196,31 +188,21 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
 
   /**
    * Scroll every visible reasoning box to the bottom so newly streamed tokens
-   * stay in view. Skips boxes the user has scrolled away from manually.
+   * stay in view. Always scrolls — manual scroll-up is overridden on the next
+   * chunk by design. Fires across multiple timing hooks to cover whatever
+   * point the browser actually applies the DOM update.
    */
   private scrollReasoningToBottom(): void {
-    queueMicrotask(() => {
+    const scroll = () => {
       this.reasoningBoxes?.forEach(ref => {
         const el = ref.nativeElement;
-        this.attachReasoningScrollListener(el);
-        // Default to sticky; only honour an explicit false set by the scroll
-        // listener after a real user-initiated scroll-away.
-        const stick = this.reasoningStick.get(el) ?? true;
-        if (stick) {
-          el.scrollTop = el.scrollHeight;
-        }
+        el.scrollTop = el.scrollHeight;
       });
-    });
-  }
-
-  private attachReasoningScrollListener(el: HTMLElement): void {
-    if (this.reasoningScrollListeners.has(el)) return;
-    this.reasoningScrollListeners.add(el);
-    el.addEventListener('scroll', () => {
-      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
-      // <48px counts as "at the bottom" so small overshoots still re-stick.
-      this.reasoningStick.set(el, distanceFromBottom < 48);
-    }, { passive: true });
+    };
+    scroll();
+    queueMicrotask(scroll);
+    requestAnimationFrame(scroll);
+    setTimeout(scroll, 0);
   }
 
   streamFor(node: NodeSnapshot): string {
@@ -290,6 +272,16 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
     } catch {
       return null;
     }
+  }
+
+  /**
+   * Resolves the canonical company name for a run by inspecting the analysts
+   * team node's output. Returns null until the analysts node finishes.
+   */
+  companyNameFor(run?: GraphRun | null): string | null {
+    const analysts = run?.nodes?.find(n => n.nodeId === 'analysts-team-node');
+    const parsed = this.parseAnalystsOutput(analysts?.outputJson);
+    return parsed?.companyName?.trim() || null;
   }
 
   trendClass(trend?: string): string {

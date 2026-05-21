@@ -198,6 +198,17 @@ public class AnalystsTeamNode : INode
         // the existing minimum-confidence routing rule.
         var (preLastPrice, preVolumeChange) =
             await ComputeMarketMetricsAsync(state.Symbol, cancellationToken);
+
+        // Resolve the canonical company name so we can disambiguate similar
+        // tickers in the analyst prompts (e.g. ROK → Rockwell Automation vs
+        // ROKU → Roku Inc). Without this the LLM mis-recalls obscure tickers
+        // from memory and hallucinates reports about the wrong company.
+        var asset = await _alpacaService.GetAssetAsync(state.Symbol, cancellationToken);
+        var companyName = asset?.Name;
+        var symbolLabel = string.IsNullOrWhiteSpace(companyName)
+            ? state.Symbol
+            : $"{state.Symbol} ({companyName})";
+
         if (preLastPrice is null)
         {
             await _activityLogger.LogActivityAsync(new ActivityLog
@@ -205,7 +216,7 @@ public class AnalystsTeamNode : INode
                 PackId = PackId,
                 HoundId = NodeId,
                 HoundName = "AnalystsTeam",
-                Message = $"No market data available for {state.Symbol}; skipping analyst pipeline.",
+                Message = $"No market data available for {symbolLabel}; skipping analyst pipeline.",
                 Severity = ActivitySeverity.Warning,
             }, cancellationToken);
 
@@ -215,25 +226,26 @@ public class AnalystsTeamNode : INode
                 VolumeChange: null,
                 Trend: "Neutral",
                 ConfidenceScore: 0d,
-                Summary: $"No market data available for {state.Symbol} from the broker. Skipping analysis.");
+                Summary: $"No market data available for {symbolLabel} from the broker. Skipping analysis.",
+                CompanyName: companyName);
             return state with { DataOutput = noData };
         }
 
         // Run each analyst sequentially
         var marketReport = await RunAnalystAsync(_marketAnalyst, "MarketAnalyst",
-            $"Analyse the stock {state.Symbol} for the past 7 trading days. Today is {DateTime.UtcNow:yyyy-MM-dd}.",
+            $"Analyse the stock {symbolLabel} for the past 7 trading days. Today is {DateTime.UtcNow:yyyy-MM-dd}.",
             state.Symbol, cancellationToken);
 
         var fundamentalsReport = await RunAnalystAsync(_fundamentalsAnalyst, "FundamentalsAnalyst",
-            $"Analyse the fundamentals for {state.Symbol}.",
+            $"Analyse the fundamentals for {symbolLabel}.",
             state.Symbol, cancellationToken);
 
         var newsReport = await RunAnalystAsync(_newsAnalyst, "NewsAnalyst",
-            $"Analyse recent news and market trends for {state.Symbol}.",
+            $"Analyse recent news and market trends for {symbolLabel}.",
             state.Symbol, cancellationToken);
 
         var sentimentReport = await RunAnalystAsync(_sentimentAnalyst, "SentimentAnalyst",
-            $"Analyse social media sentiment and public opinion for {state.Symbol}.",
+            $"Analyse social media sentiment and public opinion for {symbolLabel}.",
             state.Symbol, cancellationToken);
 
         // Synthesise all reports
@@ -284,6 +296,7 @@ public class AnalystsTeamNode : INode
             FundamentalsReport = fundamentalsReport,
             NewsReport = newsReport,
             SentimentReport = sentimentReport,
+            CompanyName = companyName,
         };
 
         await _activityLogger.LogActivityAsync(new ActivityLog
@@ -476,32 +489,47 @@ public class AnalystsTeamNode : INode
         }
     }
 
-    private Task<string> FetchNewsAsync(
+    private async Task<string> FetchNewsAsync(
         [Description("Ticker symbol")] string symbol)
     {
         // Alpaca doesn't provide a news API in the current client.
-        // Return a stub indicating no external news source is configured.
-        var result = $"""
+        // Return a stub that still names the underlying company so the LLM
+        // can't drift to a similarly-spelled ticker from its training data.
+        var asset = await _alpacaService.GetAssetAsync(symbol);
+        var companyLine = asset?.Name is { Length: > 0 } n
+            ? $"Underlying company: {n} (ticker {symbol}, exchange {asset!.Exchange})."
+            : $"Underlying company: ticker {symbol} (company name not resolved from broker).";
+
+        return $"""
             News data for {symbol} (as of {DateTime.UtcNow:yyyy-MM-dd}):
+            {companyLine}
             Note: No external news API is currently configured.
-            Please base your analysis on general market knowledge and the symbol context.
+            Base your analysis on general market knowledge of THIS specific company
+            (do not substitute a different company with a similar ticker).
             Consider recent earnings seasons, sector trends, and macroeconomic factors
             that may affect {symbol}.
             """;
-        return Task.FromResult(result);
     }
 
-    private Task<string> FetchSentimentAsync(
+    private async Task<string> FetchSentimentAsync(
         [Description("Ticker symbol")] string symbol)
     {
-        // Stub — no social media API configured yet.
-        var result = $"""
+        // Stub — no social media API configured yet. Include the canonical
+        // company name so the LLM can't confuse similar tickers (e.g. ROK vs
+        // ROKU) by pattern-matching against more famous symbols.
+        var asset = await _alpacaService.GetAssetAsync(symbol);
+        var companyLine = asset?.Name is { Length: > 0 } n
+            ? $"Underlying company: {n} (ticker {symbol}, exchange {asset!.Exchange})."
+            : $"Underlying company: ticker {symbol} (company name not resolved from broker).";
+
+        return $"""
             Sentiment data for {symbol} (as of {DateTime.UtcNow:yyyy-MM-dd}):
+            {companyLine}
             Note: No social media or sentiment API is currently configured.
-            Please base your sentiment analysis on general market knowledge.
+            Base your sentiment analysis on general market knowledge of THIS
+            specific company (do not substitute a similarly-spelled ticker).
             Consider the overall market mood, sector sentiment, and any widely known
             factors affecting {symbol}.
             """;
-        return Task.FromResult(result);
     }
 }

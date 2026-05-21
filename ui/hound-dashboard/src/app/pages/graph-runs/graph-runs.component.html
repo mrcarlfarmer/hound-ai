@@ -99,7 +99,12 @@
         <div class="rounded-lg border border-border bg-card p-4 mb-4">
           <div class="flex flex-wrap items-center gap-4">
             <div>
-              <h2 class="text-lg font-semibold">{{ selectedRun.symbol }}</h2>
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <h2 class="text-lg font-semibold">{{ selectedRun.symbol }}</h2>
+                @if (companyNameFor(selectedRun); as company) {
+                  <span class="text-sm text-muted-foreground">{{ company }}</span>
+                }
+              </div>
               <p class="text-xs text-muted-foreground font-mono">{{ selectedRun.runId }}</p>
             </div>
             <span class="text-xs px-2 py-1 rounded" [ngClass]="statusBadgeClass(selectedRun)">
@@ -225,6 +230,16 @@
 
                   <!-- ── Analysts Team: custom layout ────────────────── -->
                   @if (node.nodeId === 'analysts-team-node' && parseAnalystsOutput(node.outputJson); as a) {
+                    <!-- Company identification banner — makes it obvious which
+                         company the ticker resolved to (e.g. ROK = Rockwell
+                         Automation, not ROKU). -->
+                    @if (a.companyName) {
+                      <div class="rounded-lg bg-primary/5 border border-primary/30 px-3 py-2 mb-4 flex items-baseline gap-2 flex-wrap">
+                        <span class="text-xs uppercase tracking-wider text-muted-foreground">Company</span>
+                        <span class="font-mono text-sm font-semibold">{{ a.symbol ?? selectedRun.symbol }}</span>
+                        <span class="text-sm">— {{ a.companyName }}</span>
+                      </div>
+                    }
                     <!-- Metrics row -->
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                       <div class="rounded-lg bg-muted/40 p-3">

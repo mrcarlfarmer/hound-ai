@@ -16,6 +16,9 @@ internal sealed class StubAlpacaService : IAlpacaService
     public Task<IReadOnlyList<IPosition>> ListPositionsAsync(CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyList<IPosition>>(new List<IPosition>());
 
+    public Task<IAsset?> GetAssetAsync(string symbol, CancellationToken cancellationToken = default)
+        => Task.FromResult<IAsset?>(null);
+
     public Task<IOrder> SubmitOrderAsync(
         string symbol,
         OrderQuantity quantity,

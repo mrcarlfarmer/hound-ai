@@ -13,7 +13,8 @@ public record MarketAnalysis(
     string? MarketReport = null,
     string? FundamentalsReport = null,
     string? NewsReport = null,
-    string? SentimentReport = null);
+    string? SentimentReport = null,
+    string? CompanyName = null);
 
 public enum TradeAction { Buy, Sell, Hold }
 
