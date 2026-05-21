@@ -91,6 +91,7 @@ builder.Services.AddSingleton<AnalystsTeamNode>(sp => new AnalystsTeamNode(
 
 builder.Services.AddSingleton<StrategyNode>(sp => new StrategyNode(
     sp.GetRequiredKeyedService<IChatClient>("strategy"),
+    sp.GetRequiredService<IAlpacaService>(),
     sp.GetRequiredService<IActivityLogger>(),
     sp.GetService<ILoggerFactory>()));
 

@@ -182,7 +182,7 @@ public class EvalRunner
             case "StrategyNode":
             case "StrategyHound":
             {
-                var node = new StrategyNode(chatClient, activityLogger);
+                var node = new StrategyNode(chatClient, alpacaService, activityLogger);
                 var analysis = DeserializeContext<MarketAnalysis>(scenario.Input.Context)
                     ?? new MarketAnalysis("AAPL", 0, 0, "Unknown", 0, scenario.Input.UserMessage);
                 var state = TradingGraphState.Initial("AAPL") with { DataOutput = analysis };

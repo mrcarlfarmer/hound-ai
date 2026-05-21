@@ -71,6 +71,16 @@ public class AnalystsTeamNode : INode
                   returns a message starting with "NO_DATA" or "ERROR". In every
                   other case, the bars are real and must be analysed as-is.
 
+                PRICE-LEVEL RULES — STRICTLY ENFORCED:
+                - The user prompt supplies "Current price" — this is the authoritative
+                  last close.
+                - Any price level you mention (support, resistance, moving averages,
+                  targets, stops) MUST be derived from the actual bars returned by
+                  the tool and MUST be within ±15% of the current price.
+                - Do NOT invent round-number levels (e.g. $80, $90, $100) that
+                  contradict the current price. Do NOT cite levels for a different
+                  ticker.
+
                 Analyse the data for trend direction, momentum, and volume patterns.
                 Select and discuss the most relevant technical observations (moving averages,
                 support/resistance, RSI-like momentum, volume changes, volatility).
@@ -125,6 +135,15 @@ public class AnalystsTeamNode : INode
                 Analyse the news for impact on trading — earnings, regulatory changes,
                 sector trends, and macroeconomic factors.
                 Provide specific, actionable insights with supporting evidence.
+
+                PRICE-LEVEL RULES — STRICTLY ENFORCED:
+                - The user prompt supplies "Current price" — this is the authoritative
+                  last close. Anchor all commentary to it.
+                - Do NOT invent specific price targets, support, or resistance levels.
+                  If you must reference a level, it MUST be within ±15% of the
+                  current price.
+                - Do NOT confuse the ticker with a similarly-spelled symbol.
+
                 End with a Markdown table summarising key news items and their expected impact.
                 """,
             name: "NewsAnalyst",
@@ -150,6 +169,14 @@ public class AnalystsTeamNode : INode
                 Analyse public sentiment, social media trends, and market mood.
                 Assess whether sentiment is bullish, bearish, or neutral.
                 Provide specific insights on how sentiment may affect near-term trading.
+
+                PRICE-LEVEL RULES — STRICTLY ENFORCED:
+                - The user prompt supplies "Current price" — anchor all commentary to it.
+                - Do NOT invent specific price targets, support, or resistance levels.
+                  If you must reference a level, it MUST be within ±15% of the
+                  current price.
+                - Do NOT confuse the ticker with a similarly-spelled symbol.
+
                 End with a Markdown table summarising sentiment indicators.
                 """,
             name: "SentimentAnalyst",
@@ -232,20 +259,24 @@ public class AnalystsTeamNode : INode
         }
 
         // Run each analyst sequentially
+        var priceLine = preLastPrice is decimal lp
+            ? $"Current price: ${lp:F2} (authoritative — anchor all price levels to this)."
+            : "Current price: unavailable.";
+
         var marketReport = await RunAnalystAsync(_marketAnalyst, "MarketAnalyst",
-            $"Analyse the stock {symbolLabel} for the past 7 trading days. Today is {DateTime.UtcNow:yyyy-MM-dd}.",
+            $"Analyse the stock {symbolLabel} for the past 7 trading days. Today is {DateTime.UtcNow:yyyy-MM-dd}. {priceLine}",
             state.Symbol, cancellationToken);
 
         var fundamentalsReport = await RunAnalystAsync(_fundamentalsAnalyst, "FundamentalsAnalyst",
-            $"Analyse the fundamentals for {symbolLabel}.",
+            $"Analyse the fundamentals for {symbolLabel}. {priceLine}",
             state.Symbol, cancellationToken);
 
         var newsReport = await RunAnalystAsync(_newsAnalyst, "NewsAnalyst",
-            $"Analyse recent news and market trends for {symbolLabel}.",
+            $"Analyse recent news and market trends for {symbolLabel}. {priceLine}",
             state.Symbol, cancellationToken);
 
         var sentimentReport = await RunAnalystAsync(_sentimentAnalyst, "SentimentAnalyst",
-            $"Analyse social media sentiment and public opinion for {symbolLabel}.",
+            $"Analyse social media sentiment and public opinion for {symbolLabel}. {priceLine}",
             state.Symbol, cancellationToken);
 
         // Synthesise all reports

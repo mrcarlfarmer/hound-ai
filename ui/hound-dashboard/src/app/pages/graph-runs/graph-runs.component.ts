@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef, ViewChildren, QueryList, ElementRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectorRef, ViewChildren, QueryList, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -40,7 +40,7 @@ interface StrategyOutput {
   templateUrl: './graph-runs.component.html',
   styles: []
 })
-export class GraphRunsComponent implements OnInit, OnDestroy {
+export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   runs: GraphRun[] = [];
   selectedRun?: GraphRun;
   loading = false;
@@ -105,6 +105,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.sub?.unsubscribe();
     this.streamSub?.unsubscribe();
+    this.viewChildrenSub?.unsubscribe();
     this.signalr.unsubscribeFromPack('trading-pack');
     if (this.pollTimer) clearInterval(this.pollTimer);
   }
@@ -182,27 +183,66 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
     this.nodeStreams.set(key, current + chunk.text);
     if (this.selectedRun?.runId === chunk.runId) {
       this.cdr.detectChanges();
-      this.scrollReasoningToBottom();
     }
   }
 
-  /**
-   * Scroll every visible reasoning box to the bottom so newly streamed tokens
-   * stay in view. Always scrolls — manual scroll-up is overridden on the next
-   * chunk by design. Fires across multiple timing hooks to cover whatever
-   * point the browser actually applies the DOM update.
-   */
-  private scrollReasoningToBottom(): void {
-    const scroll = () => {
-      this.reasoningBoxes?.forEach(ref => {
-        const el = ref.nativeElement;
-        el.scrollTop = el.scrollHeight;
+  // ── Auto-scroll plumbing ─────────────────────────────────────────────────
+  //
+  // Each reasoning <pre> has a fixed max-height (max-h-96) + overflow-y-auto,
+  // so its border-box size NEVER changes — ResizeObserver wouldn't fire. We
+  // attach a MutationObserver to each box's subtree to catch every text-change
+  // and snap scrollTop to scrollHeight. A scroll listener tracks whether the
+  // user has scrolled away from the bottom; if so, auto-scroll is paused until
+  // they return to within STICKY_THRESHOLD_PX of the bottom.
+  private viewChildrenSub?: Subscription;
+  /** Elements currently observed, with their per-box observer + cleanup state. */
+  private observed = new WeakMap<HTMLElement, {
+    mutationObserver: MutationObserver;
+    onScroll: () => void;
+    stickToBottom: boolean;
+  }>();
+  /** Pixel tolerance for considering the user "at the bottom". */
+  private static readonly STICKY_THRESHOLD_PX = 24;
+
+  ngAfterViewInit(): void {
+    if (typeof MutationObserver === 'undefined' || !this.reasoningBoxes) {
+      return;
+    }
+    this.syncObservedBoxes(this.reasoningBoxes.toArray());
+    this.viewChildrenSub = this.reasoningBoxes.changes.subscribe(
+      (list: QueryList<ElementRef<HTMLElement>>) => this.syncObservedBoxes(list.toArray())
+    );
+  }
+
+  private syncObservedBoxes(refs: ElementRef<HTMLElement>[]): void {
+    for (const ref of refs) {
+      const el = ref.nativeElement;
+      if (this.observed.has(el)) continue;
+
+      const state = {
+        mutationObserver: null as unknown as MutationObserver,
+        onScroll: () => { /* set below */ },
+        stickToBottom: true,
+      };
+      state.onScroll = () => {
+        const distanceFromBottom = el.scrollHeight - el.clientHeight - el.scrollTop;
+        state.stickToBottom = distanceFromBottom <= GraphRunsComponent.STICKY_THRESHOLD_PX;
+      };
+      const mo = new MutationObserver(() => {
+        if (state.stickToBottom) {
+          el.scrollTop = el.scrollHeight;
+        }
       });
-    };
-    scroll();
-    queueMicrotask(scroll);
-    requestAnimationFrame(scroll);
-    setTimeout(scroll, 0);
+      mo.observe(el, { childList: true, characterData: true, subtree: true });
+      state.mutationObserver = mo;
+
+      el.addEventListener('scroll', state.onScroll, { passive: true });
+      this.observed.set(el, state);
+      // Snap to bottom on initial attach so freshly opened tabs start tailed.
+      el.scrollTop = el.scrollHeight;
+    }
+    // Detached elements get GC'd along with their WeakMap entries when
+    // Angular destroys them; their MutationObservers stop firing automatically.
   }
 
   streamFor(node: NodeSnapshot): string {
