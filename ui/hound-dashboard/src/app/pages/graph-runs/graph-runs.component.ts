@@ -1,12 +1,13 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, ViewChildren, QueryList, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
 import { Subscription } from 'rxjs';
 import { Marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { ApiService } from '../../services/api.service';
 import { SignalrService } from '../../services/signalr.service';
-import { GraphRun, NodeSnapshot, NodeStatus } from '../../models';
+import { GraphRun, NodeSnapshot, NodeStatus, NodeStreamChunk } from '../../models';
 import { HlmTabsImports } from '@spartan-ng/helm/tabs';
 
 interface AnalystsOutput {
@@ -43,12 +44,28 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
   selectedRun?: GraphRun;
   loading = false;
   expandedNodes = new Set<string>();
+  /** Live-streamed reasoning text, keyed by `${runId}:${nodeId}`. */
+  nodeStreams = new Map<string, string>();
+  /** Currently active tab per node, keyed by nodeId. */
+  activeTab = new Map<string, 'result' | 'reasoning'>();
   symbolInput = '';
   submitting = false;
   submitError = '';
   private sub?: Subscription;
+  private streamSub?: Subscription;
   private pollTimer?: ReturnType<typeof setInterval>;
   private marked = new Marked({ gfm: true, async: false });
+  /** Reasoning <pre> elements, used to auto-scroll as chunks arrive. */
+  @ViewChildren('reasoningBox') private reasoningBoxes?: QueryList<ElementRef<HTMLElement>>;
+  /**
+   * Per-element "stick to bottom" flag. Defaults to true; only flips to false
+   * when the user actively scrolls the box away from the bottom. This is more
+   * robust than re-checking distance-from-bottom on every chunk, because a
+   * single large chunk can push the bottom far enough away to latch the
+   * threshold-based approach off permanently.
+   */
+  private reasoningStick = new WeakMap<HTMLElement, boolean>();
+  private reasoningScrollListeners = new WeakSet<HTMLElement>();
 
   readonly nodeLabels: Record<string, string> = {
     'analysts-team-node': 'Analysts Team',
@@ -83,9 +100,11 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
       this.mergeRun(run);
       if (this.selectedRun?.runId === run.runId) {
         this.selectedRun = run;
+        this.autoExpandActive(run);
       }
       this.cdr.detectChanges();
     });
+    this.streamSub = this.signalr.onNodeStream$.subscribe(chunk => this.appendStream(chunk));
 
     // Poll for updates every 10s (covers runs that started while page was open)
     this.pollTimer = setInterval(() => this.loadRuns(), 10000);
@@ -93,6 +112,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.sub?.unsubscribe();
+    this.streamSub?.unsubscribe();
     this.signalr.unsubscribeFromPack('trading-pack');
     if (this.pollTimer) clearInterval(this.pollTimer);
   }
@@ -145,7 +165,83 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
         this.expandedNodes.add(n.nodeId);
       }
     });
+    this.autoExpandActive(run);
     this.cdr.detectChanges();
+  }
+
+  /** Expand the active node and default it to the reasoning tab. */
+  private autoExpandActive(run: GraphRun): void {
+    run.nodes?.forEach(n => {
+      if (n.status === 'Active') {
+        this.expandedNodes.add(n.nodeId);
+        if (!this.activeTab.has(n.nodeId)) {
+          this.activeTab.set(n.nodeId, 'reasoning');
+        }
+      } else if (n.status === 'Completed' && this.activeTab.get(n.nodeId) === 'reasoning') {
+        // Once the node has a result, flip back to the result tab
+        this.activeTab.set(n.nodeId, 'result');
+      }
+    });
+  }
+
+  private appendStream(chunk: NodeStreamChunk): void {
+    const key = `${chunk.runId}:${chunk.nodeId}`;
+    const current = this.nodeStreams.get(key) ?? '';
+    this.nodeStreams.set(key, current + chunk.text);
+    if (this.selectedRun?.runId === chunk.runId) {
+      this.cdr.detectChanges();
+      this.scrollReasoningToBottom();
+    }
+  }
+
+  /**
+   * Scroll every visible reasoning box to the bottom so newly streamed tokens
+   * stay in view. Skips boxes the user has scrolled away from manually.
+   */
+  private scrollReasoningToBottom(): void {
+    queueMicrotask(() => {
+      this.reasoningBoxes?.forEach(ref => {
+        const el = ref.nativeElement;
+        this.attachReasoningScrollListener(el);
+        // Default to sticky; only honour an explicit false set by the scroll
+        // listener after a real user-initiated scroll-away.
+        const stick = this.reasoningStick.get(el) ?? true;
+        if (stick) {
+          el.scrollTop = el.scrollHeight;
+        }
+      });
+    });
+  }
+
+  private attachReasoningScrollListener(el: HTMLElement): void {
+    if (this.reasoningScrollListeners.has(el)) return;
+    this.reasoningScrollListeners.add(el);
+    el.addEventListener('scroll', () => {
+      const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      // <48px counts as "at the bottom" so small overshoots still re-stick.
+      this.reasoningStick.set(el, distanceFromBottom < 48);
+    }, { passive: true });
+  }
+
+  streamFor(node: NodeSnapshot): string {
+    if (!this.selectedRun) return node.reasoningText ?? '';
+    const live = this.nodeStreams.get(`${this.selectedRun.runId}:${node.nodeId}`) ?? '';
+    // Prefer live stream while running; fall back to persisted reasoning so it
+    // survives page reloads after the run completes.
+    return live.length > 0 ? live : (node.reasoningText ?? '');
+  }
+
+  hasReasoning(node: NodeSnapshot): boolean {
+    return this.streamFor(node).length > 0;
+  }
+
+  tabFor(node: NodeSnapshot): 'result' | 'reasoning' {
+    return this.activeTab.get(node.nodeId)
+      ?? (node.status === 'Active' ? 'reasoning' : 'result');
+  }
+
+  setTab(node: NodeSnapshot, tab: 'result' | 'reasoning'): void {
+    this.activeTab.set(node.nodeId, tab);
   }
 
   toggleNode(nodeId: string): void {
@@ -175,8 +271,16 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
 
   renderMarkdown(text: string | null | undefined): SafeHtml {
     if (!text) return '';
-    const html = this.marked.parse(text) as string;
-    return this.sanitizer.bypassSecurityTrustHtml(html);
+    const rawHtml = this.marked.parse(text) as string;
+    // Marked can emit raw HTML from the source markdown, so sanitize before
+    // bypassing Angular's built-in sanitizer. DOMPurify strips scripts,
+    // javascript: URLs, inline event handlers, and other XSS vectors.
+    const cleanHtml = DOMPurify.sanitize(rawHtml, {
+      USE_PROFILES: { html: true },
+      FORBID_TAGS: ['style', 'iframe', 'object', 'embed', 'form'],
+      FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick'],
+    });
+    return this.sanitizer.bypassSecurityTrustHtml(cleanHtml);
   }
 
   parseAnalystsOutput(json?: string): AnalystsOutput | null {
@@ -193,6 +297,20 @@ export class GraphRunsComponent implements OnInit, OnDestroy {
     if (t.includes('bullish')) return 'bg-green-900/40 text-green-400 border-green-600';
     if (t.includes('bearish')) return 'bg-red-900/40 text-red-400 border-red-600';
     return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
+  }
+
+  /**
+   * Collapses any free-form trend label produced by the LLM into one of the
+   * three canonical values — Bullish / Bearish / Neutral — so the badge stays
+   * compact even when the model returns something like
+   * "moderately_bullish_with_regulatory_concerns".
+   */
+  formatTrend(trend?: string): string {
+    const t = trend?.toLowerCase() ?? '';
+    if (t.includes('bull')) return 'Bullish';
+    if (t.includes('bear')) return 'Bearish';
+    if (!trend) return '—';
+    return 'Neutral';
   }
 
   private normalizeConfidence(score?: number): number {

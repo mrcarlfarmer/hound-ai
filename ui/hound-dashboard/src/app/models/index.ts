@@ -119,6 +119,7 @@ export interface NodeSnapshot {
   completedAt?: string;
   outputJson?: string;
   errorMessage?: string;
+  reasoningText?: string;
 }
 
 export interface GraphRun {
@@ -147,4 +148,12 @@ export interface RunRequest {
   completedAt?: string;
   runId?: string;
   errorMessage?: string;
+}
+
+export interface NodeStreamChunk {
+  packId: string;
+  runId: string;
+  nodeId: string;
+  text: string;
+  timestamp: string;
 }

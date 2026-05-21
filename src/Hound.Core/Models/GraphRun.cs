@@ -38,4 +38,10 @@ public class NodeSnapshot
     public DateTime? CompletedAt { get; set; }
     public string? OutputJson { get; set; }
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// Accumulated streamed reasoning text captured from the node's LLM calls,
+    /// persisted so the dashboard can display it after page reloads.
+    /// </summary>
+    public string? ReasoningText { get; set; }
 }

@@ -1,3 +1,4 @@
+using Hound.Core.LlmClient;
 using Hound.Core.Logging;
 using Hound.Core.Models;
 using Hound.Trading.Graph;
@@ -16,13 +17,14 @@ public sealed class TradingGraphRoutingTests
         var nodes = new Dictionary<string, INode>();
         var stateStore = new Mock<IStateStore>();
         var resetter = new Mock<IResettableExecutor>();
-        var publisher = new Mock<GraphRunPublisher>(MockBehavior.Loose, new Mock<Raven.Client.Documents.IDocumentStore>().Object, new Mock<System.Net.Http.IHttpClientFactory>().Object, "http://localhost");
+        var publisher = new Mock<GraphRunPublisher>(MockBehavior.Loose, new Mock<Raven.Client.Documents.IDocumentStore>().Object, new Mock<System.Net.Http.IHttpClientFactory>().Object, "http://localhost", null!);
         var settings = Options.Create(new TradingGraphSettings { MaxRefinements = maxRefinements });
         var activityLogger = new Mock<IActivityLogger>();
+        var streamPublisher = new Mock<INodeStreamPublisher>();
         var logger = new Mock<ILogger<TradingGraph>>();
 
         return new TradingGraph(nodes, stateStore.Object, resetter.Object, publisher.Object, settings,
-            activityLogger.Object, logger.Object);
+            activityLogger.Object, streamPublisher.Object, logger.Object);
     }
 
     [TestMethod]

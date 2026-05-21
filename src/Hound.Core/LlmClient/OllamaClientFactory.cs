@@ -25,7 +25,8 @@ public class OllamaClientFactory : IOllamaClientFactory
 
     /// <summary>
     /// Creates an <see cref="IChatClient"/> configured for the Ollama OpenAI-compatible endpoint
-    /// for the specified model.
+    /// for the specified model. The returned client is wrapped with <see cref="StreamingChatClient"/>
+    /// middleware so that node executions can stream reasoning to the dashboard.
     /// </summary>
     public IChatClient CreateChatClient(string modelName)
     {
@@ -35,6 +36,6 @@ public class OllamaClientFactory : IOllamaClientFactory
         };
         var credential = new ApiKeyCredential("ollama");
         var chatClient = new OpenAI.Chat.ChatClient(modelName, credential, options);
-        return chatClient.AsIChatClient();
+        return new StreamingChatClient(chatClient.AsIChatClient());
     }
 }

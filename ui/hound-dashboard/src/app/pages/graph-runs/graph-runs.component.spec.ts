@@ -35,6 +35,7 @@ describe('GraphRunsComponent', () => {
       subscribeToPack: vi.fn(),
       unsubscribeFromPack: vi.fn(),
       onGraphRunUpdate$: of(),
+      onNodeStream$: of(),
     };
 
     TestBed.configureTestingModule({

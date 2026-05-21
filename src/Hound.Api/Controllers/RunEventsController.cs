@@ -30,4 +30,20 @@ public class RunEventsController : ControllerBase
             .SendAsync("OnGraphRunUpdate", run, cancellationToken);
         return Ok();
     }
+
+    /// <summary>
+    /// POST /api/runs/events/node-stream — Called by the trading-pack while a node's
+    /// LLM call is streaming. Broadcasts each chunk so the dashboard can show
+    /// reasoning live as it is produced.
+    /// </summary>
+    [HttpPost("node-stream")]
+    public async Task<IActionResult> NodeStream(
+        [FromBody] NodeStreamChunk chunk,
+        CancellationToken cancellationToken = default)
+    {
+        await _hubContext.Clients
+            .Group($"pack-{chunk.PackId}")
+            .SendAsync("OnNodeStream", chunk, cancellationToken);
+        return Ok();
+    }
 }

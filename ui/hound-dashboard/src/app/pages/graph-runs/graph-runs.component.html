@@ -166,7 +166,7 @@
 
                   <span class="text-xs font-mono shrink-0">{{ displayStatus(node) }}</span>
 
-                  @if (node.outputJson || node.errorMessage) {
+                  @if (node.outputJson || node.errorMessage || hasReasoning(node) || node.status === 'Active') {
                     <svg class="w-4 h-4 transition-transform shrink-0" [class.rotate-180]="isExpanded(node.nodeId)"
                       fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -176,8 +176,49 @@
               </button>
 
               <!-- Expanded Node Output -->
-              @if (isExpanded(node.nodeId) && (node.outputJson || node.errorMessage)) {
-                <div class="border border-t-0 rounded-b-lg p-4 bg-card/50 border-border">
+              @if (isExpanded(node.nodeId) && (node.outputJson || node.errorMessage || hasReasoning(node) || node.status === 'Active')) {
+                <div class="border border-t-0 rounded-b-lg p-0 bg-card/50 border-border">
+                  <!-- Tab strip -->
+                  <div class="flex border-b border-border">
+                    <button type="button" (click)="setTab(node, 'result')"
+                      class="px-4 py-2 text-xs font-medium transition-colors"
+                      [ngClass]="tabFor(node) === 'result'
+                        ? 'text-foreground border-b-2 border-primary -mb-px'
+                        : 'text-muted-foreground hover:text-foreground'"
+                      [disabled]="!node.outputJson && !node.errorMessage">
+                      Result
+                      @if (!node.outputJson && !node.errorMessage) {
+                        <span class="ml-1 opacity-50">(pending)</span>
+                      }
+                    </button>
+                    <button type="button" (click)="setTab(node, 'reasoning')"
+                      class="px-4 py-2 text-xs font-medium transition-colors flex items-center gap-2"
+                      [ngClass]="tabFor(node) === 'reasoning'
+                        ? 'text-foreground border-b-2 border-primary -mb-px'
+                        : 'text-muted-foreground hover:text-foreground'">
+                      Reasoning
+                      @if (node.status === 'Active') {
+                        <span class="w-2 h-2 rounded-full border border-blue-400 border-t-transparent animate-spin"></span>
+                      }
+                    </button>
+                  </div>
+
+                  <!-- Reasoning tab content -->
+                  @if (tabFor(node) === 'reasoning') {
+                    <div class="p-4">
+                      @if (hasReasoning(node)) {
+                        <pre #reasoningBox class="text-xs whitespace-pre-wrap break-words font-mono bg-muted/30 rounded p-3 max-h-96 overflow-y-auto leading-relaxed">{{ streamFor(node) }}</pre>
+                      } @else if (node.status === 'Active') {
+                        <p class="text-sm text-muted-foreground italic">Waiting for the model to start streaming…</p>
+                      } @else {
+                        <p class="text-sm text-muted-foreground italic">No reasoning captured for this node.</p>
+                      }
+                    </div>
+                  }
+
+                  <!-- Result tab content -->
+                  @if (tabFor(node) === 'result') {
+                    <div class="p-4">
                   @if (node.errorMessage) {
                     <div class="text-red-400 text-sm">{{ node.errorMessage }}</div>
                   }
@@ -202,7 +243,7 @@
                         <span class="block text-xs text-muted-foreground mb-1">Trend</span>
                         <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
                           [ngClass]="trendClass(a.trend)">
-                          {{ a.trend ?? '—' }}
+                          {{ formatTrend(a.trend) }}
                         </span>
                       </div>
                       <div class="rounded-lg bg-muted/40 p-3">
@@ -307,6 +348,8 @@
                           </div>
                         </div>
                       }
+                    </div>
+                  }
                     </div>
                   }
                 </div>

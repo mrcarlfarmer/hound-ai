@@ -6,6 +6,7 @@ using Hound.Trading.Graph;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -39,13 +40,16 @@ public class AnalystsTeamNode : INode
         _activityLogger = activityLogger;
 
         // ── Market Analyst ────────────────────────────────────────────────────
+        // NOTE: tools are bound via method-group delegates rather than
+        // attributed lambdas. AIFunctionFactory's reflection invoker has a bug
+        // in 10.4.x that mangles `NullableContextAttribute` (loads it as
+        // `lableContextAttribute`) when invoking synthesised lambda closures
+        // with `[Description]` parameter attributes, which breaks the first
+        // tool call in the analysts pipeline.
         var marketTools = new List<AITool>
         {
             AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Ticker symbol, e.g. AAPL")] string symbol,
-                 [System.ComponentModel.Description("Start date yyyy-MM-dd")] string startDate,
-                 [System.ComponentModel.Description("End date yyyy-MM-dd")] string endDate) =>
-                    FetchStockDataAsync(symbol, startDate, endDate),
+                FetchStockDataAsync,
                 "get_stock_data",
                 "Retrieves OHLCV price bars for a symbol in a date range"),
         };
@@ -56,6 +60,17 @@ public class AnalystsTeamNode : INode
                 /no_think
                 You are a trading assistant tasked with analysing financial markets.
                 Use the get_stock_data tool to retrieve recent OHLCV price bars.
+
+                CRITICAL DATA-TRUST RULES:
+                - The get_stock_data tool returns AUTHORITATIVE live market data from
+                  the broker API. Trust it completely.
+                - Your training cutoff is irrelevant. If a date looks "future" to you
+                  but the tool returned rows for it, the data is real. Do NOT claim
+                  the data is unavailable, simulated, or in the future.
+                - The only time data is unavailable is when the tool explicitly
+                  returns a message starting with "NO_DATA" or "ERROR". In every
+                  other case, the bars are real and must be analysed as-is.
+
                 Analyse the data for trend direction, momentum, and volume patterns.
                 Select and discuss the most relevant technical observations (moving averages,
                 support/resistance, RSI-like momentum, volume changes, volatility).
@@ -71,8 +86,7 @@ public class AnalystsTeamNode : INode
         var fundamentalsTools = new List<AITool>
         {
             AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Ticker symbol")] string symbol) =>
-                    FetchFundamentalsAsync(symbol),
+                FetchFundamentalsAsync,
                 "get_fundamentals",
                 "Retrieves company fundamentals — profile, financials, account equity"),
         };
@@ -97,8 +111,7 @@ public class AnalystsTeamNode : INode
         var newsTools = new List<AITool>
         {
             AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Ticker symbol")] string symbol) =>
-                    FetchNewsAsync(symbol),
+                FetchNewsAsync,
                 "get_news",
                 "Retrieves recent news and market events for a symbol"),
         };
@@ -123,8 +136,7 @@ public class AnalystsTeamNode : INode
         var sentimentTools = new List<AITool>
         {
             AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Ticker symbol")] string symbol) =>
-                    FetchSentimentAsync(symbol),
+                FetchSentimentAsync,
                 "get_sentiment",
                 "Retrieves social media sentiment and public opinion for a symbol"),
         };
@@ -159,7 +171,7 @@ public class AnalystsTeamNode : INode
                 - lastPrice = the most recent closing price from the market report. Must be > 0.
                 - volumeChange = volume ratio from the market report (e.g. 1.2 means 20% above average). Must be > 0.
                 - trend = exactly one of: "Bullish", "Bearish", "Neutral"
-                - confidenceScore = your overall confidence from 0.0 to 1.0
+                - confidenceScore = your overall confidence from 0.05 to 1.0. NEVER emit 0; if signals are weak, use 0.25.
                 - summary = 1-3 sentences combining all four reports. Keep it under 200 words.
                 - Output raw JSON only. No ```json fences, no markdown, no extra text.
                 """,
@@ -179,6 +191,33 @@ public class AnalystsTeamNode : INode
             Message = $"Analyst team starting analysis of {state.Symbol}",
             Severity = ActivitySeverity.Info,
         }, cancellationToken);
+
+        // Pre-flight: confirm the broker actually has bar data for this symbol.
+        // If not, skip the (expensive, slow) analyst pipeline and emit a clean
+        // low-confidence MarketAnalysis so the graph can terminate the run via
+        // the existing minimum-confidence routing rule.
+        var (preLastPrice, preVolumeChange) =
+            await ComputeMarketMetricsAsync(state.Symbol, cancellationToken);
+        if (preLastPrice is null)
+        {
+            await _activityLogger.LogActivityAsync(new ActivityLog
+            {
+                PackId = PackId,
+                HoundId = NodeId,
+                HoundName = "AnalystsTeam",
+                Message = $"No market data available for {state.Symbol}; skipping analyst pipeline.",
+                Severity = ActivitySeverity.Warning,
+            }, cancellationToken);
+
+            var noData = new MarketAnalysis(
+                state.Symbol,
+                LastPrice: null,
+                VolumeChange: null,
+                Trend: "Neutral",
+                ConfidenceScore: 0d,
+                Summary: $"No market data available for {state.Symbol} from the broker. Skipping analysis.");
+            return state with { DataOutput = noData };
+        }
 
         // Run each analyst sequentially
         var marketReport = await RunAnalystAsync(_marketAnalyst, "MarketAnalyst",
@@ -234,9 +273,13 @@ public class AnalystsTeamNode : INode
         var json = LlmResponseParser.ExtractJson(synthResponse.Text ?? "{}");
         var analysis = ParseSynthesisJson(json, state.Symbol);
 
-        // Attach individual reports
+        // Attach individual reports + the pre-flight market metrics (override
+        // LLM-supplied lastPrice/volumeChange because the broker numbers are
+        // authoritative).
         analysis = analysis with
         {
+            LastPrice = preLastPrice ?? analysis.LastPrice,
+            VolumeChange = preVolumeChange ?? analysis.VolumeChange,
             MarketReport = marketReport,
             FundamentalsReport = fundamentalsReport,
             NewsReport = newsReport,
@@ -289,9 +332,13 @@ public class AnalystsTeamNode : INode
             decimal? volumeChange = root.TryGetProperty("volumeChange", out var vc) && vc.ValueKind == JsonValueKind.Number
                 ? vc.GetDecimal() : null;
             string trend = root.TryGetProperty("trend", out var tr) && tr.ValueKind == JsonValueKind.String
-                ? tr.GetString() ?? "Unknown" : "Unknown";
+                ? NormalizeTrend(tr.GetString()) : "Neutral";
             double? confidence = root.TryGetProperty("confidenceScore", out var cs) && cs.ValueKind == JsonValueKind.Number
-                ? cs.GetDouble() : null;
+                ? cs.GetDouble() : (double?)null;
+            // Treat a zero confidence as "no signal" rather than "strongly low",
+            // otherwise the synthesiser silently aborts the graph whenever the
+            // LLM omits or defaults the field.
+            if (confidence is 0d) confidence = null;
             string summary = root.TryGetProperty("summary", out var su) && su.ValueKind == JsonValueKind.String
                 ? su.GetString() ?? "No summary" : "No summary";
 
@@ -299,13 +346,71 @@ public class AnalystsTeamNode : INode
         }
         catch
         {
-            return new MarketAnalysis(symbol, null, null, "Unknown", null, json);
+            return new MarketAnalysis(symbol, null, null, "Neutral", null, json);
         }
+    }
+
+    /// <summary>
+    /// Collapses the LLM's free-form trend label into one of three canonical
+    /// values — <c>"Bullish"</c>, <c>"Bearish"</c>, or <c>"Neutral"</c> — so the
+    /// dashboard can render a clean badge regardless of what the model emits.
+    /// </summary>
+    private static string NormalizeTrend(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "Neutral";
+        var lower = raw.ToLowerInvariant();
+        if (lower.Contains("bull")) return "Bullish";
+        if (lower.Contains("bear")) return "Bearish";
+        return "Neutral";
     }
 
     // ── Tool implementations ─────────────────────────────────────────────────
 
-    private async Task<string> FetchStockDataAsync(string symbol, string startDate, string endDate)
+    /// <summary>
+    /// Deterministically derives last price and relative volume change from
+    /// Alpaca daily bars. Returns (null, null) if data is unavailable. Volume
+    /// change is the ratio of the most recent day's volume to the trailing
+    /// 20-day average (capped to 2 decimal places).
+    /// </summary>
+    private async Task<(decimal? LastPrice, decimal? VolumeChange)> ComputeMarketMetricsAsync(
+        string symbol, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var to = DateTime.UtcNow.Date;
+            var from = to.AddDays(-45);
+            var bars = await _alpacaService.GetBarsAsync(symbol, from, to, BarTimeFrame.Day, cancellationToken);
+            if (bars.Count == 0)
+                return (null, null);
+
+            var ordered = bars.OrderBy(b => b.TimeUtc).ToList();
+            var lastBar = ordered[^1];
+            decimal lastPrice = lastBar.Close;
+
+            decimal? volumeChange = null;
+            if (ordered.Count >= 2)
+            {
+                var priorBars = ordered.Take(ordered.Count - 1).TakeLast(20).ToList();
+                if (priorBars.Count > 0)
+                {
+                    var avgPrior = priorBars.Average(b => (decimal)b.Volume);
+                    if (avgPrior > 0)
+                        volumeChange = Math.Round((decimal)lastBar.Volume / avgPrior, 2);
+                }
+            }
+
+            return (lastPrice, volumeChange);
+        }
+        catch
+        {
+            return (null, null);
+        }
+    }
+
+    private async Task<string> FetchStockDataAsync(
+        [Description("Ticker symbol, e.g. AAPL")] string symbol,
+        [Description("Start date yyyy-MM-dd")] string startDate,
+        [Description("End date yyyy-MM-dd")] string endDate)
     {
         try
         {
@@ -314,12 +419,19 @@ public class AnalystsTeamNode : INode
             var bars = await _alpacaService.GetBarsAsync(symbol, from, to, BarTimeFrame.Day);
 
             if (bars.Count == 0)
-                return $"No bar data found for {symbol} between {from:yyyy-MM-dd} and {to:yyyy-MM-dd}.";
+                return $"NO_DATA: broker returned zero bars for {symbol} between {from:yyyy-MM-dd} and {to:yyyy-MM-dd}.";
 
             var summary = bars.Select(b =>
                 $"{b.TimeUtc:yyyy-MM-dd}: O={b.Open} H={b.High} L={b.Low} C={b.Close} V={b.Volume}");
 
-            return $"OHLCV data for {symbol}:\n{string.Join("\n", summary)}";
+            // Prefix with an authoritative banner so the LLM cannot dismiss the
+            // data as "future" or "simulated" based on its training cutoff.
+            return $"""
+                AUTHORITATIVE LIVE BROKER DATA for {symbol} ({from:yyyy-MM-dd} to {to:yyyy-MM-dd}).
+                These bars are real and current. Analyse them as-is; do not question their validity.
+
+                {string.Join("\n", summary)}
+                """;
         }
         catch (Exception ex)
         {
@@ -327,7 +439,8 @@ public class AnalystsTeamNode : INode
         }
     }
 
-    private async Task<string> FetchFundamentalsAsync(string symbol)
+    private async Task<string> FetchFundamentalsAsync(
+        [Description("Ticker symbol")] string symbol)
     {
         try
         {
@@ -363,7 +476,8 @@ public class AnalystsTeamNode : INode
         }
     }
 
-    private Task<string> FetchNewsAsync(string symbol)
+    private Task<string> FetchNewsAsync(
+        [Description("Ticker symbol")] string symbol)
     {
         // Alpaca doesn't provide a news API in the current client.
         // Return a stub indicating no external news source is configured.
@@ -377,7 +491,8 @@ public class AnalystsTeamNode : INode
         return Task.FromResult(result);
     }
 
-    private Task<string> FetchSentimentAsync(string symbol)
+    private Task<string> FetchSentimentAsync(
+        [Description("Ticker symbol")] string symbol)
     {
         // Stub — no social media API configured yet.
         var result = $"""
