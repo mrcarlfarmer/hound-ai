@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, WatchtowerEvent, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest } from '../models';
+import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -30,13 +30,6 @@ export class ApiService {
     if (filters.page) params = params.set('page', filters.page.toString());
     if (filters.pageSize) params = params.set('pageSize', filters.pageSize.toString());
     return this.http.get<PagedResult<ActivityLog>>(`${this.baseUrl}/api/activity`, { params });
-  }
-
-  getWatchtowerEvents(page = 1, pageSize = 50): Observable<WatchtowerEvent[]> {
-    const params = new HttpParams()
-      .set('page', page.toString())
-      .set('pageSize', pageSize.toString());
-    return this.http.get<WatchtowerEvent[]>(`${this.baseUrl}/api/watchtower`, { params });
   }
 
   getHealth(): Observable<HealthReport> {
