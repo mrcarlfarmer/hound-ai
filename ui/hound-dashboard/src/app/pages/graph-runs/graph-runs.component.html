@@ -143,14 +143,18 @@
                 [ngClass]="nodeStatusClass(node.status)">
                 <div class="flex items-center gap-3">
                   <!-- Status Indicator -->
-                  <div class="w-3 h-3 rounded-full shrink-0"
-                    [ngClass]="{
-                      'bg-blue-400 animate-pulse': node.status === 'Active',
-                      'bg-green-400': node.status === 'Completed',
-                      'bg-red-400': node.status === 'Failed',
-                      'bg-gray-500': node.status === 'Pending' || node.status === 'Skipped' || isNoAction(node)
-                    }">
-                  </div>
+                  @if (node.status === 'Active') {
+                    <div class="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin shrink-0"
+                      aria-label="Running"></div>
+                  } @else {
+                    <div class="w-3 h-3 rounded-full shrink-0"
+                      [ngClass]="{
+                        'bg-green-400': node.status === 'Completed',
+                        'bg-red-400': node.status === 'Failed',
+                        'bg-gray-500': node.status === 'Pending' || node.status === 'Skipped' || isNoAction(node)
+                      }">
+                    </div>
+                  }
 
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
