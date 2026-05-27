@@ -111,7 +111,6 @@ builder.Services.AddSingleton<MonitorNode>(sp =>
 {
     var settings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<TradingGraphSettings>>().Value;
     return new MonitorNode(
-        sp.GetRequiredKeyedService<IChatClient>("default"),
         sp.GetRequiredService<IAlpacaService>(),
         sp.GetRequiredService<IActivityLogger>(),
         sp.GetRequiredService<IDocumentStore>(),

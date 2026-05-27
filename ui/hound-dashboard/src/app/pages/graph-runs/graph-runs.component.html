@@ -216,7 +216,8 @@
                       class="px-4 py-2 text-xs font-medium transition-colors flex items-center gap-2"
                       [ngClass]="tabFor(node) === 'reasoning'
                         ? 'text-foreground border-b-2 border-primary -mb-px'
-                        : 'text-muted-foreground hover:text-foreground'">
+                        : 'text-muted-foreground hover:text-foreground'"
+                      [class.hidden]="node.nodeId === 'monitor-node'">
                       Reasoning
                       @if (node.status === 'Active') {
                         <span class="w-2 h-2 rounded-full border border-blue-400 border-t-transparent animate-spin"></span>

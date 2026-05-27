@@ -3,18 +3,15 @@ using Hound.Core.Logging;
 using Hound.Core.Models;
 using Hound.Trading.AlpacaClient;
 using Hound.Trading.Graph;
-using Microsoft.Agents.AI;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Hound.Trading.Nodes;
 
 /// <summary>
 /// Monitors open trades by checking order fill status and current positions via Alpaca.
-/// Absorbs the responsibilities of the former <c>OrderWatcherService</c>.
+/// Purely deterministic — no LLM call; all data comes directly from the broker API.
 /// <para>
 /// When <see cref="MonitorResult.TradeOpen"/> is <c>true</c>, the graph loops back
 /// to <see cref="AnalystsTeamNode"/> after a configured delay and KV cache reset.
@@ -26,7 +23,6 @@ public class MonitorNode : INode
     public string PackId => "trading-pack";
     private const string Database = "hound-trading-pack";
 
-    private readonly ChatClientAgent _agent;
     private readonly IAlpacaService _alpacaService;
     private readonly IActivityLogger _activityLogger;
     private readonly IDocumentStore _documentStore;
@@ -35,7 +31,6 @@ public class MonitorNode : INode
     private readonly ILogger<MonitorNode>? _logger;
 
     public MonitorNode(
-        IChatClient chatClient,
         IAlpacaService alpacaService,
         IActivityLogger activityLogger,
         IDocumentStore documentStore,
@@ -49,38 +44,6 @@ public class MonitorNode : INode
         _resetter = resetter;
         _monitorDelaySeconds = monitorDelaySeconds;
         _logger = loggerFactory?.CreateLogger<MonitorNode>();
-
-        var tools = new List<AITool>
-        {
-            AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Stock ticker symbol")] string symbol) =>
-                    CheckPositionAsync(symbol),
-                "check_position",
-                "Checks current position for a symbol including quantity and unrealized P&L"),
-
-            AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Alpaca order ID (GUID)")] string orderId) =>
-                    GetOrderStatusAsync(orderId),
-                "get_order_status",
-                "Retrieves the current status, filled quantity, and average fill price for an order"),
-        };
-
-        _agent = new ChatClientAgent(
-            chatClient,
-            instructions: """
-                /no_think
-                You are MonitorNode, a trade lifecycle monitor.
-                Your role is to check the status of placed orders and open positions.
-                Use get_order_status to check if the order has been filled.
-                Use check_position to see current holdings and unrealized P&L.
-                Determine if the trade is still open (position held) or closed (no position).
-                Respond strictly in JSON matching:
-                {"tradeOpen":true,"currentStatus":"Filled|Pending|PartiallyFilled|Canceled|Expired|Rejected","currentPrice":null,"unrealizedPnL":null,"summary":"..."}
-                """,
-            name: "MonitorNode",
-            description: "Monitors trade lifecycle — order fills and position status",
-            tools: tools,
-            loggerFactory: loggerFactory);
     }
 
     public async Task<TradingGraphState> ExecuteAsync(
@@ -136,33 +99,20 @@ public class MonitorNode : INode
         // Update TradeDocument status from Alpaca
         await UpdateTradeDocumentAsync(execution, cancellationToken);
 
-        // Fetch authoritative facts from Alpaca BEFORE invoking the LLM so we
-        // can both ground the model's narrative and overwrite any bookkeeping
-        // fields it tries to confabulate. The LLM never gets to decide
-        // tradeOpen or currentStatus — those come straight from the broker.
+        // Fetch authoritative facts from Alpaca.
         FillStatus authoritativeStatus = FillStatus.Pending;
         decimal? currentPrice = null;
         decimal? unrealizedPnL = null;
         var tradeOpen = false;
-        string? orderFacts = null;
-        string? positionFacts = null;
 
         try
         {
             var order = await _alpacaService.GetOrderAsync(orderGuid, cancellationToken);
             authoritativeStatus = MapOrderStatus(order.OrderStatus);
-            orderFacts = JsonSerializer.Serialize(new
-            {
-                orderId = order.OrderId.ToString(),
-                status = order.OrderStatus.ToString(),
-                filledQuantity = order.FilledQuantity,
-                averageFillPrice = order.AverageFillPrice,
-            });
         }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "MonitorNode failed to fetch order {OrderId}", execution.OrderId);
-            orderFacts = $"{{\"error\":\"order lookup failed: {ex.Message}\"}}";
         }
 
         try
@@ -175,25 +125,11 @@ public class MonitorNode : INode
                 tradeOpen = true;
                 currentPrice = position.AssetCurrentPrice;
                 unrealizedPnL = position.UnrealizedProfitLoss;
-                positionFacts = JsonSerializer.Serialize(new
-                {
-                    hasPosition = true,
-                    quantity = position.Quantity,
-                    marketValue = position.MarketValue,
-                    unrealizedPnL = position.UnrealizedProfitLoss,
-                    currentPrice = position.AssetCurrentPrice,
-                    averageEntryPrice = position.AverageEntryPrice,
-                });
-            }
-            else
-            {
-                positionFacts = JsonSerializer.Serialize(new { hasPosition = false, quantity = 0m });
             }
         }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex, "MonitorNode failed to fetch position for {Symbol}", state.Symbol);
-            positionFacts = $"{{\"error\":\"position lookup failed: {ex.Message}\"}}";
         }
 
         // An order that is still pending (not yet filled, not rejected/canceled/expired)
@@ -204,35 +140,9 @@ public class MonitorNode : INode
             tradeOpen = true;
         }
 
-        var prompt =
-            $"Trade lifecycle check for {state.Symbol}.\n\n" +
-            $"Authoritative facts (already fetched from Alpaca — do NOT call tools, just summarise):\n" +
-            $"  order: {orderFacts}\n" +
-            $"  position: {positionFacts}\n" +
-            $"  derived tradeOpen: {tradeOpen}\n" +
-            $"  derived currentStatus: {authoritativeStatus}\n\n" +
-            "Produce the JSON response. The `tradeOpen` and `currentStatus` fields MUST mirror the derived values above exactly — they will be overwritten otherwise. Use `summary` to describe the situation in one or two sentences.";
+        // Build deterministic summary from broker data.
+        var summary = BuildSummary(state.Symbol, authoritativeStatus, tradeOpen, currentPrice, unrealizedPnL);
 
-        var session = await _agent.CreateSessionAsync(cancellationToken);
-        var response = await _agent.RunAsync(
-            [new ChatMessage(ChatRole.User, prompt)],
-            session,
-            cancellationToken: cancellationToken);
-
-        var json = LlmResponseParser.ExtractJson(response.Text ?? "{}");
-        string summary;
-        try
-        {
-            var parsed = JsonSerializer.Deserialize<MonitorResult>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter() } });
-            summary = parsed?.Summary ?? "No summary produced.";
-        }
-        catch (JsonException)
-        {
-            summary = json;
-        }
-
-        // Overwrite LLM-supplied bookkeeping with the authoritative values.
         var monitor = new MonitorResult(
             TradeOpen: tradeOpen,
             CurrentStatus: authoritativeStatus,
@@ -327,48 +237,32 @@ public class MonitorNode : INode
         }
         catch (Exception)
         {
-            // Non-fatal — the LLM agent will still attempt to check via tools
+            // Non-fatal — the trade document update is best-effort
         }
     }
 
-    private async Task<string> CheckPositionAsync(string symbol)
+    private static string BuildSummary(
+        string symbol, FillStatus status, bool tradeOpen, decimal? currentPrice, decimal? unrealizedPnL)
     {
-        var positions = await _alpacaService.ListPositionsAsync();
-        var position = positions.FirstOrDefault(p =>
-            string.Equals(p.Symbol, symbol, StringComparison.OrdinalIgnoreCase));
+        if (status is FillStatus.Rejected or FillStatus.Canceled or FillStatus.Expired)
+            return $"Order for {symbol} was {status.ToString().ToLowerInvariant()}.";
 
-        if (position is null)
-            return JsonSerializer.Serialize(new { symbol, hasPosition = false, quantity = 0m });
+        if (!tradeOpen && status == FillStatus.Filled)
+            return $"Position for {symbol} has been closed.";
 
-        return JsonSerializer.Serialize(new
+        if (tradeOpen && status == FillStatus.Filled)
         {
-            symbol = position.Symbol,
-            hasPosition = true,
-            quantity = position.Quantity,
-            marketValue = position.MarketValue,
-            unrealizedPnL = position.UnrealizedProfitLoss,
-            currentPrice = position.AssetCurrentPrice,
-            averageEntryPrice = position.AverageEntryPrice,
-        });
-    }
+            var priceStr = currentPrice.HasValue ? $" at ${currentPrice.Value:F2}" : "";
+            var pnlStr = unrealizedPnL.HasValue
+                ? $" with unrealized P&L of {(unrealizedPnL.Value >= 0 ? "+" : "")}{unrealizedPnL.Value:F2}"
+                : "";
+            return $"Position open for {symbol}{priceStr}{pnlStr}.";
+        }
 
-    private async Task<string> GetOrderStatusAsync(string orderId)
-    {
-        if (!Guid.TryParse(orderId, out var guid))
-            return JsonSerializer.Serialize(new { error = "Invalid order ID format" });
+        if (status is FillStatus.Pending or FillStatus.PartiallyFilled)
+            return $"Order for {symbol} is {status.ToString().ToLowerInvariant()}, awaiting fill.";
 
-        var order = await _alpacaService.GetOrderAsync(guid);
-
-        return JsonSerializer.Serialize(new
-        {
-            orderId = order.OrderId.ToString(),
-            status = order.OrderStatus.ToString(),
-            symbol = order.Symbol,
-            filledQuantity = order.FilledQuantity,
-            averageFillPrice = order.AverageFillPrice,
-            submittedAt = order.SubmittedAtUtc,
-            filledAt = order.FilledAtUtc,
-        });
+        return $"Monitoring {symbol} — status: {status}.";
     }
 
     internal static FillStatus MapOrderStatus(OrderStatus orderStatus) => orderStatus switch

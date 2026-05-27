@@ -228,7 +228,7 @@ public class EvalRunner
             case "MonitorNode":
             {
                 var resetter = new StubResettableExecutor();
-                var node = new MonitorNode(chatClient, alpacaService, activityLogger,
+                var node = new MonitorNode(alpacaService, activityLogger,
                     StubDocumentStoreFactory.Create(), resetter, monitorDelaySeconds: 0);
                 var executionResult = DeserializeContext<ExecutionResult>(scenario.Input.Context)
                     ?? new ExecutionResult(true, "AAPL", TradeAction.Buy, 10, null, "test-order", "Test");
