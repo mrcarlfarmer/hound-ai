@@ -66,8 +66,13 @@ public class StrategyNode : INode
                 - Confidence >= 0.7 and Bearish trend => action "Sell"
                 - Otherwise => action "Hold"
                 - action must be exactly one of: "Buy", "Sell", "Hold"
-                - quantity must be a positive integer for Buy/Sell, 0 for Hold
+                - quantity must be a positive number for Buy/Sell (minimum 0.001), 0 for Hold
+                - Fractional shares ARE supported. If the suggested max is less than one
+                  whole share you MUST still propose a fractional position (e.g. 0.25)
+                  rather than defaulting to Hold purely because of size. Only choose
+                  Hold when the analysis itself does not justify a trade.
                 - For Buy/Sell, quantity must NOT exceed the "Suggested max shares" value supplied in the prompt
+                - Round quantity to at most 4 decimal places
                 - confidence is 0.0 to 1.0
                 - reasoning is a single paragraph, no markdown formatting
                 - Output raw JSON only. No ```json fences, no markdown, no extra text.
@@ -249,28 +254,23 @@ public class StrategyNode : INode
             : "n/a");
 
         // Suggested cap: at most 30% of buying power or 20% of equity per
-        // single position, converted to whole shares using the current price.
+        // single position. We express this both as a notional dollar amount
+        // and as a fractional share count (rounded to 4 dp) so the model can
+        // still propose a sensible position when the cap is below the price
+        // of one whole share. Whole-share rounding here was the historical
+        // cause of "strong Buy => Hold" outcomes on small accounts.
         // This is just an anchor for the model — the Risk node enforces final
-        // sizing constraints.
+        // sizing constraints, and ExecutionNode verifies fractionable support.
         if (lastPrice is decimal price && price > 0)
         {
-            var bpCap = buyingPower is decimal bpv ? bpv * 0.30m : (decimal?)null;
-            var eqCap = equity is decimal eqv ? eqv * 0.20m : (decimal?)null;
-            decimal? dollarCap = (bpCap, eqCap) switch
+            var (dollarCap, maxShares) = CalculateSuggestedCap(price, equity, buyingPower);
+            if (dollarCap is decimal cap && cap > 0 && maxShares is decimal shares && shares > 0)
             {
-                (decimal b, decimal eq) => Math.Min(b, eq),
-                (decimal b, null) => b,
-                (null, decimal eq) => eq,
-                _ => null,
-            };
-            if (dollarCap is decimal cap && cap > 0)
-            {
-                var maxShares = (int)Math.Floor(cap / price);
                 sb.Append("Suggested max shares for a new position: ")
-                  .Append(maxShares.ToString(CultureInfo.InvariantCulture))
+                  .Append(shares.ToString("0.####", CultureInfo.InvariantCulture))
                   .Append(" (~$")
                   .Append(cap.ToString("F2", CultureInfo.InvariantCulture))
-                  .AppendLine(" notional). Do NOT exceed this for Buy/Sell.");
+                  .AppendLine(" notional). Fractional shares are allowed; do NOT exceed this for Buy/Sell.");
             }
         }
 
@@ -305,6 +305,40 @@ public class StrategyNode : INode
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Computes the suggested per-position cap as a dollar amount and a
+    /// fractional share count (4 dp). The cap is the smaller of 30% of
+    /// buying power and 20% of equity. Returns a non-null share count
+    /// whenever the dollar cap is positive, even when it is less than the
+    /// price of a single whole share — this is the key behaviour that lets
+    /// the strategy hound propose fractional positions on small accounts
+    /// instead of silently falling back to Hold.
+    /// </summary>
+    internal static (decimal? DollarCap, decimal? MaxShares) CalculateSuggestedCap(
+        decimal price, decimal? equity, decimal? buyingPower)
+    {
+        if (price <= 0)
+            return (null, null);
+
+        var bpCap = buyingPower is decimal bpv ? bpv * 0.30m : (decimal?)null;
+        var eqCap = equity is decimal eqv ? eqv * 0.20m : (decimal?)null;
+        decimal? dollarCap = (bpCap, eqCap) switch
+        {
+            (decimal b, decimal eq) => Math.Min(b, eq),
+            (decimal b, null) => b,
+            (null, decimal eq) => eq,
+            _ => null,
+        };
+
+        if (dollarCap is not decimal cap || cap <= 0)
+            return (dollarCap, null);
+
+        // Round DOWN to 4 dp so we never suggest a quantity that would
+        // exceed the dollar cap when multiplied back by price.
+        var shares = Math.Floor(cap / price * 10000m) / 10000m;
+        return (cap, shares);
     }
 
     /// <summary>
