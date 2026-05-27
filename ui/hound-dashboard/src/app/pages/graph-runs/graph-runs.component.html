@@ -99,7 +99,12 @@
         <div class="rounded-lg border border-border bg-card p-4 mb-4">
           <div class="flex flex-wrap items-center gap-4">
             <div>
-              <h2 class="text-lg font-semibold">{{ selectedRun.symbol }}</h2>
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <h2 class="text-lg font-semibold">{{ selectedRun.symbol }}</h2>
+                @if (companyNameFor(selectedRun); as company) {
+                  <span class="text-sm text-muted-foreground">{{ company }}</span>
+                }
+              </div>
               <p class="text-xs text-muted-foreground font-mono">{{ selectedRun.runId }}</p>
             </div>
             <span class="text-xs px-2 py-1 rounded" [ngClass]="statusBadgeClass(selectedRun)">
@@ -130,6 +135,22 @@
               {{ selectedRun.errorMessage }}
             </div>
           }
+          @if (selectedRun.refinements && selectedRun.refinements.length > 0) {
+            <div class="mt-3 space-y-2">
+              <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Refinement History</span>
+              @for (ref of selectedRun.refinements; track ref.attempt) {
+                <div class="p-3 rounded-lg border border-yellow-800 bg-yellow-900/10">
+                  <div class="flex items-center gap-3 mb-2">
+                    <span class="text-xs font-semibold text-yellow-400">Attempt #{{ ref.attempt }}</span>
+                    <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border bg-red-900/40 text-red-400 border-red-600">Rejected</span>
+                    <span class="text-xs text-muted-foreground">{{ ref.action }} {{ ref.quantity }} {{ ref.symbol }}</span>
+                    <span class="ml-auto text-xs text-muted-foreground">{{ formatTime(ref.occurredAt) }}</span>
+                  </div>
+                  <div class="text-sm text-muted-foreground" [innerHTML]="renderMarkdown(ref.riskReasoning)"></div>
+                </div>
+              }
+            </div>
+          }
         </div>
 
         <!-- Node Pipeline Visualization -->
@@ -143,14 +164,18 @@
                 [ngClass]="nodeStatusClass(node.status)">
                 <div class="flex items-center gap-3">
                   <!-- Status Indicator -->
-                  <div class="w-3 h-3 rounded-full shrink-0"
-                    [ngClass]="{
-                      'bg-blue-400 animate-pulse': node.status === 'Active',
-                      'bg-green-400': node.status === 'Completed',
-                      'bg-red-400': node.status === 'Failed',
-                      'bg-gray-500': node.status === 'Pending' || node.status === 'Skipped' || isNoAction(node)
-                    }">
-                  </div>
+                  @if (node.status === 'Active') {
+                    <div class="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin shrink-0"
+                      aria-label="Running"></div>
+                  } @else {
+                    <div class="w-3 h-3 rounded-full shrink-0"
+                      [ngClass]="{
+                        'bg-green-400': node.status === 'Completed',
+                        'bg-red-400': node.status === 'Failed',
+                        'bg-gray-500': node.status === 'Pending' || node.status === 'Skipped' || isNoAction(node)
+                      }">
+                    </div>
+                  }
 
                   <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-2">
@@ -162,7 +187,7 @@
 
                   <span class="text-xs font-mono shrink-0">{{ displayStatus(node) }}</span>
 
-                  @if (node.outputJson || node.errorMessage) {
+                  @if (node.outputJson || node.errorMessage || hasReasoning(node) || node.status === 'Active') {
                     <svg class="w-4 h-4 transition-transform shrink-0" [class.rotate-180]="isExpanded(node.nodeId)"
                       fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
@@ -172,14 +197,65 @@
               </button>
 
               <!-- Expanded Node Output -->
-              @if (isExpanded(node.nodeId) && (node.outputJson || node.errorMessage)) {
-                <div class="border border-t-0 rounded-b-lg p-4 bg-card/50 border-border">
+              @if (isExpanded(node.nodeId) && (node.outputJson || node.errorMessage || hasReasoning(node) || node.status === 'Active')) {
+                <div class="border border-t-0 rounded-b-lg p-0 bg-card/50 border-border">
+                  <!-- Tab strip -->
+                  <div class="flex border-b border-border">
+                    <button type="button" (click)="setTab(node, 'result')"
+                      class="px-4 py-2 text-xs font-medium transition-colors"
+                      [ngClass]="tabFor(node) === 'result'
+                        ? 'text-foreground border-b-2 border-primary -mb-px'
+                        : 'text-muted-foreground hover:text-foreground'"
+                      [disabled]="!node.outputJson && !node.errorMessage">
+                      Result
+                      @if (!node.outputJson && !node.errorMessage) {
+                        <span class="ml-1 opacity-50">(pending)</span>
+                      }
+                    </button>
+                    <button type="button" (click)="setTab(node, 'reasoning')"
+                      class="px-4 py-2 text-xs font-medium transition-colors flex items-center gap-2"
+                      [ngClass]="tabFor(node) === 'reasoning'
+                        ? 'text-foreground border-b-2 border-primary -mb-px'
+                        : 'text-muted-foreground hover:text-foreground'">
+                      Reasoning
+                      @if (node.status === 'Active') {
+                        <span class="w-2 h-2 rounded-full border border-blue-400 border-t-transparent animate-spin"></span>
+                      }
+                    </button>
+                  </div>
+
+                  <!-- Reasoning tab content -->
+                  @if (tabFor(node) === 'reasoning') {
+                    <div class="p-4">
+                      @if (hasReasoning(node)) {
+                        <pre #reasoningBox class="text-xs whitespace-pre-wrap break-words font-mono bg-muted/30 rounded p-3 max-h-96 overflow-y-auto leading-relaxed">{{ streamFor(node) }}</pre>
+                      } @else if (node.status === 'Active') {
+                        <p class="text-sm text-muted-foreground italic">Waiting for the model to start streaming…</p>
+                      } @else {
+                        <p class="text-sm text-muted-foreground italic">No reasoning captured for this node.</p>
+                      }
+                    </div>
+                  }
+
+                  <!-- Result tab content -->
+                  @if (tabFor(node) === 'result') {
+                    <div class="p-4">
                   @if (node.errorMessage) {
                     <div class="text-red-400 text-sm">{{ node.errorMessage }}</div>
                   }
 
                   <!-- ── Analysts Team: custom layout ────────────────── -->
                   @if (node.nodeId === 'analysts-team-node' && parseAnalystsOutput(node.outputJson); as a) {
+                    <!-- Company identification banner — makes it obvious which
+                         company the ticker resolved to (e.g. ROK = Rockwell
+                         Automation, not ROKU). -->
+                    @if (a.companyName) {
+                      <div class="rounded-lg bg-primary/5 border border-primary/30 px-3 py-2 mb-4 flex items-baseline gap-2 flex-wrap">
+                        <span class="text-xs uppercase tracking-wider text-muted-foreground">Company</span>
+                        <span class="font-mono text-sm font-semibold">{{ a.symbol ?? selectedRun.symbol }}</span>
+                        <span class="text-sm">— {{ a.companyName }}</span>
+                      </div>
+                    }
                     <!-- Metrics row -->
                     <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                       <div class="rounded-lg bg-muted/40 p-3">
@@ -198,7 +274,7 @@
                         <span class="block text-xs text-muted-foreground mb-1">Trend</span>
                         <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
                           [ngClass]="trendClass(a.trend)">
-                          {{ a.trend ?? '—' }}
+                          {{ formatTrend(a.trend) }}
                         </span>
                       </div>
                       <div class="rounded-lg bg-muted/40 p-3">
@@ -288,6 +364,100 @@
                       </div>
                     }
 
+                  <!-- ── Risk: custom layout ────────────────────────── -->
+                  } @else if (node.nodeId === 'risk-node' && parseRiskOutput(node.outputJson); as r) {
+                    <!-- Metrics row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Verdict</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="verdictClass(r.verdict)">
+                          {{ r.verdict ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Action</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="actionClass(r.decision?.action)">
+                          {{ r.decision?.action ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Symbol</span>
+                        <span class="text-lg font-semibold font-mono">{{ r.decision?.symbol ?? '—' }}</span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Quantity</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ r.adjustedQuantity != null ? r.adjustedQuantity : (r.decision?.quantity ?? 0) }}
+                        </span>
+                        @if (r.adjustedQuantity != null) {
+                          <span class="ml-1 text-xs text-yellow-400">(adjusted)</span>
+                        }
+                      </div>
+                    </div>
+
+                    <!-- Reasoning -->
+                    @if (r.reasoning) {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Reasoning</span>
+                        <div class="prose text-sm max-h-64 overflow-y-auto" [innerHTML]="renderMarkdown(r.reasoning)"></div>
+                      </div>
+                    }
+
+                  <!-- ── Execution: custom layout ───────────────────── -->
+                  } @else if (node.nodeId === 'execution-node' && parseExecutionOutput(node.outputJson); as e) {
+                    <!-- Metrics row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Status</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="executionStatusClass(e)">
+                          {{ executionStatusLabel(e) }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Symbol</span>
+                        <span class="text-lg font-semibold font-mono">{{ e.symbol ?? '—' }}</span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Action</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="actionClass(e.action)">
+                          {{ e.action ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Quantity</span>
+                        <span class="text-lg font-semibold font-mono">{{ e.quantity ?? 0 }}</span>
+                      </div>
+                    </div>
+
+                    <!-- Filled price (when available) -->
+                    @if (e.filledPrice != null) {
+                      <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+                        <div class="rounded-lg bg-muted/40 p-3">
+                          <span class="block text-xs text-muted-foreground mb-1">Filled Price</span>
+                          <span class="text-lg font-semibold font-mono">${{ e.filledPrice.toFixed(2) }}</span>
+                        </div>
+                      </div>
+                    }
+
+                    <!-- Message -->
+                    @if (e.message) {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3 mb-3">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Message</span>
+                        <span class="text-sm">{{ e.message }}</span>
+                      </div>
+                    }
+
+                    <!-- Order reference -->
+                    @if (e.orderId) {
+                      <div class="text-xs text-muted-foreground font-mono">
+                        Order: {{ e.orderId }}
+                      </div>
+                    }
+
                   <!-- ── All other nodes: generic key-value grid ───── -->
                   } @else if (parseOutput(node.outputJson); as output) {
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -303,6 +473,8 @@
                           </div>
                         </div>
                       }
+                    </div>
+                  }
                     </div>
                   }
                 </div>

@@ -1,3 +1,4 @@
+using Hound.Core.LlmClient;
 using Hound.Core.Logging;
 using Hound.Core.Models;
 using Hound.Trading.Nodes;
@@ -48,6 +49,7 @@ public class TradingGraph
     private readonly GraphRunPublisher _publisher;
     private readonly TradingGraphSettings _settings;
     private readonly IActivityLogger _activityLogger;
+    private readonly INodeStreamPublisher _streamPublisher;
     private readonly ILogger<TradingGraph> _logger;
 
     public TradingGraph(
@@ -57,6 +59,7 @@ public class TradingGraph
         GraphRunPublisher publisher,
         IOptions<TradingGraphSettings> settings,
         IActivityLogger activityLogger,
+        INodeStreamPublisher streamPublisher,
         ILogger<TradingGraph> logger)
     {
         _nodes = nodes;
@@ -65,6 +68,7 @@ public class TradingGraph
         _publisher = publisher;
         _settings = settings.Value;
         _activityLogger = activityLogger;
+        _streamPublisher = streamPublisher;
         _logger = logger;
     }
 
@@ -136,7 +140,10 @@ public class TradingGraph
 
             try
             {
-                state = await node.ExecuteAsync(state, cancellationToken);
+                using (NodeStreamContext.Begin(state.RunId, nextNodeId, _streamPublisher))
+                {
+                    state = await node.ExecuteAsync(state, cancellationToken);
+                }
             }
             catch (Exception ex)
             {
@@ -209,7 +216,10 @@ public class TradingGraph
 
             try
             {
-                state = await node.ExecuteAsync(state, cancellationToken);
+                using (NodeStreamContext.Begin(state.RunId, nextNodeId, _streamPublisher))
+                {
+                    state = await node.ExecuteAsync(state, cancellationToken);
+                }
             }
             catch (Exception ex)
             {

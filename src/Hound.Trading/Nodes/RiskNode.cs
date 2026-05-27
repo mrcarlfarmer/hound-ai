@@ -50,14 +50,24 @@ public class RiskNode : INode
             instructions: """
                 /no_think
                 You are RiskNode, a risk management specialist.
-                Evaluate the proposed trade against these rules:
-                - Maximum single-position size: 20% of portfolio equity
-                - Maximum total exposure: 80% of equity in equities
-                - Never exceed quantity of 1000 shares per order
-                Use the get_portfolio tool to check current state.
+                Evaluate the proposed trade using the PRE-COMPUTED RISK METRICS provided.
+                Do NOT recalculate values — the metrics are authoritative.
+                Do NOT invent additional rules or constraints beyond those listed below.
+                
+                Rules (ONLY these three):
+                1. Maximum single-position size: 20% of portfolio equity
+                2. Maximum total exposure: 80% of equity in equities
+                3. Maximum 1000 shares per order (fractional shares ARE allowed, e.g. 1.5287 is valid)
+                
+                Decision logic — use the pre-computed "Position as % of equity" and "Total exposure" values:
+                - If position % > 20% → verdict: Modified, set adjustedQuantity to the "Max shares within 20% limit" value
+                - If total exposure % > 80% → verdict: Rejected
+                - If quantity > 1000 → verdict: Modified, adjustedQuantity = 1000
+                - Otherwise → verdict: Approved (do NOT reject or modify for any other reason)
+                
                 Respond strictly in JSON matching:
-                {"verdict":"Approved|Rejected|Modified","decision":{...original decision...},"reasoning":"...","adjustedQuantity":null}
-                Set adjustedQuantity only when verdict is Modified.
+                {"verdict":"Approved|Rejected|Modified","decision":{...copy the original decision object unchanged...},"reasoning":"one sentence explaining which rule passed or failed","adjustedQuantity":null}
+                Set adjustedQuantity only when verdict is Modified. Keep reasoning brief.
                 """,
             name: "RiskNode",
             description: "Evaluates proposed trades against risk limits and portfolio exposure",
@@ -79,11 +89,38 @@ public class RiskNode : INode
             Severity = ActivitySeverity.Info,
         }, cancellationToken);
 
+        // Pre-compute risk metrics so the LLM doesn't need to do arithmetic
+        var account = await _alpacaService.GetAccountAsync();
+        var positions = await _alpacaService.ListPositionsAsync();
+
+        var equity = account.Equity ?? 0m;
+        var lastPrice = state.DataOutput?.LastPrice ?? 0m;
+        var proposedValue = decision.Quantity * lastPrice;
+        var positionPct = equity > 0 ? proposedValue / equity * 100 : 0;
+        var existingExposure = positions.Sum(p => Math.Abs(p.MarketValue ?? 0m));
+        var totalExposurePct = equity > 0 ? (existingExposure + proposedValue) / equity * 100 : 0;
+        var maxPositionValue = equity * 0.20m;
+        var maxQuantityByLimit = lastPrice > 0 ? Math.Floor(maxPositionValue / lastPrice) : 0;
+
+        var riskContext = $"""
+            PRE-COMPUTED RISK METRICS (use these, do NOT recalculate):
+            - Account equity: ${equity:F2}
+            - Share price ({decision.Symbol}): ${lastPrice:F2}
+            - Proposed quantity: {decision.Quantity}
+            - Proposed position value: {decision.Quantity} × ${lastPrice:F2} = ${proposedValue:F2}
+            - Position as % of equity: {positionPct:F1}% (limit: 20%)
+            - Max allowed position value: ${maxPositionValue:F2}
+            - Max shares within 20% limit: {maxQuantityByLimit}
+            - Existing equity exposure: ${existingExposure:F2}
+            - Total exposure after trade: ${existingExposure + proposedValue:F2} ({totalExposurePct:F1}% of equity, limit: 80%)
+            - Quantity cap per order: 1000 shares
+            """;
+
         var decisionJson = JsonSerializer.Serialize(decision);
 
         var session = await _agent.CreateSessionAsync(cancellationToken);
         var response = await _agent.RunAsync(
-            [new ChatMessage(ChatRole.User, $"Evaluate this proposed trade:\n{decisionJson}")],
+            [new ChatMessage(ChatRole.User, $"Evaluate this proposed trade:\n{decisionJson}\n\n{riskContext}")],
             session,
             cancellationToken: cancellationToken);
 
@@ -114,11 +151,20 @@ public class RiskNode : INode
         // so the graph can loop back to StrategyNode with fresh state
         if (assessment.Verdict == RiskVerdict.Rejected)
         {
+            var entry = new RefinementEntry(
+                Attempt: state.RefinementCount + 1,
+                RejectedDecision: decision,
+                RiskReasoning: assessment.Reasoning,
+                OccurredAt: DateTime.UtcNow);
+
+            var history = new List<RefinementEntry>(state.RefinementHistory) { entry };
+
             return state with
             {
                 RiskOutput = assessment,
                 StrategyOutput = null,
                 RefinementCount = state.RefinementCount + 1,
+                RefinementHistory = history,
             };
         }
 

@@ -6,6 +6,7 @@ using Hound.Trading.Graph;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -39,13 +40,16 @@ public class AnalystsTeamNode : INode
         _activityLogger = activityLogger;
 
         // ── Market Analyst ────────────────────────────────────────────────────
+        // NOTE: tools are bound via method-group delegates rather than
+        // attributed lambdas. AIFunctionFactory's reflection invoker has a bug
+        // in 10.4.x that mangles `NullableContextAttribute` (loads it as
+        // `lableContextAttribute`) when invoking synthesised lambda closures
+        // with `[Description]` parameter attributes, which breaks the first
+        // tool call in the analysts pipeline.
         var marketTools = new List<AITool>
         {
             AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Ticker symbol, e.g. AAPL")] string symbol,
-                 [System.ComponentModel.Description("Start date yyyy-MM-dd")] string startDate,
-                 [System.ComponentModel.Description("End date yyyy-MM-dd")] string endDate) =>
-                    FetchStockDataAsync(symbol, startDate, endDate),
+                FetchStockDataAsync,
                 "get_stock_data",
                 "Retrieves OHLCV price bars for a symbol in a date range"),
         };
@@ -56,6 +60,31 @@ public class AnalystsTeamNode : INode
                 /no_think
                 You are a trading assistant tasked with analysing financial markets.
                 Use the get_stock_data tool to retrieve recent OHLCV price bars.
+
+                LANGUAGE: Write your entire report in ENGLISH. Do not use Chinese,
+                Mandarin, or any other non-English characters. Prices are in US
+                dollars (USD, $) — never yuan/元, euro, or any other currency.
+
+                CRITICAL DATA-TRUST RULES:
+                - The get_stock_data tool returns AUTHORITATIVE live market data from
+                  the broker API. Trust it completely.
+                - Your training cutoff is irrelevant. If a date looks "future" to you
+                  but the tool returned rows for it, the data is real. Do NOT claim
+                  the data is unavailable, simulated, or in the future.
+                - The only time data is unavailable is when the tool explicitly
+                  returns a message starting with "NO_DATA" or "ERROR". In every
+                  other case, the bars are real and must be analysed as-is.
+
+                PRICE-LEVEL RULES — STRICTLY ENFORCED:
+                - The user prompt supplies "Current price" — this is the authoritative
+                  last close.
+                - Any price level you mention (support, resistance, moving averages,
+                  targets, stops) MUST be derived from the actual bars returned by
+                  the tool and MUST be within ±15% of the current price.
+                - Do NOT invent round-number levels (e.g. $80, $90, $100) that
+                  contradict the current price. Do NOT cite levels for a different
+                  ticker.
+
                 Analyse the data for trend direction, momentum, and volume patterns.
                 Select and discuss the most relevant technical observations (moving averages,
                 support/resistance, RSI-like momentum, volume changes, volatility).
@@ -71,8 +100,7 @@ public class AnalystsTeamNode : INode
         var fundamentalsTools = new List<AITool>
         {
             AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Ticker symbol")] string symbol) =>
-                    FetchFundamentalsAsync(symbol),
+                FetchFundamentalsAsync,
                 "get_fundamentals",
                 "Retrieves company fundamentals — profile, financials, account equity"),
         };
@@ -86,6 +114,11 @@ public class AnalystsTeamNode : INode
                 Analyse the account equity, buying power, and any position data.
                 Write a comprehensive report on the financial context relevant for trading.
                 Include assessment of capital availability and portfolio exposure.
+
+                LANGUAGE: Write your entire report in ENGLISH. Do not use Chinese,
+                Mandarin, or any other non-English characters. Prices are in US
+                dollars (USD, $) — never yuan/元, euro, or any other currency.
+
                 End with a Markdown table summarising key financial metrics.
                 """,
             name: "FundamentalsAnalyst",
@@ -97,8 +130,7 @@ public class AnalystsTeamNode : INode
         var newsTools = new List<AITool>
         {
             AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Ticker symbol")] string symbol) =>
-                    FetchNewsAsync(symbol),
+                FetchNewsAsync,
                 "get_news",
                 "Retrieves recent news and market events for a symbol"),
         };
@@ -112,6 +144,19 @@ public class AnalystsTeamNode : INode
                 Analyse the news for impact on trading — earnings, regulatory changes,
                 sector trends, and macroeconomic factors.
                 Provide specific, actionable insights with supporting evidence.
+
+                LANGUAGE: Write your entire report in ENGLISH. Do not use Chinese,
+                Mandarin, or any other non-English characters. Prices are in US
+                dollars (USD, $) — never yuan/元, euro, or any other currency.
+
+                PRICE-LEVEL RULES — STRICTLY ENFORCED:
+                - The user prompt supplies "Current price" — this is the authoritative
+                  last close. Anchor all commentary to it.
+                - Do NOT invent specific price targets, support, or resistance levels.
+                  If you must reference a level, it MUST be within ±15% of the
+                  current price.
+                - Do NOT confuse the ticker with a similarly-spelled symbol.
+
                 End with a Markdown table summarising key news items and their expected impact.
                 """,
             name: "NewsAnalyst",
@@ -123,8 +168,7 @@ public class AnalystsTeamNode : INode
         var sentimentTools = new List<AITool>
         {
             AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Ticker symbol")] string symbol) =>
-                    FetchSentimentAsync(symbol),
+                FetchSentimentAsync,
                 "get_sentiment",
                 "Retrieves social media sentiment and public opinion for a symbol"),
         };
@@ -138,6 +182,18 @@ public class AnalystsTeamNode : INode
                 Analyse public sentiment, social media trends, and market mood.
                 Assess whether sentiment is bullish, bearish, or neutral.
                 Provide specific insights on how sentiment may affect near-term trading.
+
+                LANGUAGE: Write your entire report in ENGLISH. Do not use Chinese,
+                Mandarin, or any other non-English characters. Prices are in US
+                dollars (USD, $) — never yuan/元, euro, or any other currency.
+
+                PRICE-LEVEL RULES — STRICTLY ENFORCED:
+                - The user prompt supplies "Current price" — anchor all commentary to it.
+                - Do NOT invent specific price targets, support, or resistance levels.
+                  If you must reference a level, it MUST be within ±15% of the
+                  current price.
+                - Do NOT confuse the ticker with a similarly-spelled symbol.
+
                 End with a Markdown table summarising sentiment indicators.
                 """,
             name: "SentimentAnalyst",
@@ -159,8 +215,11 @@ public class AnalystsTeamNode : INode
                 - lastPrice = the most recent closing price from the market report. Must be > 0.
                 - volumeChange = volume ratio from the market report (e.g. 1.2 means 20% above average). Must be > 0.
                 - trend = exactly one of: "Bullish", "Bearish", "Neutral"
-                - confidenceScore = your overall confidence from 0.0 to 1.0
+                - confidenceScore = your overall confidence from 0.05 to 1.0. NEVER emit 0; if signals are weak, use 0.25.
                 - summary = 1-3 sentences combining all four reports. Keep it under 200 words.
+                - LANGUAGE: All string values (especially `summary` and `trend`) MUST be in English.
+                  Do NOT emit Chinese, Mandarin, or any other non-English characters. Prices are in
+                  US dollars (USD, $). Do NOT use yuan/元, euro, or any other currency symbol.
                 - Output raw JSON only. No ```json fences, no markdown, no extra text.
                 """,
             name: "Synthesiser",
@@ -180,21 +239,64 @@ public class AnalystsTeamNode : INode
             Severity = ActivitySeverity.Info,
         }, cancellationToken);
 
+        // Pre-flight: confirm the broker actually has bar data for this symbol.
+        // If not, skip the (expensive, slow) analyst pipeline and emit a clean
+        // low-confidence MarketAnalysis so the graph can terminate the run via
+        // the existing minimum-confidence routing rule.
+        var (preLastPrice, preVolumeChange) =
+            await ComputeMarketMetricsAsync(state.Symbol, cancellationToken);
+
+        // Resolve the canonical company name so we can disambiguate similar
+        // tickers in the analyst prompts (e.g. ROK → Rockwell Automation vs
+        // ROKU → Roku Inc). Without this the LLM mis-recalls obscure tickers
+        // from memory and hallucinates reports about the wrong company.
+        var asset = await _alpacaService.GetAssetAsync(state.Symbol, cancellationToken);
+        var companyName = asset?.Name;
+        var symbolLabel = string.IsNullOrWhiteSpace(companyName)
+            ? state.Symbol
+            : $"{state.Symbol} ({companyName})";
+
+        if (preLastPrice is null)
+        {
+            await _activityLogger.LogActivityAsync(new ActivityLog
+            {
+                PackId = PackId,
+                HoundId = NodeId,
+                HoundName = "AnalystsTeam",
+                Message = $"No market data available for {symbolLabel}; skipping analyst pipeline.",
+                Severity = ActivitySeverity.Warning,
+            }, cancellationToken);
+
+            var noData = new MarketAnalysis(
+                state.Symbol,
+                LastPrice: null,
+                VolumeChange: null,
+                Trend: "Neutral",
+                ConfidenceScore: 0d,
+                Summary: $"No market data available for {symbolLabel} from the broker. Skipping analysis.",
+                CompanyName: companyName);
+            return state with { DataOutput = noData };
+        }
+
         // Run each analyst sequentially
+        var priceLine = preLastPrice is decimal lp
+            ? $"Current price: ${lp:F2} (authoritative — anchor all price levels to this)."
+            : "Current price: unavailable.";
+
         var marketReport = await RunAnalystAsync(_marketAnalyst, "MarketAnalyst",
-            $"Analyse the stock {state.Symbol} for the past 7 trading days. Today is {DateTime.UtcNow:yyyy-MM-dd}.",
+            $"Analyse the stock {symbolLabel} for the past 7 trading days. Today is {DateTime.UtcNow:yyyy-MM-dd}. {priceLine}",
             state.Symbol, cancellationToken);
 
         var fundamentalsReport = await RunAnalystAsync(_fundamentalsAnalyst, "FundamentalsAnalyst",
-            $"Analyse the fundamentals for {state.Symbol}.",
+            $"Analyse the fundamentals for {symbolLabel}. {priceLine}",
             state.Symbol, cancellationToken);
 
         var newsReport = await RunAnalystAsync(_newsAnalyst, "NewsAnalyst",
-            $"Analyse recent news and market trends for {state.Symbol}.",
+            $"Analyse recent news and market trends for {symbolLabel}. {priceLine}",
             state.Symbol, cancellationToken);
 
         var sentimentReport = await RunAnalystAsync(_sentimentAnalyst, "SentimentAnalyst",
-            $"Analyse social media sentiment and public opinion for {state.Symbol}.",
+            $"Analyse social media sentiment and public opinion for {symbolLabel}. {priceLine}",
             state.Symbol, cancellationToken);
 
         // Synthesise all reports
@@ -234,13 +336,18 @@ public class AnalystsTeamNode : INode
         var json = LlmResponseParser.ExtractJson(synthResponse.Text ?? "{}");
         var analysis = ParseSynthesisJson(json, state.Symbol);
 
-        // Attach individual reports
+        // Attach individual reports + the pre-flight market metrics (override
+        // LLM-supplied lastPrice/volumeChange because the broker numbers are
+        // authoritative).
         analysis = analysis with
         {
+            LastPrice = preLastPrice ?? analysis.LastPrice,
+            VolumeChange = preVolumeChange ?? analysis.VolumeChange,
             MarketReport = marketReport,
             FundamentalsReport = fundamentalsReport,
             NewsReport = newsReport,
             SentimentReport = sentimentReport,
+            CompanyName = companyName,
         };
 
         await _activityLogger.LogActivityAsync(new ActivityLog
@@ -289,9 +396,13 @@ public class AnalystsTeamNode : INode
             decimal? volumeChange = root.TryGetProperty("volumeChange", out var vc) && vc.ValueKind == JsonValueKind.Number
                 ? vc.GetDecimal() : null;
             string trend = root.TryGetProperty("trend", out var tr) && tr.ValueKind == JsonValueKind.String
-                ? tr.GetString() ?? "Unknown" : "Unknown";
+                ? NormalizeTrend(tr.GetString()) : "Neutral";
             double? confidence = root.TryGetProperty("confidenceScore", out var cs) && cs.ValueKind == JsonValueKind.Number
-                ? cs.GetDouble() : null;
+                ? cs.GetDouble() : (double?)null;
+            // Treat a zero confidence as "no signal" rather than "strongly low",
+            // otherwise the synthesiser silently aborts the graph whenever the
+            // LLM omits or defaults the field.
+            if (confidence is 0d) confidence = null;
             string summary = root.TryGetProperty("summary", out var su) && su.ValueKind == JsonValueKind.String
                 ? su.GetString() ?? "No summary" : "No summary";
 
@@ -299,13 +410,71 @@ public class AnalystsTeamNode : INode
         }
         catch
         {
-            return new MarketAnalysis(symbol, null, null, "Unknown", null, json);
+            return new MarketAnalysis(symbol, null, null, "Neutral", null, json);
         }
+    }
+
+    /// <summary>
+    /// Collapses the LLM's free-form trend label into one of three canonical
+    /// values — <c>"Bullish"</c>, <c>"Bearish"</c>, or <c>"Neutral"</c> — so the
+    /// dashboard can render a clean badge regardless of what the model emits.
+    /// </summary>
+    private static string NormalizeTrend(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "Neutral";
+        var lower = raw.ToLowerInvariant();
+        if (lower.Contains("bull")) return "Bullish";
+        if (lower.Contains("bear")) return "Bearish";
+        return "Neutral";
     }
 
     // ── Tool implementations ─────────────────────────────────────────────────
 
-    private async Task<string> FetchStockDataAsync(string symbol, string startDate, string endDate)
+    /// <summary>
+    /// Deterministically derives last price and relative volume change from
+    /// Alpaca daily bars. Returns (null, null) if data is unavailable. Volume
+    /// change is the ratio of the most recent day's volume to the trailing
+    /// 20-day average (capped to 2 decimal places).
+    /// </summary>
+    private async Task<(decimal? LastPrice, decimal? VolumeChange)> ComputeMarketMetricsAsync(
+        string symbol, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var to = DateTime.UtcNow.Date;
+            var from = to.AddDays(-45);
+            var bars = await _alpacaService.GetBarsAsync(symbol, from, to, BarTimeFrame.Day, cancellationToken);
+            if (bars.Count == 0)
+                return (null, null);
+
+            var ordered = bars.OrderBy(b => b.TimeUtc).ToList();
+            var lastBar = ordered[^1];
+            decimal lastPrice = lastBar.Close;
+
+            decimal? volumeChange = null;
+            if (ordered.Count >= 2)
+            {
+                var priorBars = ordered.Take(ordered.Count - 1).TakeLast(20).ToList();
+                if (priorBars.Count > 0)
+                {
+                    var avgPrior = priorBars.Average(b => (decimal)b.Volume);
+                    if (avgPrior > 0)
+                        volumeChange = Math.Round((decimal)lastBar.Volume / avgPrior, 2);
+                }
+            }
+
+            return (lastPrice, volumeChange);
+        }
+        catch
+        {
+            return (null, null);
+        }
+    }
+
+    private async Task<string> FetchStockDataAsync(
+        [Description("Ticker symbol, e.g. AAPL")] string symbol,
+        [Description("Start date yyyy-MM-dd")] string startDate,
+        [Description("End date yyyy-MM-dd")] string endDate)
     {
         try
         {
@@ -314,12 +483,19 @@ public class AnalystsTeamNode : INode
             var bars = await _alpacaService.GetBarsAsync(symbol, from, to, BarTimeFrame.Day);
 
             if (bars.Count == 0)
-                return $"No bar data found for {symbol} between {from:yyyy-MM-dd} and {to:yyyy-MM-dd}.";
+                return $"NO_DATA: broker returned zero bars for {symbol} between {from:yyyy-MM-dd} and {to:yyyy-MM-dd}.";
 
             var summary = bars.Select(b =>
                 $"{b.TimeUtc:yyyy-MM-dd}: O={b.Open} H={b.High} L={b.Low} C={b.Close} V={b.Volume}");
 
-            return $"OHLCV data for {symbol}:\n{string.Join("\n", summary)}";
+            // Prefix with an authoritative banner so the LLM cannot dismiss the
+            // data as "future" or "simulated" based on its training cutoff.
+            return $"""
+                AUTHORITATIVE LIVE BROKER DATA for {symbol} ({from:yyyy-MM-dd} to {to:yyyy-MM-dd}).
+                These bars are real and current. Analyse them as-is; do not question their validity.
+
+                {string.Join("\n", summary)}
+                """;
         }
         catch (Exception ex)
         {
@@ -327,7 +503,8 @@ public class AnalystsTeamNode : INode
         }
     }
 
-    private async Task<string> FetchFundamentalsAsync(string symbol)
+    private async Task<string> FetchFundamentalsAsync(
+        [Description("Ticker symbol")] string symbol)
     {
         try
         {
@@ -363,30 +540,47 @@ public class AnalystsTeamNode : INode
         }
     }
 
-    private Task<string> FetchNewsAsync(string symbol)
+    private async Task<string> FetchNewsAsync(
+        [Description("Ticker symbol")] string symbol)
     {
         // Alpaca doesn't provide a news API in the current client.
-        // Return a stub indicating no external news source is configured.
-        var result = $"""
+        // Return a stub that still names the underlying company so the LLM
+        // can't drift to a similarly-spelled ticker from its training data.
+        var asset = await _alpacaService.GetAssetAsync(symbol);
+        var companyLine = asset?.Name is { Length: > 0 } n
+            ? $"Underlying company: {n} (ticker {symbol}, exchange {asset!.Exchange})."
+            : $"Underlying company: ticker {symbol} (company name not resolved from broker).";
+
+        return $"""
             News data for {symbol} (as of {DateTime.UtcNow:yyyy-MM-dd}):
+            {companyLine}
             Note: No external news API is currently configured.
-            Please base your analysis on general market knowledge and the symbol context.
+            Base your analysis on general market knowledge of THIS specific company
+            (do not substitute a different company with a similar ticker).
             Consider recent earnings seasons, sector trends, and macroeconomic factors
             that may affect {symbol}.
             """;
-        return Task.FromResult(result);
     }
 
-    private Task<string> FetchSentimentAsync(string symbol)
+    private async Task<string> FetchSentimentAsync(
+        [Description("Ticker symbol")] string symbol)
     {
-        // Stub — no social media API configured yet.
-        var result = $"""
+        // Stub — no social media API configured yet. Include the canonical
+        // company name so the LLM can't confuse similar tickers (e.g. ROK vs
+        // ROKU) by pattern-matching against more famous symbols.
+        var asset = await _alpacaService.GetAssetAsync(symbol);
+        var companyLine = asset?.Name is { Length: > 0 } n
+            ? $"Underlying company: {n} (ticker {symbol}, exchange {asset!.Exchange})."
+            : $"Underlying company: ticker {symbol} (company name not resolved from broker).";
+
+        return $"""
             Sentiment data for {symbol} (as of {DateTime.UtcNow:yyyy-MM-dd}):
+            {companyLine}
             Note: No social media or sentiment API is currently configured.
-            Please base your sentiment analysis on general market knowledge.
+            Base your sentiment analysis on general market knowledge of THIS
+            specific company (do not substitute a similarly-spelled ticker).
             Consider the overall market mood, sector sentiment, and any widely known
             factors affecting {symbol}.
             """;
-        return Task.FromResult(result);
     }
 }

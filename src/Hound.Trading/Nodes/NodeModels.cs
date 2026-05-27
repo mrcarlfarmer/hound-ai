@@ -13,7 +13,8 @@ public record MarketAnalysis(
     string? MarketReport = null,
     string? FundamentalsReport = null,
     string? NewsReport = null,
-    string? SentimentReport = null);
+    string? SentimentReport = null,
+    string? CompanyName = null);
 
 public enum TradeAction { Buy, Sell, Hold }
 
@@ -31,6 +32,15 @@ public record RiskAssessment(
     TradingDecision Decision,
     string Reasoning,
     decimal? AdjustedQuantity = null);
+
+/// <summary>
+/// Captures a single refinement iteration: the strategy that was rejected and why.
+/// </summary>
+public record RefinementEntry(
+    int Attempt,
+    TradingDecision RejectedDecision,
+    string RiskReasoning,
+    DateTime OccurredAt);
 
 public record ExecutionResult(
     bool Success,

@@ -10,6 +10,12 @@ public interface IAlpacaService
     Task<IReadOnlyList<IPosition>> ListPositionsAsync(CancellationToken cancellationToken = default);
     Task<IOrder> SubmitOrderAsync(string symbol, OrderQuantity quantity, OrderSide side, OrderType type, TimeInForce timeInForce, decimal? limitPrice = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<IBar>> GetBarsAsync(string symbol, DateTime from, DateTime to, BarTimeFrame timeFrame, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Resolves a ticker symbol to the broker's canonical asset record
+    /// (legal company name, exchange, tradability). Returns <c>null</c> when
+    /// the symbol is unknown or the lookup fails.
+    /// </summary>
+    Task<IAsset?> GetAssetAsync(string symbol, CancellationToken cancellationToken = default);
     Task<IOrder> GetOrderAsync(Guid orderId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<IOrder>> ListOrdersAsync(OrderStatusFilter? statusFilter = null, CancellationToken cancellationToken = default);
     Task<bool> CancelOrderAsync(Guid orderId, CancellationToken cancellationToken = default);
@@ -65,6 +71,20 @@ public class AlpacaService : IAlpacaService, IDisposable
         var request = new HistoricalBarsRequest(symbol, from, to, timeFrame);
         var page = await _dataClient.GetHistoricalBarsAsync(request, cancellationToken);
         return page.Items.TryGetValue(symbol, out var bars) ? bars : [];
+    }
+
+    public async Task<IAsset?> GetAssetAsync(string symbol, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _tradingClient.GetAssetAsync(symbol, cancellationToken);
+        }
+        catch
+        {
+            // Unknown symbol or transient broker error — treat as "no asset"
+            // so callers can fall back to the raw ticker.
+            return null;
+        }
     }
 
     public Task<IOrder> GetOrderAsync(Guid orderId, CancellationToken cancellationToken = default)

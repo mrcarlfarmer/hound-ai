@@ -21,6 +21,7 @@ public class TradingWorker : BackgroundService
 
     private readonly TradingGraph _graph;
     private readonly TradingGraphSettings _settings;
+    private readonly IStateStore _stateStore;
     private readonly IDocumentStore _documentStore;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _apiBaseUrl;
@@ -29,6 +30,7 @@ public class TradingWorker : BackgroundService
     public TradingWorker(
         TradingGraph graph,
         IOptions<TradingGraphSettings> settings,
+        IStateStore stateStore,
         IDocumentStore documentStore,
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
@@ -36,6 +38,7 @@ public class TradingWorker : BackgroundService
     {
         _graph = graph;
         _settings = settings.Value;
+        _stateStore = stateStore;
         _documentStore = documentStore;
         _httpClientFactory = httpClientFactory;
         _apiBaseUrl = (configuration["HoundApi:BaseUrl"] ?? "http://hound-api:8080").TrimEnd('/');
@@ -45,6 +48,7 @@ public class TradingWorker : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await RegisterPackAsync(stoppingToken);
+        await ResumeIncompleteRunsAsync(stoppingToken);
 
         _logger.LogInformation("TradingWorker starting. Poll interval: {Poll}s, scheduled interval: {Interval} min",
             PollInterval.TotalSeconds, _settings.RunIntervalMinutes);
@@ -121,6 +125,45 @@ public class TradingWorker : BackgroundService
 
             request.CompletedAt = DateTime.UtcNow;
             await session.SaveChangesAsync(cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// On startup, resume any graph runs that were in-flight when the process
+    /// last shut down (e.g., a monitor loop waiting for a pre-market order to fill).
+    /// </summary>
+    private async Task ResumeIncompleteRunsAsync(CancellationToken cancellationToken)
+    {
+        IReadOnlyList<TradingGraphState> incomplete;
+        try
+        {
+            incomplete = await _stateStore.ListIncompleteAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to query incomplete graph runs for resume");
+            return;
+        }
+
+        if (incomplete.Count == 0) return;
+
+        _logger.LogInformation("Found {Count} incomplete graph run(s) to resume", incomplete.Count);
+
+        foreach (var checkpoint in incomplete)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+
+            _logger.LogInformation("Resuming run {RunId} for {Symbol} (node: {Node}, phase: {Phase})",
+                checkpoint.RunId, checkpoint.Symbol, checkpoint.CurrentNode, checkpoint.Phase);
+
+            try
+            {
+                await _graph.ResumeAsync(checkpoint.RunId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to resume run {RunId}", checkpoint.RunId);
+            }
         }
     }
 

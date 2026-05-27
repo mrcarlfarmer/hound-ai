@@ -108,6 +108,7 @@ export interface NodeSnapshot {
   completedAt?: string;
   outputJson?: string;
   errorMessage?: string;
+  reasoningText?: string;
 }
 
 export interface GraphRun {
@@ -123,6 +124,16 @@ export interface GraphRun {
   refinementCount: number;
   monitorCycleCount: number;
   nodes: NodeSnapshot[];
+  refinements?: RefinementSnapshot[];
+}
+
+export interface RefinementSnapshot {
+  attempt: number;
+  symbol?: string;
+  action?: string;
+  quantity: number;
+  riskReasoning: string;
+  occurredAt: string;
 }
 
 export type RunRequestStatus = 'Pending' | 'Running' | 'Completed' | 'Failed';
@@ -136,4 +147,12 @@ export interface RunRequest {
   completedAt?: string;
   runId?: string;
   errorMessage?: string;
+}
+
+export interface NodeStreamChunk {
+  packId: string;
+  runId: string;
+  nodeId: string;
+  text: string;
+  timestamp: string;
 }

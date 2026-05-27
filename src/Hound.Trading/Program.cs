@@ -36,6 +36,16 @@ var houndApiUrl = builder.Configuration["HoundApi:BaseUrl"] ?? "http://hound-api
 builder.Services.AddSingleton<IActivityLogger>(sp =>
     new HttpActivityLogger(sp.GetRequiredService<IHttpClientFactory>(), houndApiUrl));
 
+// ── Node Streaming Publisher ─────────────────────────────────────────────────
+// Broadcasts live LLM output chunks to the dashboard while nodes are executing.
+builder.Services.AddSingleton<HttpNodeStreamPublisher>(sp =>
+    new HttpNodeStreamPublisher(
+        sp.GetRequiredService<IHttpClientFactory>(),
+        houndApiUrl,
+        sp.GetService<ILoggerFactory>()?.CreateLogger<HttpNodeStreamPublisher>()));
+builder.Services.AddSingleton<INodeStreamPublisher>(sp => sp.GetRequiredService<HttpNodeStreamPublisher>());
+builder.Services.AddHostedService(sp => sp.GetRequiredService<HttpNodeStreamPublisher>());
+
 var ollamaUrl = builder.Configuration["Ollama:BaseUrl"] ?? "http://ollama:11434/v1";
 builder.Services.AddSingleton<IOllamaClientFactory>(sp =>
     new OllamaClientFactory(sp.GetRequiredService<IHttpClientFactory>(), ollamaUrl));
@@ -81,6 +91,7 @@ builder.Services.AddSingleton<AnalystsTeamNode>(sp => new AnalystsTeamNode(
 
 builder.Services.AddSingleton<StrategyNode>(sp => new StrategyNode(
     sp.GetRequiredKeyedService<IChatClient>("strategy"),
+    sp.GetRequiredService<IAlpacaService>(),
     sp.GetRequiredService<IActivityLogger>(),
     sp.GetService<ILoggerFactory>()));
 
@@ -91,7 +102,6 @@ builder.Services.AddSingleton<RiskNode>(sp => new RiskNode(
     sp.GetService<ILoggerFactory>()));
 
 builder.Services.AddSingleton<ExecutionNode>(sp => new ExecutionNode(
-    sp.GetRequiredKeyedService<IChatClient>("default"),
     sp.GetRequiredService<IAlpacaService>(),
     sp.GetRequiredService<IActivityLogger>(),
     sp.GetRequiredService<IDocumentStore>(),
@@ -125,7 +135,8 @@ builder.Services.AddSingleton<GraphRunPublisher>(sp =>
     new GraphRunPublisher(
         sp.GetRequiredService<IDocumentStore>(),
         sp.GetRequiredService<IHttpClientFactory>(),
-        builder.Configuration["HoundApi:BaseUrl"] ?? "http://hound-api:8080"));
+        builder.Configuration["HoundApi:BaseUrl"] ?? "http://hound-api:8080",
+        sp.GetService<INodeStreamPublisher>()));
 builder.Services.AddSingleton<TradingGraph>();
 builder.Services.AddHostedService<TradingWorker>();
 

@@ -26,6 +26,9 @@ public record TradingGraphState
     public int RefinementCount { get; init; }
     public int MonitorCycleCount { get; init; }
 
+    // ── Refinement history ───────────────────────────────────────────────────
+    public List<RefinementEntry> RefinementHistory { get; init; } = [];
+
     // ── Terminal flags ───────────────────────────────────────────────────────
     public bool IsComplete { get; init; }
     public string? ErrorMessage { get; init; }

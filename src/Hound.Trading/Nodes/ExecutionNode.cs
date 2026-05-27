@@ -3,12 +3,8 @@ using Hound.Core.Logging;
 using Hound.Core.Models;
 using Hound.Trading.AlpacaClient;
 using Hound.Trading.Graph;
-using Microsoft.Agents.AI;
-using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Hound.Trading.Nodes;
 
@@ -16,6 +12,12 @@ namespace Hound.Trading.Nodes;
 /// Institutional-grade execution node. Places orders via Alpaca,
 /// persists <see cref="TradeDocument"/> to RavenDB for lifecycle tracking,
 /// and transitions the graph to the Monitor phase.
+/// <para>
+/// Execution is fully deterministic — there is no LLM involved. The broker
+/// response is the single source of truth for <see cref="ExecutionResult.Success"/>
+/// and <see cref="ExecutionResult.OrderId"/>; nothing downstream can be misled
+/// by a confabulated success.
+/// </para>
 /// </summary>
 public class ExecutionNode : INode
 {
@@ -23,13 +25,12 @@ public class ExecutionNode : INode
     public string PackId => "trading-pack";
     private const string Database = "hound-trading-pack";
 
-    private readonly ChatClientAgent _agent;
     private readonly IAlpacaService _alpacaService;
     private readonly IActivityLogger _activityLogger;
     private readonly IDocumentStore _documentStore;
+    private readonly ILogger<ExecutionNode>? _logger;
 
     public ExecutionNode(
-        IChatClient chatClient,
         IAlpacaService alpacaService,
         IActivityLogger activityLogger,
         IDocumentStore documentStore,
@@ -38,45 +39,7 @@ public class ExecutionNode : INode
         _alpacaService = alpacaService;
         _activityLogger = activityLogger;
         _documentStore = documentStore;
-
-        var tools = new List<AITool>
-        {
-            AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Symbol")] string symbol,
-                 [System.ComponentModel.Description("Number of shares")] decimal quantity,
-                 [System.ComponentModel.Description("Buy or Sell")] string side) =>
-                    PlaceMarketOrderAsync(symbol, quantity, side),
-                "place_market_order",
-                "Places a market order for the specified symbol and returns the order ID and status"),
-
-            AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Alpaca order ID (GUID)")] string orderId) =>
-                    GetOrderStatusAsync(orderId),
-                "get_order_status",
-                "Retrieves the current status, filled quantity, and average fill price for an order"),
-
-            AIFunctionFactory.Create(
-                ([System.ComponentModel.Description("Alpaca order ID (GUID)")] string orderId) =>
-                    CancelOrderAsync(orderId),
-                "cancel_order",
-                "Cancels an open order by its ID"),
-        };
-
-        _agent = new ChatClientAgent(
-            chatClient,
-            instructions: """
-                /no_think
-                You are ExecutionNode, an institutional-grade execution trader.
-                Your role is precision order placement and lifecycle management.
-                When given an approved trade, use the place_market_order tool to submit the order.
-                After placement, you may use get_order_status to check fill progress or cancel_order to abort.
-                Respond strictly in JSON matching:
-                {"success":true,"symbol":"...","action":"Buy|Sell","quantity":0.0,"filledPrice":null,"orderId":"...","message":"..."}
-                """,
-            name: "ExecutionNode",
-            description: "Institutional-grade execution trader with order lifecycle management",
-            tools: tools,
-            loggerFactory: loggerFactory);
+        _logger = loggerFactory?.CreateLogger<ExecutionNode>();
     }
 
     public async Task<TradingGraphState> ExecuteAsync(
@@ -108,12 +71,63 @@ public class ExecutionNode : INode
         }
 
         var effectiveQuantity = assessment.AdjustedQuantity ?? assessment.Decision.Quantity;
+        var symbol = assessment.Decision.Symbol;
+        var action = assessment.Decision.Action;
+
+        // Fractional-share guard: if the requested quantity is non-integer we
+        // must confirm the symbol is fractionable on Alpaca. Whole-share orders
+        // pass through unchanged. Failures are logged loudly so Tuner can learn
+        // to avoid non-fractionable symbols when the account can only afford a
+        // partial share.
+        var isFractional = effectiveQuantity != Math.Truncate(effectiveQuantity);
+        if (isFractional)
+        {
+            IAsset? asset = null;
+            try
+            {
+                asset = await _alpacaService.GetAssetAsync(symbol, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                await _activityLogger.LogActivityAsync(new ActivityLog
+                {
+                    PackId = PackId,
+                    HoundId = NodeId,
+                    HoundName = "ExecutionNode",
+                    Message = $"Asset lookup failed for {symbol}: {ex.Message}. Cannot verify fractionable support.",
+                    Severity = ActivitySeverity.Error,
+                }, cancellationToken);
+            }
+
+            if (asset is { Fractionable: false })
+            {
+                await _activityLogger.LogActivityAsync(new ActivityLog
+                {
+                    PackId = PackId,
+                    HoundId = NodeId,
+                    HoundName = "ExecutionNode",
+                    Message = $"Rejected fractional order: {symbol} is not fractionable on Alpaca (requested quantity {effectiveQuantity}). Whole-share orders only for this symbol.",
+                    Severity = ActivitySeverity.Error,
+                }, cancellationToken);
+
+                var rejectResult = new ExecutionResult(
+                    false,
+                    symbol,
+                    action,
+                    effectiveQuantity,
+                    null,
+                    string.Empty,
+                    $"Symbol {symbol} does not support fractional shares on Alpaca; requested quantity {effectiveQuantity} requires a whole-share order.");
+
+                return state with { ExecutionOutput = rejectResult, IsComplete = true };
+            }
+        }
 
         // Create TradeDocument with Pending status before placing the order
         var tradeDoc = new TradeDocument
         {
-            Symbol = assessment.Decision.Symbol,
-            Action = assessment.Decision.Action.ToString(),
+            Symbol = symbol,
+            Action = action.ToString(),
             RequestedQuantity = effectiveQuantity,
             FillStatus = FillStatus.Pending,
             RiskAssessmentSummary = assessment.Reasoning,
@@ -132,7 +146,7 @@ public class ExecutionNode : INode
             PackId = PackId,
             HoundId = NodeId,
             HoundName = "ExecutionNode",
-            Message = $"Executing {assessment.Decision.Action} {effectiveQuantity} {assessment.Decision.Symbol}",
+            Message = $"Executing {action} {effectiveQuantity} {symbol}",
             Severity = ActivitySeverity.Info,
             Metadata = new Dictionary<string, object>
             {
@@ -140,33 +154,51 @@ public class ExecutionNode : INode
             },
         }, cancellationToken);
 
-        var effectiveDecision = assessment.Decision with { Quantity = effectiveQuantity };
-        var decisionJson = JsonSerializer.Serialize(effectiveDecision);
-
-        var agentSession = await _agent.CreateSessionAsync(cancellationToken);
-        var response = await _agent.RunAsync(
-            [new ChatMessage(ChatRole.User, $"Execute this approved trade:\n{decisionJson}")],
-            agentSession,
-            cancellationToken: cancellationToken);
-
-        var json = LlmResponseParser.ExtractJson(response.Text ?? "{}");
+        // Deterministic order placement. The broker response is the only thing
+        // that can set Success = true — no LLM, no self-reported success.
         ExecutionResult result;
-
         try
         {
-            var parsed = JsonSerializer.Deserialize<ExecutionResult>(json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true, Converters = { new JsonStringEnumConverter() } });
-            result = parsed ?? new ExecutionResult(false, assessment.Decision.Symbol,
-                assessment.Decision.Action, effectiveQuantity, null, string.Empty, "Execution failed");
+            var orderSide = action == TradeAction.Sell ? OrderSide.Sell : OrderSide.Buy;
+            var order = await _alpacaService.SubmitOrderAsync(
+                symbol,
+                OrderQuantity.Fractional(effectiveQuantity),
+                orderSide,
+                OrderType.Market,
+                TimeInForce.Day,
+                cancellationToken: cancellationToken);
+
+            var orderIdGuid = order.OrderId;
+            var success = orderIdGuid != Guid.Empty && order.OrderStatus != OrderStatus.Rejected;
+            var orderIdString = orderIdGuid == Guid.Empty ? string.Empty : orderIdGuid.ToString();
+
+            result = new ExecutionResult(
+                success,
+                symbol,
+                action,
+                effectiveQuantity,
+                order.AverageFillPrice,
+                orderIdString,
+                success
+                    ? $"Order submitted to Alpaca — status: {order.OrderStatus}"
+                    : $"Alpaca returned non-actionable order status: {order.OrderStatus}",
+                tradeDoc.Id);
         }
-        catch (JsonException)
+        catch (Exception ex)
         {
-            result = new ExecutionResult(false, assessment.Decision.Symbol,
-                assessment.Decision.Action, effectiveQuantity, null, string.Empty, json,
+            _logger?.LogError(ex, "ExecutionNode order submission failed for {Symbol}", symbol);
+            result = new ExecutionResult(
+                false,
+                symbol,
+                action,
+                effectiveQuantity,
+                null,
+                string.Empty,
+                $"Order placement failed: {ex.Message}",
                 tradeDoc.Id);
         }
 
-        // Update TradeDocument with OrderId from the placed order
+        // Persist authoritative outcome to the TradeDocument
         using (var session = _documentStore.OpenAsyncSession(Database))
         {
             var doc = await session.LoadAsync<TradeDocument>(tradeDoc.Id, cancellationToken);
@@ -179,8 +211,6 @@ public class ExecutionNode : INode
                 await session.SaveChangesAsync(cancellationToken);
             }
         }
-
-        result = result with { TradeDocumentId = tradeDoc.Id };
 
         await _activityLogger.LogActivityAsync(new ActivityLog
         {
@@ -204,81 +234,5 @@ public class ExecutionNode : INode
             Phase = result.Success ? GraphPhase.Monitor : state.Phase,
             IsComplete = !result.Success,
         };
-    }
-
-    private async Task<string> PlaceMarketOrderAsync(string symbol, decimal quantity, string side)
-    {
-        try
-        {
-            var orderSide = string.Equals(side, "Sell", StringComparison.OrdinalIgnoreCase)
-                ? OrderSide.Sell
-                : OrderSide.Buy;
-
-            var order = await _alpacaService.SubmitOrderAsync(
-                symbol,
-                OrderQuantity.Fractional(quantity),
-                orderSide,
-                OrderType.Market,
-                TimeInForce.Day);
-
-            return JsonSerializer.Serialize(new
-            {
-                orderId = order.OrderId.ToString(),
-                status = order.OrderStatus.ToString(),
-                symbol = order.Symbol,
-                quantity = order.Quantity,
-                side = order.OrderSide.ToString(),
-            });
-        }
-        catch (Exception ex)
-        {
-            return JsonSerializer.Serialize(new
-            {
-                error = true,
-                message = $"Order placement failed: {ex.Message}",
-            });
-        }
-    }
-
-    private async Task<string> GetOrderStatusAsync(string orderId)
-    {
-        if (!Guid.TryParse(orderId, out var guid))
-            return JsonSerializer.Serialize(new { error = "Invalid order ID format" });
-
-        try
-        {
-            var order = await _alpacaService.GetOrderAsync(guid);
-
-            return JsonSerializer.Serialize(new
-            {
-                orderId = order.OrderId.ToString(),
-                status = order.OrderStatus.ToString(),
-                symbol = order.Symbol,
-                filledQuantity = order.FilledQuantity,
-                averageFillPrice = order.AverageFillPrice,
-                submittedAt = order.SubmittedAtUtc,
-                filledAt = order.FilledAtUtc,
-            });
-        }
-        catch (Exception ex)
-        {
-            return JsonSerializer.Serialize(new { error = true, message = $"Failed to get order status: {ex.Message}" });
-        }
-    }
-
-    private async Task<string> CancelOrderAsync(string orderId)
-    {
-        if (!Guid.TryParse(orderId, out var guid))
-            return JsonSerializer.Serialize(new { error = "Invalid order ID format", success = false });
-
-        try
-        {
-            var success = await _alpacaService.CancelOrderAsync(guid);
-            return JsonSerializer.Serialize(new { orderId, success });
-        }
-        catch (Exception ex)
-        {
-            return JsonSerializer.Serialize(new { error = true, message = $"Failed to cancel order: {ex.Message}", success = false });
-        }
     }
 }

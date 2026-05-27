@@ -1,4 +1,5 @@
 using Raven.Client.Documents;
+using Raven.Client.Documents.Linq;
 
 namespace Hound.Trading.Graph;
 
@@ -35,5 +36,13 @@ public class RavenStateStore : IStateStore
         using var session = _documentStore.OpenAsyncSession(Database);
         session.Delete($"GraphCheckpoints/{runId}");
         await session.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<TradingGraphState>> ListIncompleteAsync(CancellationToken cancellationToken)
+    {
+        using var session = _documentStore.OpenAsyncSession(Database);
+        return await session.Query<TradingGraphState>()
+            .Where(s => !s.IsComplete)
+            .ToListAsync(cancellationToken);
     }
 }

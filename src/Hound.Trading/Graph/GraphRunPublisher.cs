@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Hound.Core.LlmClient;
 using Hound.Core.Models;
 using Hound.Trading.Nodes;
 using Raven.Client.Documents;
@@ -28,12 +29,18 @@ public class GraphRunPublisher
     private readonly IDocumentStore _store;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _apiBaseUrl;
+    private readonly INodeStreamPublisher? _reasoningSource;
 
-    public GraphRunPublisher(IDocumentStore store, IHttpClientFactory httpClientFactory, string apiBaseUrl)
+    public GraphRunPublisher(
+        IDocumentStore store,
+        IHttpClientFactory httpClientFactory,
+        string apiBaseUrl,
+        INodeStreamPublisher? reasoningSource = null)
     {
         _store = store;
         _httpClientFactory = httpClientFactory;
         _apiBaseUrl = apiBaseUrl.TrimEnd('/');
+        _reasoningSource = reasoningSource;
     }
 
     /// <summary>Publish the current graph state as a <see cref="GraphRun"/> snapshot.</summary>
@@ -59,7 +66,26 @@ public class GraphRunPublisher
         if (state.IsComplete)
             run.CompletedAt = DateTime.UtcNow;
 
+        run.Refinements = state.RefinementHistory.Select(r => new RefinementSnapshot
+        {
+            Attempt = r.Attempt,
+            Symbol = r.RejectedDecision.Symbol,
+            Action = r.RejectedDecision.Action.ToString(),
+            Quantity = r.RejectedDecision.Quantity,
+            RiskReasoning = r.RiskReasoning,
+            OccurredAt = r.OccurredAt,
+        }).ToList();
+
         run.Nodes = BuildNodeSnapshots(state);
+        if (_reasoningSource is not null)
+        {
+            foreach (var snap in run.Nodes)
+            {
+                var reasoning = _reasoningSource.GetReasoning(state.RunId, snap.NodeId);
+                if (!string.IsNullOrEmpty(reasoning))
+                    snap.ReasoningText = reasoning;
+            }
+        }
 
         await session.StoreAsync(run, docId, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);

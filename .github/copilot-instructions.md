@@ -44,15 +44,14 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 
 ## Key Patterns
 - **One container per pack** — all hounds in a pack share a process
-- **AF graph-based workflows** for intra-pack orchestration (sequential dependency chain)
-- **`IActivityLogger`** — all hounds log activity to RavenDB before invoking agents
-- **`IOllamaClientFactory`** — creates `IChatClient` per hound via `ChatClientAgent`
-- **SignalR** hub at `/hubs/activity` for real-time dashboard updates
+- **Graph-based orchestration** — cyclic state machine with `INode` pipeline; see [graph-workflows.instructions.md](.github/instructions/graph-workflows.instructions.md)
+- **Core interfaces** — `IActivityLogger`, `IOllamaClientFactory`, config models; see [hound-core.instructions.md](.github/instructions/hound-core.instructions.md)
+- **Activity flow**: Nodes → `HttpActivityLogger` → API → RavenDB → SignalR → Dashboard
+- **Keyed `IChatClient`** — `"strategy"` (larger model) vs `"default"` (standard); registered in pack `Program.cs`
 - **`IOptions<T>`** for configuration binding; externalized hound configs in `Config/*.json`
-- **Records** for hound response DTOs in pack-level `HoundModels.cs` (`MarketAnalysis`, `TradingDecision`, `RiskAssessment`); config models in `Hound.Core/Models/HoundConfigs.cs`
+- **Records** for node output DTOs in `Nodes/NodeModels.cs`; config models in `Hound.Core/Models/HoundConfigs.cs`
 - **Controllers** use `[ApiController]`, `[Route("api/[controller]")]`, `CancellationToken` on all methods
-- **Activity logging path**: Hounds → `HttpActivityLogger` → API → `RavenActivityService` → single `HoundAI` database
-- **Angular UI**: Spartan-ng (`@spartan-ng/brain` + `@spartan-ng/helm`) component library — primitives in `ui/hound-dashboard/src/app/components/ui/`
+- **Angular UI**: Spartan-ng (`@spartan-ng/brain` + `@spartan-ng/helm`) component library
 
 ## Solution Structure
 ```
@@ -88,10 +87,10 @@ ui/
 - **`eval.yml`** — Manual `workflow_dispatch` to run eval scenarios with Ollama
 
 ## Customization Assets
-- **Instructions**: `.github/instructions/` — scoped guides for API, Angular, C#, Docker, tests, services
+- **Instructions**: `.github/instructions/` — scoped guides for API, Angular, C#, Docker, tests, services, core, graph workflows
 - **Skills**: `.github/skills/hound-eval/`, `.github/skills/csharp-mstest/`
 - **Agents**: `.github/agents/reviewer.agent.md` — read-only convention reviewer
-- **Prompts**: `.github/prompts/new-hound.prompt.md` — hound scaffolding
+- **Prompts**: `.github/prompts/new-hound.prompt.md`, `.github/prompts/new-pack.prompt.md`
 - **Hooks**: `.github/hooks/eval-reminder.json`, `model-sync-reminder.json`
 
 ## Do NOT

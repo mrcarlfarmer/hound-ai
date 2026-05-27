@@ -1,9 +1,9 @@
+using Alpaca.Markets;
 using Hound.Core.Logging;
 using Hound.Core.Models;
 using Hound.Trading.AlpacaClient;
 using Hound.Trading.Graph;
 using Hound.Trading.Nodes;
-using Microsoft.Extensions.AI;
 using Moq;
 using Raven.Client.Documents;
 using Raven.Client.Documents.Session;
@@ -13,7 +13,6 @@ namespace Hound.Trading.Tests.Nodes;
 [TestClass]
 public sealed class ExecutionNodeTests
 {
-    private Mock<IChatClient> _mockChatClient = null!;
     private Mock<IAlpacaService> _mockAlpacaService = null!;
     private Mock<IActivityLogger> _mockActivityLogger = null!;
     private Mock<IDocumentStore> _mockDocumentStore = null!;
@@ -23,7 +22,6 @@ public sealed class ExecutionNodeTests
     [TestInitialize]
     public void Setup()
     {
-        _mockChatClient = new Mock<IChatClient>();
         _mockAlpacaService = new Mock<IAlpacaService>();
         _mockActivityLogger = new Mock<IActivityLogger>();
         _mockDocumentStore = new Mock<IDocumentStore>();
@@ -42,11 +40,23 @@ public sealed class ExecutionNodeTests
             })
             .Returns(Task.CompletedTask);
 
+        _mockSession
+            .Setup(s => s.LoadAsync<TradeDocument>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TradeDocument { Id = "TradeDocuments/1" });
+
         _node = new ExecutionNode(
-            _mockChatClient.Object,
             _mockAlpacaService.Object,
             _mockActivityLogger.Object,
             _mockDocumentStore.Object);
+    }
+
+    private static Mock<IOrder> MockOrder(OrderStatus status, Guid? orderId = null, decimal? avgFill = null)
+    {
+        var m = new Mock<IOrder>();
+        m.Setup(o => o.OrderId).Returns(orderId ?? Guid.NewGuid());
+        m.Setup(o => o.OrderStatus).Returns(status);
+        m.Setup(o => o.AverageFillPrice).Returns(avgFill);
+        return m;
     }
 
     [TestMethod]
@@ -80,9 +90,9 @@ public sealed class ExecutionNodeTests
         await _node.ExecuteAsync(state, default);
 
         _mockAlpacaService.Verify(
-            s => s.SubmitOrderAsync(It.IsAny<string>(), It.IsAny<Alpaca.Markets.OrderQuantity>(),
-                It.IsAny<Alpaca.Markets.OrderSide>(), It.IsAny<Alpaca.Markets.OrderType>(),
-                It.IsAny<Alpaca.Markets.TimeInForce>(), It.IsAny<decimal?>(), It.IsAny<CancellationToken>()),
+            s => s.SubmitOrderAsync(It.IsAny<string>(), It.IsAny<OrderQuantity>(),
+                It.IsAny<OrderSide>(), It.IsAny<OrderType>(),
+                It.IsAny<TimeInForce>(), It.IsAny<decimal?>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
@@ -110,7 +120,10 @@ public sealed class ExecutionNodeTests
             new TradingDecision("AAPL", TradeAction.Buy, 50, "Bullish", 0.9),
             "Within risk limits");
 
-        SetupChatClientResponse("""{"success":true,"symbol":"AAPL","action":"Buy","quantity":50,"filledPrice":null,"orderId":"abc-123","message":"Order placed"}""");
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync("AAPL", It.IsAny<OrderQuantity>(), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted).Object);
 
         var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
         await _node.ExecuteAsync(state, default);
@@ -134,7 +147,10 @@ public sealed class ExecutionNodeTests
             "Adjusted to 80 shares",
             AdjustedQuantity: 80);
 
-        SetupChatClientResponse("""{"success":true,"symbol":"GOOG","action":"Buy","quantity":80,"filledPrice":null,"orderId":"def-456","message":"Order placed"}""");
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync("GOOG", It.IsAny<OrderQuantity>(), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted).Object);
 
         var state = TradingGraphState.Initial("GOOG") with { RiskOutput = assessment };
         await _node.ExecuteAsync(state, default);
@@ -153,7 +169,10 @@ public sealed class ExecutionNodeTests
             new TradingDecision("SPY", TradeAction.Buy, 10, "Bullish", 0.85),
             "Approved");
 
-        SetupChatClientResponse("""{"success":true,"symbol":"SPY","action":"Buy","quantity":10,"filledPrice":null,"orderId":"xyz-789","message":"Done"}""");
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync("SPY", It.IsAny<OrderQuantity>(), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted).Object);
 
         var state = TradingGraphState.Initial("SPY") with { RiskOutput = assessment };
         var result = await _node.ExecuteAsync(state, default);
@@ -170,29 +189,86 @@ public sealed class ExecutionNodeTests
             new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.85),
             "Approved");
 
-        SetupChatClientResponse("""{"success":true,"symbol":"AAPL","action":"Buy","quantity":10,"filledPrice":150.00,"orderId":"ord-001","message":"Filled"}""");
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync("AAPL", It.IsAny<OrderQuantity>(), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted, avgFill: 150m).Object);
 
         var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
         var result = await _node.ExecuteAsync(state, default);
 
+        Assert.IsTrue(result.ExecutionOutput!.Success);
         Assert.AreEqual(GraphPhase.Monitor, result.Phase);
         Assert.IsFalse(result.IsComplete);
     }
 
-    private void SetupChatClientResponse(string responseJson)
+    [TestMethod]
+    public async Task ExecuteAsync_AlpacaThrows_ReturnsFailureAndCompletes()
     {
-        var chatResponse = new ChatResponse(
-            [new ChatMessage(ChatRole.Assistant, responseJson)]);
+        var assessment = new RiskAssessment(
+            RiskVerdict.Approved,
+            new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.85),
+            "Approved");
 
-        _mockChatClient
-            .Setup(c => c.GetResponseAsync(
-                It.IsAny<IEnumerable<ChatMessage>>(),
-                It.IsAny<ChatOptions?>(),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(chatResponse);
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync(It.IsAny<string>(), It.IsAny<OrderQuantity>(),
+                It.IsAny<OrderSide>(), It.IsAny<OrderType>(),
+                It.IsAny<TimeInForce>(), It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Alpaca down"));
 
-        _mockSession
-            .Setup(s => s.LoadAsync<TradeDocument>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TradeDocument { Id = "TradeDocuments/1" });
+        var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+        var result = await _node.ExecuteAsync(state, default);
+
+        Assert.IsFalse(result.ExecutionOutput!.Success);
+        Assert.AreEqual(string.Empty, result.ExecutionOutput.OrderId);
+        Assert.IsTrue(result.IsComplete);
+        Assert.AreNotEqual(GraphPhase.Monitor, result.Phase);
+        _mockActivityLogger.Verify(
+            l => l.LogActivityAsync(It.Is<ActivityLog>(a => a.Severity == ActivitySeverity.Error), default),
+            Times.AtLeastOnce);
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_OrderRejectedByBroker_ReturnsFailure()
+    {
+        var assessment = new RiskAssessment(
+            RiskVerdict.Approved,
+            new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.85),
+            "Approved");
+
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync(It.IsAny<string>(), It.IsAny<OrderQuantity>(),
+                It.IsAny<OrderSide>(), It.IsAny<OrderType>(),
+                It.IsAny<TimeInForce>(), It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Rejected).Object);
+
+        var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+        var result = await _node.ExecuteAsync(state, default);
+
+        Assert.IsFalse(result.ExecutionOutput!.Success);
+        Assert.IsTrue(result.IsComplete);
+        Assert.AreNotEqual(GraphPhase.Monitor, result.Phase);
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_EmptyOrderIdFromBroker_ReturnsFailure()
+    {
+        var assessment = new RiskAssessment(
+            RiskVerdict.Approved,
+            new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.85),
+            "Approved");
+
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync(It.IsAny<string>(), It.IsAny<OrderQuantity>(),
+                It.IsAny<OrderSide>(), It.IsAny<OrderType>(),
+                It.IsAny<TimeInForce>(), It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted, orderId: Guid.Empty).Object);
+
+        var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+        var result = await _node.ExecuteAsync(state, default);
+
+        Assert.IsFalse(result.ExecutionOutput!.Success);
+        Assert.AreEqual(string.Empty, result.ExecutionOutput.OrderId);
+        Assert.IsTrue(result.IsComplete);
     }
 }

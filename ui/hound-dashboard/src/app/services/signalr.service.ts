@@ -1,7 +1,7 @@
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import * as signalR from '@microsoft/signalr';
-import { ActivityLog, OrderUpdate, GraphRun } from '../models';
+import { ActivityLog, OrderUpdate, GraphRun, NodeStreamChunk } from '../models';
 
 export const SIGNALR_CONNECTION_FACTORY = new InjectionToken<() => signalR.HubConnection>(
   'SignalrConnectionFactory',
@@ -22,10 +22,12 @@ export class SignalrService {
   private activitySubject = new Subject<ActivityLog>();
   private orderUpdateSubject = new Subject<OrderUpdate>();
   private graphRunSubject = new Subject<GraphRun>();
+  private nodeStreamSubject = new Subject<NodeStreamChunk>();
 
   onActivity$: Observable<ActivityLog> = this.activitySubject.asObservable();
   onOrderUpdate$: Observable<OrderUpdate> = this.orderUpdateSubject.asObservable();
   onGraphRunUpdate$: Observable<GraphRun> = this.graphRunSubject.asObservable();
+  onNodeStream$: Observable<NodeStreamChunk> = this.nodeStreamSubject.asObservable();
 
   connect(): void {
     if (this.connectionPromise) return;
@@ -42,6 +44,10 @@ export class SignalrService {
 
     this.hubConnection.on('OnGraphRunUpdate', (run: GraphRun) => {
       this.graphRunSubject.next(run);
+    });
+
+    this.hubConnection.on('OnNodeStream', (chunk: NodeStreamChunk) => {
+      this.nodeStreamSubject.next(chunk);
     });
 
     this.connectionPromise = this.hubConnection.start().catch(err => console.error('SignalR connection error:', err));
