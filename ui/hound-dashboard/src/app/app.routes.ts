@@ -4,6 +4,7 @@ import { PackDetailComponent } from './pages/pack-detail/pack-detail.component';
 import { ActivityLogComponent } from './pages/activity-log/activity-log.component';
 import { ExecutionComponent } from './pages/execution/execution.component';
 import { GraphRunsComponent } from './pages/graph-runs/graph-runs.component';
+import { PortfolioComponent } from './pages/portfolio/portfolio.component';
 
 export const routes: Routes = [
   { path: '', component: DashboardComponent },
@@ -11,4 +12,5 @@ export const routes: Routes = [
   { path: 'activity', component: ActivityLogComponent },
   { path: 'execution', component: ExecutionComponent },
   { path: 'graph', component: GraphRunsComponent },
+  { path: 'portfolio', component: PortfolioComponent },
 ];

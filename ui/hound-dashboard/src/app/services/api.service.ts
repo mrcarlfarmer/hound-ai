@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest } from '../models';
+import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest, AccountSummary, PositionInfo } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -60,5 +60,13 @@ export class ApiService {
 
   queueRun(symbol: string): Observable<RunRequest> {
     return this.http.post<RunRequest>(`${this.baseUrl}/api/runs`, { symbol });
+  }
+
+  getAccount(): Observable<AccountSummary> {
+    return this.http.get<AccountSummary>(`${this.baseUrl}/api/portfolio/account`);
+  }
+
+  getPositions(): Observable<PositionInfo[]> {
+    return this.http.get<PositionInfo[]>(`${this.baseUrl}/api/portfolio/positions`);
   }
 }

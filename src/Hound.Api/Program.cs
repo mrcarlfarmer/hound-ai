@@ -66,6 +66,7 @@ builder.Services.AddScoped<ITunerExperimentRepository, RavenTunerExperimentRepos
 builder.Services.AddScoped<ITradeRepository, RavenTradeRepository>();
 builder.Services.AddScoped<IGraphRunRepository, RavenGraphRunRepository>();
 builder.Services.AddSingleton<TunerStateService>();
+builder.Services.AddSingleton<IAlpacaPortfolioService, AlpacaPortfolioService>();
 builder.Services.AddHttpClient("health");
 builder.Services.AddScoped<IHealthCheckService, HealthCheckService>();
 

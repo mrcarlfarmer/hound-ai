@@ -1,10 +1,10 @@
 {
   "/api": {
-    "target": "http://hound-api:8080",
+    "target": "http://localhost:5000",
     "secure": false
   },
   "/hubs": {
-    "target": "http://hound-api:8080",
+    "target": "http://localhost:5000",
     "secure": false,
     "ws": true
   }

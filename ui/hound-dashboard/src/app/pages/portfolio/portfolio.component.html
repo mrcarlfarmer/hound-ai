@@ -1,0 +1,92 @@
+<h1 class="mb-6 text-2xl font-bold text-foreground">Portfolio</h1>
+
+@if (loading) {
+  <p class="text-muted-foreground">Loading account data…</p>
+} @else if (error) {
+  <p class="text-red-600">{{ error }}</p>
+} @else {
+  <!-- Account Summary Cards -->
+  <section class="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium uppercase text-muted-foreground">Equity</p>
+      <p class="mt-1 text-2xl font-bold text-foreground">{{ account!.equity | currency:'USD' }}</p>
+    </div>
+    <div class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium uppercase text-muted-foreground">Buying Power</p>
+      <p class="mt-1 text-2xl font-bold text-foreground">{{ account!.buyingPower | currency:'USD' }}</p>
+    </div>
+    <div class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium uppercase text-muted-foreground">Cash</p>
+      <p class="mt-1 text-2xl font-bold text-foreground">{{ account!.cash | currency:'USD' }}</p>
+    </div>
+    <div class="rounded-lg border border-border bg-card p-4">
+      <p class="text-xs font-medium uppercase text-muted-foreground">Daily Change</p>
+      <p class="mt-1 text-2xl font-bold" [ngClass]="plClass(account!.dailyChangeAmount)">
+        {{ account!.dailyChangeAmount >= 0 ? '+' : '' }}{{ account!.dailyChangeAmount | currency:'USD' }}
+        <span class="text-sm font-normal">
+          ({{ account!.dailyChangePercent >= 0 ? '+' : '' }}{{ account!.dailyChangePercent | number:'1.2-2' }}%)
+        </span>
+      </p>
+    </div>
+  </section>
+
+  <!-- Positions Table -->
+  <section>
+    <h2 class="mb-3 text-lg font-semibold text-foreground">Open Positions</h2>
+    <div class="overflow-x-auto rounded-lg border border-border">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-border bg-muted/50">
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Symbol</th>
+            <th class="px-4 py-2 text-left font-medium text-muted-foreground">Side</th>
+            <th class="px-4 py-2 text-right font-medium text-muted-foreground">Qty</th>
+            <th class="px-4 py-2 text-right font-medium text-muted-foreground">Avg Entry</th>
+            <th class="px-4 py-2 text-right font-medium text-muted-foreground">Current Price</th>
+            <th class="px-4 py-2 text-right font-medium text-muted-foreground">Market Value</th>
+            <th class="px-4 py-2 text-right font-medium text-muted-foreground">Unrealized P/L</th>
+            <th class="px-4 py-2 text-right font-medium text-muted-foreground">Change Today</th>
+          </tr>
+        </thead>
+        <tbody>
+          @for (pos of positions; track pos.symbol) {
+            <tr class="border-b border-border last:border-0">
+              <td class="px-4 py-2 font-medium text-foreground">{{ pos.symbol }}</td>
+              <td class="px-4 py-2 text-foreground">{{ pos.side }}</td>
+              <td class="px-4 py-2 text-right text-foreground">{{ pos.quantity | number:'1.0-4' }}</td>
+              <td class="px-4 py-2 text-right text-foreground">{{ pos.averageEntryPrice | currency:'USD' }}</td>
+              <td class="px-4 py-2 text-right text-foreground">{{ pos.currentPrice | currency:'USD' }}</td>
+              <td class="px-4 py-2 text-right text-foreground">{{ pos.marketValue | currency:'USD' }}</td>
+              <td class="px-4 py-2 text-right" [ngClass]="plClass(pos.unrealizedPl)">
+                {{ pos.unrealizedPl >= 0 ? '+' : '' }}{{ pos.unrealizedPl | currency:'USD' }}
+                <span class="text-xs">({{ pos.unrealizedPlPercent >= 0 ? '+' : '' }}{{ pos.unrealizedPlPercent | number:'1.2-2' }}%)</span>
+              </td>
+              <td class="px-4 py-2 text-right" [ngClass]="plClass(pos.changeToday)">
+                {{ pos.changeToday >= 0 ? '+' : '' }}{{ pos.changeToday | number:'1.2-2' }}%
+              </td>
+            </tr>
+          }
+          @if (positions.length === 0) {
+            <tr>
+              <td colspan="8" class="px-4 py-8 text-center text-muted-foreground">No open positions</td>
+            </tr>
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Summary Row -->
+    @if (positions.length > 0) {
+      <div class="mt-3 flex items-center gap-6 text-sm">
+        <span class="text-muted-foreground">
+          Total Market Value: <strong class="text-foreground">{{ totalMarketValue() | currency:'USD' }}</strong>
+        </span>
+        <span class="text-muted-foreground">
+          Total Unrealized P/L:
+          <strong [ngClass]="plClass(totalUnrealizedPl())">
+            {{ totalUnrealizedPl() >= 0 ? '+' : '' }}{{ totalUnrealizedPl() | currency:'USD' }}
+          </strong>
+        </span>
+      </div>
+    }
+  </section>
+}

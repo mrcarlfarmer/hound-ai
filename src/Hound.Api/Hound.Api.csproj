@@ -7,6 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Alpaca.Markets" Version="7.2.0" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Core" Version="1.2.9" />
     <PackageReference Include="RavenDB.Client" Version="7.2.1" />
   </ItemGroup>

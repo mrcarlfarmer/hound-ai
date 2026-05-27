@@ -18,6 +18,8 @@ import { HlmToaster } from '@spartan-ng/helm/sonner';
            class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Execution</a>
         <a routerLink="/graph" routerLinkActive="text-primary"
            class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Graph</a>
+        <a routerLink="/portfolio" routerLinkActive="text-primary"
+           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Portfolio</a>
       </div>
     </nav>
     <main class="px-4 py-4 sm:px-6 sm:py-6">

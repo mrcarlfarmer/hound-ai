@@ -156,3 +156,28 @@ export interface NodeStreamChunk {
   text: string;
   timestamp: string;
 }
+
+// ── Portfolio models ─────────────────────────────────────────────────────────
+
+export interface AccountSummary {
+  equity: number;
+  cash: number;
+  buyingPower: number;
+  portfolioValue: number;
+  dailyChangePercent: number;
+  dailyChangeAmount: number;
+  lastEquity: number;
+  currency: string;
+}
+
+export interface PositionInfo {
+  symbol: string;
+  quantity: number;
+  marketValue: number;
+  currentPrice: number;
+  averageEntryPrice: number;
+  unrealizedPl: number;
+  unrealizedPlPercent: number;
+  changeToday: number;
+  side: string;
+}
