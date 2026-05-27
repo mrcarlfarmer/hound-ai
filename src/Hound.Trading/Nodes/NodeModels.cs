@@ -33,6 +33,15 @@ public record RiskAssessment(
     string Reasoning,
     decimal? AdjustedQuantity = null);
 
+/// <summary>
+/// Captures a single refinement iteration: the strategy that was rejected and why.
+/// </summary>
+public record RefinementEntry(
+    int Attempt,
+    TradingDecision RejectedDecision,
+    string RiskReasoning,
+    DateTime OccurredAt);
+
 public record ExecutionResult(
     bool Success,
     string Symbol,

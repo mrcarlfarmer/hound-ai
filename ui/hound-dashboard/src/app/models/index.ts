@@ -135,6 +135,16 @@ export interface GraphRun {
   refinementCount: number;
   monitorCycleCount: number;
   nodes: NodeSnapshot[];
+  refinements?: RefinementSnapshot[];
+}
+
+export interface RefinementSnapshot {
+  attempt: number;
+  symbol?: string;
+  action?: string;
+  quantity: number;
+  riskReasoning: string;
+  occurredAt: string;
 }
 
 export type RunRequestStatus = 'Pending' | 'Running' | 'Completed' | 'Failed';

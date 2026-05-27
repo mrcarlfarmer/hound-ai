@@ -66,6 +66,16 @@ public class GraphRunPublisher
         if (state.IsComplete)
             run.CompletedAt = DateTime.UtcNow;
 
+        run.Refinements = state.RefinementHistory.Select(r => new RefinementSnapshot
+        {
+            Attempt = r.Attempt,
+            Symbol = r.RejectedDecision.Symbol,
+            Action = r.RejectedDecision.Action.ToString(),
+            Quantity = r.RejectedDecision.Quantity,
+            RiskReasoning = r.RiskReasoning,
+            OccurredAt = r.OccurredAt,
+        }).ToList();
+
         run.Nodes = BuildNodeSnapshots(state);
         if (_reasoningSource is not null)
         {

@@ -52,21 +52,22 @@ public class RiskNode : INode
                 You are RiskNode, a risk management specialist.
                 Evaluate the proposed trade using the PRE-COMPUTED RISK METRICS provided.
                 Do NOT recalculate values — the metrics are authoritative.
+                Do NOT invent additional rules or constraints beyond those listed below.
                 
-                Rules:
-                - Maximum single-position size: 20% of portfolio equity
-                - Maximum total exposure: 80% of equity in equities
-                - Never exceed quantity of 1000 shares per order
+                Rules (ONLY these three):
+                1. Maximum single-position size: 20% of portfolio equity
+                2. Maximum total exposure: 80% of equity in equities
+                3. Maximum 1000 shares per order (fractional shares ARE allowed, e.g. 1.5287 is valid)
                 
-                Decision logic:
-                - If position value exceeds 20% of equity → Reject or Modify (set adjustedQuantity to max shares within limit)
-                - If total exposure exceeds 80% → Reject or Modify
-                - If quantity exceeds 1000 → Modify with adjustedQuantity = 1000
-                - Otherwise → Approve
+                Decision logic — use the pre-computed "Position as % of equity" and "Total exposure" values:
+                - If position % > 20% → verdict: Modified, set adjustedQuantity to the "Max shares within 20% limit" value
+                - If total exposure % > 80% → verdict: Rejected
+                - If quantity > 1000 → verdict: Modified, adjustedQuantity = 1000
+                - Otherwise → verdict: Approved (do NOT reject or modify for any other reason)
                 
                 Respond strictly in JSON matching:
-                {"verdict":"Approved|Rejected|Modified","decision":{...original decision...},"reasoning":"...","adjustedQuantity":null}
-                Set adjustedQuantity only when verdict is Modified.
+                {"verdict":"Approved|Rejected|Modified","decision":{...copy the original decision object unchanged...},"reasoning":"one sentence explaining which rule passed or failed","adjustedQuantity":null}
+                Set adjustedQuantity only when verdict is Modified. Keep reasoning brief.
                 """,
             name: "RiskNode",
             description: "Evaluates proposed trades against risk limits and portfolio exposure",
@@ -150,11 +151,20 @@ public class RiskNode : INode
         // so the graph can loop back to StrategyNode with fresh state
         if (assessment.Verdict == RiskVerdict.Rejected)
         {
+            var entry = new RefinementEntry(
+                Attempt: state.RefinementCount + 1,
+                RejectedDecision: decision,
+                RiskReasoning: assessment.Reasoning,
+                OccurredAt: DateTime.UtcNow);
+
+            var history = new List<RefinementEntry>(state.RefinementHistory) { entry };
+
             return state with
             {
                 RiskOutput = assessment,
                 StrategyOutput = null,
                 RefinementCount = state.RefinementCount + 1,
+                RefinementHistory = history,
             };
         }
 

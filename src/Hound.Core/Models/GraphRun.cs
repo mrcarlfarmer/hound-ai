@@ -25,6 +25,7 @@ public class GraphRun
     public int MonitorCycleCount { get; set; }
 
     public List<NodeSnapshot> Nodes { get; set; } = [];
+    public List<RefinementSnapshot> Refinements { get; set; } = [];
 }
 
 /// <summary>
@@ -44,4 +45,17 @@ public class NodeSnapshot
     /// persisted so the dashboard can display it after page reloads.
     /// </summary>
     public string? ReasoningText { get; set; }
+}
+
+/// <summary>
+/// Snapshot of a single refinement iteration for dashboard display.
+/// </summary>
+public class RefinementSnapshot
+{
+    public int Attempt { get; set; }
+    public string? Symbol { get; set; }
+    public string? Action { get; set; }
+    public decimal Quantity { get; set; }
+    public string RiskReasoning { get; set; } = string.Empty;
+    public DateTime OccurredAt { get; set; }
 }
