@@ -45,6 +45,17 @@ interface RiskOutput {
   adjustedQuantity?: number | null;
 }
 
+interface ExecutionOutput {
+  success?: boolean;
+  symbol?: string;
+  action?: string;
+  quantity?: number;
+  filledPrice?: number | null;
+  orderId?: string;
+  message?: string;
+  tradeDocumentId?: string;
+}
+
 @Component({
   selector: 'app-graph-runs',
   standalone: true,
@@ -410,6 +421,27 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       case 'modified': return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
       default: return 'bg-muted text-muted-foreground border-border';
     }
+  }
+
+  parseExecutionOutput(json?: string): ExecutionOutput | null {
+    if (!json) return null;
+    try {
+      return JSON.parse(json) as ExecutionOutput;
+    } catch {
+      return null;
+    }
+  }
+
+  executionStatusClass(output: ExecutionOutput): string {
+    if (output.success === false) return 'bg-red-900/40 text-red-400 border-red-600';
+    if (output.message?.toLowerCase().includes('filled')) return 'bg-green-900/40 text-green-400 border-green-600';
+    return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
+  }
+
+  executionStatusLabel(output: ExecutionOutput): string {
+    if (output.success === false) return 'Failed';
+    if (output.message?.toLowerCase().includes('filled')) return 'Filled';
+    return 'Submitted';
   }
 
   actionClass(action?: string): string {
