@@ -36,12 +36,6 @@ applyTo: "src/Hound.Api/**"
 
 Valid hound names for apply: `StrategyHound`, `RiskHound`, `AnalysisHound`, `ExecutionHound`.
 
-### `/api/watchtower`
-| Verb | Route | Returns |
-|------|-------|---------|
-| GET | `/api/watchtower` | Paginated `IEnumerable<WatchtowerEvent>` |
-| POST | `/api/watchtower/webhook` | `200` — parses shoutrrr payload, stores event, broadcasts `OnWatchtowerEvent` |
-
 ## SignalR Hub — `/hubs/activity`
 
 ### Server methods (client → hub)
@@ -51,7 +45,6 @@ Valid hound names for apply: `StrategyHound`, `RiskHound`, `AnalysisHound`, `Exe
 
 ### Client events (hub → client)
 - `OnActivity(ActivityLog)` — sent to group `pack-{packId}`
-- `OnWatchtowerEvent(WatchtowerEvent)` — sent to all clients
 
 ## Key Models
 
@@ -61,7 +54,6 @@ Valid hound names for apply: `StrategyHound`, `RiskHound`, `AnalysisHound`, `Exe
 | `Pack` | `Id`, `Name`, `Status` (Idle/Running/Error/Stopped), `HoundCount`, `LastActivity?`, `HoundIds` |
 | `HoundInfo` | `Id`, `Name`, `PackId`, `Status` (Idle/Processing/Error/Disabled), `LastActivity?` |
 | `TunerExperiment` | `Id`, `HoundName`, `ConfigBefore`, `ConfigAfter`, `BaselineScore`, `CandidateScore`, `Delta`, `Status`, `Rationale` |
-| `WatchtowerEvent` | `Id`, `ContainerName`, `ImageName`, `OldImageId`, `NewImageId`, `Action`, `Timestamp`, `RawPayload` |
 
 ## Conventions
 

@@ -34,14 +34,13 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 ```
 
 ## Architecture
-7 Docker containers on a `hound-net` bridge network:
+6 Docker containers on a `hound-net` bridge network:
 - `ollama` — Local LLM server (GPU passthrough, port 11434)
 - `ollama-init` — One-shot init container that pulls models via `infra/ollama/pull-models.sh`
 - `ravendb` — Document DB for activity logging (port 8080)
 - `trading-pack` — Trading hounds: Analysis → Strategy → Risk → Execution (+ Tuner)
 - `hound-api` — ASP.NET Core API + SignalR hub (port 5000, internal 8080)
 - `hound-ui` — Angular SPA via nginx (port 4200)
-- `watchtower` — GitOps auto-deploy from GHCR
 
 ## Key Patterns
 - **One container per pack** — all hounds in a pack share a process

@@ -63,7 +63,6 @@ Specialized configs add domain-specific properties (thresholds, weights, limits)
 | `Pack` / `PackRegistration` | Pack metadata for API | `HoundAI` |
 | `HoundInfo` / `HoundMessage` | Hound metadata and messages | `HoundAI` |
 | `ServiceHealth` | Health check records | `HoundAI` |
-| `WatchtowerEvent` | Deployment events | `HoundAI` |
 
 ## Activity Flow
 

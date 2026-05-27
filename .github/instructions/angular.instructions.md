@@ -31,7 +31,7 @@ export class ExampleComponent {}
 - Hub URL: `http://localhost:5000/hubs/activity`
 - Use `@microsoft/signalr` `HubConnectionBuilder` with `.withAutomaticReconnect()`
 - Expose events as `Observable` via RxJS `Subject`
-- Hub events: `OnActivity`, `OnWatchtowerEvent`
+- Hub events: `OnActivity`
 - Hub methods: `SubscribeToPack`, `UnsubscribeFromPack`
 
 ## Models

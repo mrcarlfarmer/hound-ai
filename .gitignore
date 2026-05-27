@@ -60,8 +60,6 @@ yarn-error.log*
 
 # Docker
 .env
-infra/watchtower/docker-config.json
-infra/watchtower/docker-creds/
 
 # OS
 Thumbs.db

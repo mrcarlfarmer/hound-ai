@@ -19,11 +19,11 @@
 │       │                 ▲            │  Execution        │  │
 │       └─────────────────┼────────────┘                   │  │
 │                         │                                   │
-│  ┌──────────┐    ┌──────────────┐    ┌───────────────────┐  │
-│  │ hound-ui │    │  hound-api   │    │    watchtower     │  │
-│  │  :4200   │───►│   :5000      │    │  (GitOps auto-    │  │
-│  │ (Angular)│    │ (ASP.NET +   │    │   deploy/GHCR)    │  │
-│  └──────────┘    │  SignalR)    │    └───────────────────┘  │
+│  ┌──────────┐    ┌──────────────┐                           │
+│  │ hound-ui │    │  hound-api   │                           │
+│  │  :4200   │───►│   :5000      │                           │
+│  │ (Angular)│    │ (ASP.NET +   │                           │
+│  └──────────┘    │  SignalR)    │                           │
 │                  └──────────────┘                           │
 └─────────────────────────────────────────────────────────────┘
 
@@ -44,7 +44,6 @@ Data flow:  trading-pack ──► RavenDB ──► hound-api ──► hound-u
 | Trading API           | Alpaca Markets (paper)            | NuGet       |
 | Orchestration         | Docker Compose                    | WSL2        |
 | Real-time             | SignalR                           | Built-in    |
-| Auto-deploy           | Watchtower                        | Latest      |
 
 ---
 
@@ -70,7 +69,7 @@ cd hound-ai
 
 # 2. Copy and fill in secrets
 cp .env.example .env
-# Edit .env — set ALPACA_API_KEY, ALPACA_API_SECRET, GHCR_TOKEN
+# Edit .env — set ALPACA_API_KEY, ALPACA_API_SECRET
 
 # 3. Start everything
 docker compose up -d
@@ -113,20 +112,6 @@ dotnet user-secrets set "RavenDb:Url" "http://localhost:8080"
 
 ---
 
-## GHCR PAT Setup (Watchtower)
-
-Watchtower polls GHCR every 5 minutes and redeploys updated images automatically.
-
-1. Go to **GitHub → Settings → Developer Settings → Personal access tokens (classic)**
-2. Generate a new token with the **`read:packages`** scope
-3. Set `GHCR_TOKEN` in your `.env` file (copied from `.env.example` in step 2 of Quick Start)
-
-The `docker-compose.yml` passes this token to Watchtower as `REPO_PASS` automatically.
-
-> **Never commit your PAT.** The `.env` file is listed in `.gitignore`.
-
----
-
 ## Environment Variable Reference
 
 | Variable             | Description                               | Example                            |
@@ -136,7 +121,6 @@ The `docker-compose.yml` passes this token to Watchtower as `REPO_PASS` automati
 | `ALPACA_BASE_URL`    | Alpaca base URL (paper or live)           | `https://paper-api.alpaca.markets` |
 | `OLLAMA_MODEL`       | Default Ollama model name                 | `gemma3`                           |
 | `RAVENDB_URL`        | RavenDB connection URL                    | `http://ravendb:8080`              |
-| `GHCR_TOKEN`         | GitHub PAT for GHCR (read:packages)       | `ghp_xxxxxxxxxxxx`                 |
 
 Copy `.env.example` to `.env` and fill in your values. The `.env` file is git-ignored.
 
@@ -146,14 +130,12 @@ Copy `.env.example` to `.env` and fill in your values. The `.env` file is git-ig
 
 ```
 hound-ai/
-├── docker-compose.yml          # Production stack (6 containers)
+├── docker-compose.yml          # Production stack (5 containers)
 ├── docker-compose.dev.yml      # Dev overrides (hot-reload)
 ├── .env.example                # Environment variable template
 ├── infra/
-│   ├── ollama/
-│   │   └── pull-models.sh      # Bootstrap: pulls qwen3:14b, qwen3.5:9b
-│   └── watchtower/
-│       └── config.env          # Watchtower poll interval settings
+│   └── ollama/
+│       └── pull-models.sh      # Bootstrap: pulls qwen3:14b, qwen3.5:9b
 ├── src/
 │   ├── Hound.Core/             # Shared models, interfaces, IActivityLogger
 │   ├── Hound.Trading/          # Trading pack (4 hounds + AF workflow)
@@ -180,7 +162,6 @@ hound-ai/
 ## CI / GitOps
 
 - **CI pipeline**: `.github/workflows/` — builds, tests, and publishes Docker images to GHCR on every push to `main`
-- **Watchtower**: polls GHCR every 5 minutes; if a new image is found for any running container it pulls and performs a rolling restart
 - **Ollama bootstrap**: the `ollama-init` container runs once after `ollama` is healthy and pulls all configured models, then exits
 
 ---

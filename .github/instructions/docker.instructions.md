@@ -5,13 +5,12 @@ applyTo: "{docker-compose*,**/Dockerfile,infra/**}"
 # Hound AI — Docker & Infrastructure
 
 ## Container Architecture
-Six containers on `hound-net` bridge network — see [docker-compose.yml](../../docker-compose.yml):
+Five containers on `hound-net` bridge network — see [docker-compose.yml](../../docker-compose.yml):
 - `ollama` — LLM server with NVIDIA GPU passthrough (port 11434)
 - `ravendb` — Document DB (port 8080)
 - `trading-pack` — Trading hounds process (depends on ollama, ravendb, hound-api)
 - `hound-api` — ASP.NET Core API + SignalR hub (port 5000)
 - `hound-ui` — Angular SPA via nginx (port 4200)
-- `watchtower` — GitOps auto-deploy from GHCR
 
 ## Development vs Production
 - **Production**: `docker-compose.yml` — built images, no volume mounts

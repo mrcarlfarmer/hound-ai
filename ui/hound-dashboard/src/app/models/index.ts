@@ -54,17 +54,6 @@ export interface TunerExperiment {
   rationale: string;
 }
 
-export interface WatchtowerEvent {
-  id: string;
-  containerName: string;
-  imageName: string;
-  oldImageId: string;
-  newImageId: string;
-  action: string;
-  timestamp: string;
-  rawPayload: string;
-}
-
 export type HealthStatus = 'Healthy' | 'Degraded' | 'Unhealthy' | 'Unknown';
 
 export interface ServiceHealth {
