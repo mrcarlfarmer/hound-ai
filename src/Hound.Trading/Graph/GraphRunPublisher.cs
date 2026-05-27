@@ -76,7 +76,7 @@ public class GraphRunPublisher
             OccurredAt = r.OccurredAt,
         }).ToList();
 
-        run.Nodes = BuildNodeSnapshots(state);
+        run.Nodes = BuildNodeSnapshots(state, run.Nodes);
         if (_reasoningSource is not null)
         {
             foreach (var snap in run.Nodes)
@@ -104,8 +104,9 @@ public class GraphRunPublisher
         }
     }
 
-    private static List<NodeSnapshot> BuildNodeSnapshots(TradingGraphState state)
+    private static List<NodeSnapshot> BuildNodeSnapshots(TradingGraphState state, List<NodeSnapshot>? existing)
     {
+        var existingLookup = existing?.ToDictionary(n => n.NodeId) ?? [];
         var nodes = new List<NodeSnapshot>();
 
         foreach (var nodeId in OrderedNodeIds)
@@ -119,6 +120,17 @@ public class GraphRunPublisher
                 "monitor-node" => GetSlot(state.MonitorOutput, state.CurrentNode, nodeId),
                 _ => (NodeStatus.Pending, null),
             };
+
+            // Preserve existing Completed/Failed status and output when the new
+            // snapshot would regress to Pending (e.g. during monitor loop cycles
+            // where prior node outputs aren't in the state object).
+            if (status == NodeStatus.Pending
+                && existingLookup.TryGetValue(nodeId, out var prev)
+                && prev.Status is NodeStatus.Completed or NodeStatus.Failed)
+            {
+                status = prev.Status;
+                outputJson = prev.OutputJson;
+            }
 
             nodes.Add(new NodeSnapshot
             {

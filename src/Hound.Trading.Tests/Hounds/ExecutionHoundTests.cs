@@ -198,7 +198,7 @@ public sealed class ExecutionNodeTests
         var result = await _node.ExecuteAsync(state, default);
 
         Assert.IsTrue(result.ExecutionOutput!.Success);
-        Assert.AreEqual(GraphPhase.Monitor, result.Phase);
+        Assert.AreEqual(GraphPhase.Entry, result.Phase);
         Assert.IsFalse(result.IsComplete);
     }
 
@@ -222,7 +222,7 @@ public sealed class ExecutionNodeTests
         Assert.IsFalse(result.ExecutionOutput!.Success);
         Assert.AreEqual(string.Empty, result.ExecutionOutput.OrderId);
         Assert.IsTrue(result.IsComplete);
-        Assert.AreNotEqual(GraphPhase.Monitor, result.Phase);
+        Assert.AreEqual(GraphPhase.Entry, result.Phase);
         _mockActivityLogger.Verify(
             l => l.LogActivityAsync(It.Is<ActivityLog>(a => a.Severity == ActivitySeverity.Error), default),
             Times.AtLeastOnce);

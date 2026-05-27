@@ -231,7 +231,6 @@ public class ExecutionNode : INode
         return state with
         {
             ExecutionOutput = result,
-            Phase = result.Success ? GraphPhase.Monitor : state.Phase,
             IsComplete = !result.Success,
         };
     }

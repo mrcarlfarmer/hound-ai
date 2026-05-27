@@ -212,7 +212,15 @@ public class TradingGraph
             }
 
             state = state with { CurrentNode = nextNodeId };
+
+            // Transition phase when entering the monitor loop
+            if (nextNodeId == "monitor-node" && state.Phase == GraphPhase.Entry)
+            {
+                state = state with { Phase = GraphPhase.Monitor };
+            }
+
             await _stateStore.SaveAsync(state, cancellationToken);
+            await _publisher.PublishAsync(state, cancellationToken);
 
             try
             {
@@ -230,9 +238,12 @@ public class TradingGraph
                     ErrorMessage = $"Node {nextNodeId} failed: {ex.Message}",
                 };
                 await _stateStore.SaveAsync(state, cancellationToken);
+                await _publisher.PublishAsync(state, cancellationToken);
                 break;
             }
         }
+
+        await _publisher.PublishAsync(state with { IsComplete = true }, cancellationToken);
 
         return state;
     }

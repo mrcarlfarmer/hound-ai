@@ -463,7 +463,9 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   displayStatus(node: NodeSnapshot): string {
-    return this.isNoAction(node) ? 'No action' : node.status;
+    if (this.isNoAction(node)) return 'No action';
+    if (node.status === 'Pending' && this.selectedRun?.isComplete) return 'Skipped';
+    return node.status;
   }
 
   nodeStatusClass(status: NodeStatus): string {
@@ -488,12 +490,14 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   statusBadgeClass(run: GraphRun): string {
     if (run.errorMessage) return 'bg-red-900/40 text-red-400';
     if (run.isComplete) return 'bg-green-900/40 text-green-400';
+    if (run.phase === 'Monitor') return 'bg-amber-900/40 text-amber-400';
     return 'bg-blue-900/40 text-blue-400';
   }
 
   statusLabel(run: GraphRun): string {
     if (run.errorMessage) return 'Error';
     if (run.isComplete) return 'Complete';
+    if (run.phase === 'Monitor') return 'Monitoring';
     return 'Running';
   }
 
