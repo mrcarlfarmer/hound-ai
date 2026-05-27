@@ -502,6 +502,24 @@
                       </div>
                     }
 
+                    <!-- Close Position action -->
+                    @if (m.tradeOpen && selectedRun?.symbol) {
+                      <div class="mt-4">
+                        <button
+                          class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium bg-red-900/40 text-red-400 border border-red-600 hover:bg-red-900/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          [disabled]="closingPosition"
+                          (click)="closePositionFromMonitor()">
+                          @if (closingPosition) {
+                            <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                          }
+                          Close Position at Market
+                        </button>
+                        @if (closePositionError) {
+                          <span class="ml-2 text-xs text-red-400">{{ closePositionError }}</span>
+                        }
+                      </div>
+                    }
+
                   <!-- ── All other nodes: generic key-value grid ───── -->
                   } @else if (parseOutput(node.outputJson); as output) {
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -51,4 +51,20 @@ public class PortfolioController : ControllerBase
         });
         return Ok(result);
     }
+
+    [HttpPost("positions/{symbol}/close")]
+    public async Task<IActionResult> ClosePosition(
+        string symbol,
+        CancellationToken cancellationToken)
+    {
+        var order = await _alpaca.ClosePositionAsync(symbol, cancellationToken);
+        return Ok(new
+        {
+            orderId = order.OrderId.ToString(),
+            symbol = order.Symbol,
+            side = order.OrderSide.ToString(),
+            quantity = order.Quantity,
+            status = order.OrderStatus.ToString(),
+        });
+    }
 }

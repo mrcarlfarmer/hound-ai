@@ -14,6 +14,7 @@ export class PortfolioComponent implements OnInit, OnDestroy {
   positions: PositionInfo[] = [];
   loading = true;
   error: string | null = null;
+  closingSymbol: string | null = null;
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor(private api: ApiService, private cdr: ChangeDetectorRef) {}
@@ -65,5 +66,20 @@ export class PortfolioComponent implements OnInit, OnDestroy {
       'text-red-600': value < 0,
       'text-muted-foreground': value === 0,
     };
+  }
+
+  closePosition(symbol: string): void {
+    if (this.closingSymbol) return;
+    this.closingSymbol = symbol;
+    this.api.closePosition(symbol).subscribe({
+      next: () => {
+        this.closingSymbol = null;
+        this.loadData();
+      },
+      error: () => {
+        this.closingSymbol = null;
+        this.cdr.detectChanges();
+      },
+    });
   }
 }

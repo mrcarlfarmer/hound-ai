@@ -69,4 +69,8 @@ export class ApiService {
   getPositions(): Observable<PositionInfo[]> {
     return this.http.get<PositionInfo[]>(`${this.baseUrl}/api/portfolio/positions`);
   }
+
+  closePosition(symbol: string): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/api/portfolio/positions/${encodeURIComponent(symbol)}/close`, {});
+  }
 }

@@ -7,6 +7,7 @@ public interface IAlpacaPortfolioService
 {
     Task<IAccount> GetAccountAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<IPosition>> ListPositionsAsync(CancellationToken cancellationToken = default);
+    Task<IOrder> ClosePositionAsync(string symbol, CancellationToken cancellationToken = default);
 }
 
 public class AlpacaPortfolioService : IAlpacaPortfolioService, IDisposable
@@ -32,6 +33,12 @@ public class AlpacaPortfolioService : IAlpacaPortfolioService, IDisposable
 
     public Task<IReadOnlyList<IPosition>> ListPositionsAsync(CancellationToken cancellationToken = default)
         => _client.ListPositionsAsync(cancellationToken);
+
+    public async Task<IOrder> ClosePositionAsync(string symbol, CancellationToken cancellationToken = default)
+    {
+        var request = new DeletePositionRequest(symbol);
+        return await _client.DeletePositionAsync(request, cancellationToken);
+    }
 
     public void Dispose() => _client.Dispose();
 }

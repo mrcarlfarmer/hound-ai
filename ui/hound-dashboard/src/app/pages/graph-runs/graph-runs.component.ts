@@ -83,6 +83,8 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   symbolInput = '';
   submitting = false;
   submitError = '';
+  closingPosition = false;
+  closePositionError = '';
   private sub?: Subscription;
   private streamSub?: Subscription;
   private pollTimer?: ReturnType<typeof setInterval>;
@@ -464,6 +466,24 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   pnlClass(pnl?: number | null): string {
     if (pnl == null) return 'text-muted-foreground';
     return pnl >= 0 ? 'text-green-400' : 'text-red-400';
+  }
+
+  closePositionFromMonitor(): void {
+    const symbol = this.selectedRun?.symbol;
+    if (!symbol || this.closingPosition) return;
+    this.closingPosition = true;
+    this.closePositionError = '';
+    this.api.closePosition(symbol).subscribe({
+      next: () => {
+        this.closingPosition = false;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.closingPosition = false;
+        this.closePositionError = 'Failed to close position';
+        this.cdr.detectChanges();
+      },
+    });
   }
 
   executionStatusClass(output: ExecutionOutput): string {
