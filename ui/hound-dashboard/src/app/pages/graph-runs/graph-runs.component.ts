@@ -56,6 +56,14 @@ interface ExecutionOutput {
   tradeDocumentId?: string;
 }
 
+interface MonitorOutput {
+  tradeOpen?: boolean;
+  currentStatus?: string;
+  currentPrice?: number | null;
+  unrealizedPnL?: number | null;
+  summary?: string;
+}
+
 @Component({
   selector: 'app-graph-runs',
   standalone: true,
@@ -430,6 +438,32 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     } catch {
       return null;
     }
+  }
+
+  parseMonitorOutput(json?: string): MonitorOutput | null {
+    if (!json) return null;
+    try {
+      return JSON.parse(json) as MonitorOutput;
+    } catch {
+      return null;
+    }
+  }
+
+  monitorStatusClass(status?: string): string {
+    switch (status?.toLowerCase()) {
+      case 'filled': return 'bg-green-900/40 text-green-400 border-green-600';
+      case 'partiallyfilled': return 'bg-blue-900/40 text-blue-400 border-blue-600';
+      case 'pending': return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
+      case 'canceled':
+      case 'expired':
+      case 'rejected': return 'bg-red-900/40 text-red-400 border-red-600';
+      default: return 'bg-muted text-muted-foreground border-border';
+    }
+  }
+
+  pnlClass(pnl?: number | null): string {
+    if (pnl == null) return 'text-muted-foreground';
+    return pnl >= 0 ? 'text-green-400' : 'text-red-400';
   }
 
   executionStatusClass(output: ExecutionOutput): string {
