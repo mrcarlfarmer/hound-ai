@@ -16,13 +16,31 @@ public sealed class StreamingChatClient : DelegatingChatClient
     // Coalesce small token deltas to keep network/UI chatter manageable.
     private const int FlushCharThreshold = 32;
 
-    public StreamingChatClient(IChatClient innerClient) : base(innerClient) { }
+    private readonly ChatOptions? _defaultOptions;
+
+    public StreamingChatClient(IChatClient innerClient, ChatOptions? defaultOptions = null)
+        : base(innerClient)
+    {
+        _defaultOptions = defaultOptions;
+    }
+
+    private ChatOptions? MergeOptions(ChatOptions? callOptions)
+    {
+        if (_defaultOptions is null) return callOptions;
+        if (callOptions is null) return _defaultOptions;
+
+        // Call-site options take precedence; fill in defaults for unset fields
+        callOptions.Temperature ??= _defaultOptions.Temperature;
+        callOptions.TopP ??= _defaultOptions.TopP;
+        return callOptions;
+    }
 
     public override async Task<ChatResponse> GetResponseAsync(
         IEnumerable<ChatMessage> messages,
         ChatOptions? options = null,
         CancellationToken cancellationToken = default)
     {
+        options = MergeOptions(options);
         var ctx = NodeStreamContext.Current;
         if (ctx is null)
         {
@@ -48,6 +66,7 @@ public sealed class StreamingChatClient : DelegatingChatClient
         ChatOptions? options = null,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
+        options = MergeOptions(options);
         var ctx = NodeStreamContext.Current;
         var buffer = ctx is null ? null : new StringBuilder();
 

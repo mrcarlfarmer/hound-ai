@@ -36,6 +36,13 @@ public class OllamaClientFactory : IOllamaClientFactory
         };
         var credential = new ApiKeyCredential("ollama");
         var chatClient = new OpenAI.Chat.ChatClient(modelName, credential, options);
-        return new StreamingChatClient(chatClient.AsIChatClient());
+
+        var defaultChatOptions = new ChatOptions
+        {
+            Temperature = 0.0f,
+            TopP = 0.1f,
+        };
+
+        return new StreamingChatClient(chatClient.AsIChatClient(), defaultChatOptions);
     }
 }
