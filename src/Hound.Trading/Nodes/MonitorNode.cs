@@ -196,6 +196,14 @@ public class MonitorNode : INode
             positionFacts = $"{{\"error\":\"position lookup failed: {ex.Message}\"}}";
         }
 
+        // An order that is still pending (not yet filled, not rejected/canceled/expired)
+        // means the trade lifecycle is still active even if no position exists yet
+        // (e.g., order submitted pre-market, awaiting fill at open).
+        if (!tradeOpen && authoritativeStatus is FillStatus.Pending or FillStatus.PartiallyFilled)
+        {
+            tradeOpen = true;
+        }
+
         var prompt =
             $"Trade lifecycle check for {state.Symbol}.\n\n" +
             $"Authoritative facts (already fetched from Alpaca — do NOT call tools, just summarise):\n" +
