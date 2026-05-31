@@ -38,7 +38,9 @@ public record TradingDecision(
     TradeAction Action,
     decimal Quantity,
     string Reasoning,
-    double Confidence);
+    double Confidence,
+    decimal? CurrentPrice = null,
+    decimal? EstimatedCost = null);
 
 public enum RiskVerdict { Approved, Rejected, Modified }
 

@@ -159,6 +159,16 @@ public class StrategyNode : INode
             decision = decision with { Action = TradeAction.Hold, Reasoning = $"Converted to Hold: {decision.Action} with quantity 0 is not actionable. {decision.Reasoning}" };
         }
 
+        // Surface the authoritative current price and the resulting notional
+        // order value so downstream consumers (RiskNode, dashboard) don't have
+        // to recompute them. EstimatedCost is null for Hold since there is no
+        // order being placed.
+        var currentPrice = analysis?.LastPrice;
+        decimal? estimatedCost = decision.Action != TradeAction.Hold && currentPrice is decimal cp && cp > 0
+            ? decision.Quantity * cp
+            : null;
+        decision = decision with { CurrentPrice = currentPrice, EstimatedCost = estimatedCost };
+
         // Price-sanity check (recommendation #7): scan reasoning for dollar
         // figures and flag any that fall outside ±20% of LastPrice. We don't
         // re-prompt (latency cost) — we annotate the reasoning so the dashboard

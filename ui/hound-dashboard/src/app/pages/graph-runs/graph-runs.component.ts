@@ -31,6 +31,8 @@ interface StrategyOutput {
   quantity?: number;
   reasoning?: string;
   confidence?: number;
+  currentPrice?: number | null;
+  estimatedCost?: number | null;
 }
 
 interface RiskOutput {
@@ -40,6 +42,8 @@ interface RiskOutput {
     action?: string;
     quantity?: number;
     confidence?: number;
+    currentPrice?: number | null;
+    estimatedCost?: number | null;
   };
   reasoning?: string;
   adjustedQuantity?: number | null;
@@ -452,6 +456,26 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       case 'modified': return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
       default: return 'bg-muted text-muted-foreground border-border';
     }
+  }
+
+  /**
+   * Order value to display on the risk card. Prefers the strategy's
+   * pre-computed `estimatedCost` for the original quantity, but recalculates
+   * from `currentPrice` × `adjustedQuantity` when the Risk hound modified the
+   * size. Returns `null` when there's no price to anchor on.
+   */
+  riskOrderValue(r: RiskOutput): number | null {
+    const price = r.decision?.currentPrice;
+    if (r.adjustedQuantity != null && price != null) {
+      return r.adjustedQuantity * price;
+    }
+    if (r.decision?.estimatedCost != null) {
+      return r.decision.estimatedCost;
+    }
+    if (price != null && r.decision?.quantity != null) {
+      return r.decision.quantity * price;
+    }
+    return null;
   }
 
   parseExecutionOutput(json?: string): ExecutionOutput | null {

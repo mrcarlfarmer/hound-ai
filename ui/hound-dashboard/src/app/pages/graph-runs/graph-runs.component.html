@@ -410,7 +410,7 @@
                   <!-- ── Strategy: custom layout ────────────────────── -->
                   } @else if (node.nodeId === 'strategy-node' && parseStrategyOutput(node.outputJson); as s) {
                     <!-- Metrics row -->
-                    <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mb-4">
                       <div class="rounded-lg bg-muted/40 p-3">
                         <span class="block text-xs text-muted-foreground mb-1">Action</span>
                         <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
@@ -421,6 +421,18 @@
                       <div class="rounded-lg bg-muted/40 p-3">
                         <span class="block text-xs text-muted-foreground mb-1">Quantity</span>
                         <span class="text-lg font-semibold font-mono">{{ s.quantity ?? 0 }}</span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Current Price</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ s.currentPrice != null ? ('$' + (s.currentPrice | number:'1.2-2')) : '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Order Value</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ s.estimatedCost != null ? ('$' + (s.estimatedCost | number:'1.2-2')) : '—' }}
+                        </span>
                       </div>
                       <div class="rounded-lg bg-muted/40 p-3">
                         <span class="block text-xs text-muted-foreground mb-1">Confidence</span>
@@ -449,7 +461,7 @@
                   <!-- ── Risk: custom layout ────────────────────────── -->
                   } @else if (node.nodeId === 'risk-node' && parseRiskOutput(node.outputJson); as r) {
                     <!-- Metrics row -->
-                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
                       <div class="rounded-lg bg-muted/40 p-3">
                         <span class="block text-xs text-muted-foreground mb-1">Verdict</span>
                         <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
@@ -472,6 +484,21 @@
                         <span class="block text-xs text-muted-foreground mb-1">Quantity</span>
                         <span class="text-lg font-semibold font-mono">
                           {{ r.adjustedQuantity != null ? r.adjustedQuantity : (r.decision?.quantity ?? 0) }}
+                        </span>
+                        @if (r.adjustedQuantity != null) {
+                          <span class="ml-1 text-xs text-yellow-400">(adjusted)</span>
+                        }
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Current Price</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ r.decision?.currentPrice != null ? ('$' + (r.decision!.currentPrice | number:'1.2-2')) : '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Order Value</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ riskOrderValue(r) != null ? ('$' + (riskOrderValue(r) | number:'1.2-2')) : '—' }}
                         </span>
                         @if (r.adjustedQuantity != null) {
                           <span class="ml-1 text-xs text-yellow-400">(adjusted)</span>
