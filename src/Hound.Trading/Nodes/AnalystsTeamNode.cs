@@ -209,13 +209,19 @@ public class AnalystsTeamNode : INode
                 You are a JSON formatter. You receive four analyst reports and extract key metrics.
                 You MUST respond with ONLY a single JSON object — no markdown, no explanation, no preamble.
                 The JSON schema is:
-                {"symbol":"MSFT","lastPrice":425.30,"volumeChange":1.15,"trend":"Bullish","confidenceScore":0.75,"summary":"Two sentence synthesis."}
+                {"symbol":"<TICKER>","lastPrice":<number>,"volumeChange":<number>,"trend":"<Bullish|Bearish|Neutral>","confidenceScore":<number>,"summary":"<text>"}
 
                 Rules:
                 - lastPrice = the most recent closing price from the market report. Must be > 0.
                 - volumeChange = volume ratio from the market report (e.g. 1.2 means 20% above average). Must be > 0.
                 - trend = exactly one of: "Bullish", "Bearish", "Neutral"
-                - confidenceScore = your overall confidence from 0.05 to 1.0. NEVER emit 0; if signals are weak, use 0.25.
+                - confidenceScore = a value between 0.05 and 1.0. NEVER emit 0; if signals are weak, use 0.25.
+                  Derive this by counting how many of the four analysts agree on direction:
+                    * 4/4 agree → 0.85–1.0
+                    * 3/4 agree → 0.60–0.84
+                    * 2/4 agree → 0.35–0.59
+                    * No agreement → 0.10–0.34
+                  Adjust within the sub-range based on the strength of evidence cited in each report.
                 - summary = 1-3 sentences combining all four reports. Keep it under 200 words.
                 - LANGUAGE: All string values (especially `summary` and `trend`) MUST be in English.
                   Do NOT emit Chinese, Mandarin, or any other non-English characters. Prices are in
@@ -350,12 +356,24 @@ public class AnalystsTeamNode : INode
             CompanyName = companyName,
         };
 
+        // External validation: compute a deterministic confidence score from market
+        // data to compare against the LLM-derived value.  Large divergence between
+        // the two signals a potential hallucination or anchoring bias in the model.
+        var dataConfidence = ComputeDataDerivedConfidence(
+            preLastPrice, preVolumeChange, analysis.Trend);
+
+        var llmConfidence = analysis.ConfidenceScore;
+        var divergence = llmConfidence.HasValue && dataConfidence.HasValue
+            ? Math.Abs(llmConfidence.Value - dataConfidence.Value)
+            : (double?)null;
+
         await _activityLogger.LogActivityAsync(new ActivityLog
         {
             PackId = PackId,
             HoundId = NodeId,
             HoundName = "AnalystsTeam",
-            Message = $"Analysis complete for {state.Symbol}: {analysis.Trend} (confidence {analysis.ConfidenceScore:P0})",
+            Message = $"Analysis complete for {state.Symbol}: {analysis.Trend} " +
+                      $"(LLM confidence {llmConfidence:P0}, data-derived confidence {dataConfidence:P0}, divergence {divergence:P0})",
             Severity = ActivitySeverity.Success,
         }, cancellationToken);
 
@@ -426,6 +444,53 @@ public class AnalystsTeamNode : INode
         if (lower.Contains("bull")) return "Bullish";
         if (lower.Contains("bear")) return "Bearish";
         return "Neutral";
+    }
+
+    /// <summary>
+    /// Computes a deterministic confidence score from raw market data to serve as
+    /// an external validation measure against the LLM-derived confidence. Uses
+    /// price trend strength and volume deviation as objective signals.
+    /// </summary>
+    /// <remarks>
+    /// This is intentionally simple — it measures whether the available market data
+    /// supports a directional opinion. A high data-derived confidence with a low
+    /// LLM confidence (or vice versa) suggests the model may be anchoring or
+    /// hallucinating rather than reasoning from evidence.
+    /// </remarks>
+    internal static double? ComputeDataDerivedConfidence(
+        decimal? lastPrice, decimal? volumeChange, string trend)
+    {
+        if (lastPrice is null)
+            return null;
+
+        // Start at a neutral baseline
+        double score = 0.5;
+
+        // Volume signal: deviation from average adds/removes confidence
+        if (volumeChange is decimal vc)
+        {
+            // vc > 1.0 means above-average volume (stronger signal)
+            // vc < 1.0 means below-average volume (weaker signal)
+            var volumeBoost = Math.Clamp((double)(vc - 1.0m) * 0.25, -0.2, 0.2);
+            score += volumeBoost;
+        }
+
+        // Directional clarity: a non-neutral trend with supporting volume deserves
+        // higher confidence than a neutral assessment
+        if (trend is "Bullish" or "Bearish")
+        {
+            score += 0.15;
+            // Strong volume on a directional move is more convincing
+            if (volumeChange is > 1.2m)
+                score += 0.10;
+        }
+        else
+        {
+            // Neutral trend — cap confidence since there's no clear direction
+            score = Math.Min(score, 0.55);
+        }
+
+        return Math.Clamp(score, 0.05, 1.0);
     }
 
     // ── Tool implementations ─────────────────────────────────────────────────
