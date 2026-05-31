@@ -33,6 +33,13 @@ public record KeyLevels(
 
 public enum TradeAction { Buy, Sell, Hold }
 
+/// <summary>
+/// Strategy hound output. <see cref="TrailPercent"/> is only meaningful for
+/// <see cref="TradeAction.Sell"/> orders, which are placed as trailing-stop
+/// GTC orders by <c>ExecutionNode</c>. When the strategy omits it (or sets
+/// it for a Buy/Hold), the execution layer falls back to the default trail
+/// percent (<c>5%</c>).
+/// </summary>
 public record TradingDecision(
     string Symbol,
     TradeAction Action,
@@ -40,7 +47,8 @@ public record TradingDecision(
     string Reasoning,
     double Confidence,
     decimal? CurrentPrice = null,
-    decimal? EstimatedCost = null);
+    decimal? EstimatedCost = null,
+    decimal? TrailPercent = null);
 
 public enum RiskVerdict { Approved, Rejected, Modified }
 

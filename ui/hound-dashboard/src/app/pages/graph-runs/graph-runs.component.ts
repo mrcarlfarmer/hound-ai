@@ -33,6 +33,7 @@ interface StrategyOutput {
   confidence?: number;
   currentPrice?: number | null;
   estimatedCost?: number | null;
+  trailPercent?: number | null;
 }
 
 interface RiskOutput {

@@ -24,6 +24,16 @@ export class SignalrService {
   private graphRunSubject = new Subject<GraphRun>();
   private nodeStreamSubject = new Subject<NodeStreamChunk>();
 
+  /**
+   * Pack IDs the client has subscribed to. SignalR groups are keyed by the
+   * server-side connection ID, so when `withAutomaticReconnect` rebuilds the
+   * underlying transport the client gets a fresh connection ID and loses its
+   * group membership. We replay these on `onreconnected` so live events (node
+   * streams, graph-run updates, activity logs) continue to flow without
+   * requiring a manual page refresh.
+   */
+  private subscribedPacks = new Set<string>();
+
   onActivity$: Observable<ActivityLog> = this.activitySubject.asObservable();
   onOrderUpdate$: Observable<OrderUpdate> = this.orderUpdateSubject.asObservable();
   onGraphRunUpdate$: Observable<GraphRun> = this.graphRunSubject.asObservable();
@@ -50,19 +60,32 @@ export class SignalrService {
       this.nodeStreamSubject.next(chunk);
     });
 
+    // After an automatic reconnect the server treats us as a brand-new
+    // connection, so any previous SubscribeToPack invocations are gone.
+    // Replay every active subscription so the dashboard keeps streaming.
+    this.hubConnection.onreconnected(() => {
+      for (const packId of this.subscribedPacks) {
+        this.hubConnection?.invoke('SubscribeToPack', packId)
+          .catch(err => console.error('SignalR re-subscribe failed:', err));
+      }
+    });
+
     this.connectionPromise = this.hubConnection.start().catch(err => console.error('SignalR connection error:', err));
   }
 
   disconnect(): void {
     this.hubConnection?.stop();
     this.connectionPromise = undefined;
+    this.subscribedPacks.clear();
   }
 
   subscribeToPack(packId: string): void {
+    this.subscribedPacks.add(packId);
     this.connectionPromise?.then(() => this.hubConnection?.invoke('SubscribeToPack', packId));
   }
 
   unsubscribeFromPack(packId: string): void {
+    this.subscribedPacks.delete(packId);
     this.connectionPromise?.then(() => this.hubConnection?.invoke('UnsubscribeFromPack', packId));
   }
 }

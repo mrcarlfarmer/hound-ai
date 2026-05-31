@@ -434,6 +434,14 @@
                           {{ s.estimatedCost != null ? ('$' + (s.estimatedCost | number:'1.2-2')) : '—' }}
                         </span>
                       </div>
+                      @if (s.action === 'Buy') {
+                        <div class="rounded-lg bg-muted/40 p-3" title="Trailing-stop SELL attached as the protective exit. Ratchets up with price, never down; fires when price pulls back by this percent from the high-water mark.">
+                          <span class="block text-xs text-muted-foreground mb-1">Trailing Stop</span>
+                          <span class="text-lg font-semibold font-mono">
+                            {{ s.trailPercent != null ? ((s.trailPercent | number:'1.0-2') + '%') : '—' }}
+                          </span>
+                        </div>
+                      }
                       <div class="rounded-lg bg-muted/40 p-3">
                         <span class="block text-xs text-muted-foreground mb-1">Confidence</span>
                         <div class="flex items-center gap-2">

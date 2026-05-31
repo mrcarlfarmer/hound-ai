@@ -9,6 +9,21 @@ public interface IAlpacaService
     Task<IAccount> GetAccountAsync(CancellationToken cancellationToken = default);
     Task<IReadOnlyList<IPosition>> ListPositionsAsync(CancellationToken cancellationToken = default);
     Task<IOrder> SubmitOrderAsync(string symbol, OrderQuantity quantity, OrderSide side, OrderType type, TimeInForce timeInForce, decimal? limitPrice = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Submits a trailing-stop order with the supplied trail offset (as a
+    /// percentage of the high-water mark). Used by <c>ExecutionNode</c> for
+    /// every Sell so exits ride the position up and only fire after a
+    /// pullback of <paramref name="trailPercent"/>%. <paramref name="timeInForce"/>
+    /// is expected to be <see cref="TimeInForce.Gtc"/> in production.
+    /// </summary>
+    Task<IOrder> SubmitTrailingStopOrderAsync(
+        string symbol,
+        OrderQuantity quantity,
+        OrderSide side,
+        decimal trailPercent,
+        TimeInForce timeInForce,
+        CancellationToken cancellationToken = default);
     Task<IReadOnlyList<IBar>> GetBarsAsync(string symbol, DateTime from, DateTime to, BarTimeFrame timeFrame, CancellationToken cancellationToken = default);
     /// <summary>
     /// Resolves a ticker symbol to the broker's canonical asset record
@@ -68,6 +83,25 @@ public class AlpacaService : IAlpacaService, IDisposable
         var request = new NewOrderRequest(symbol, quantity, side, type, timeInForce);
         if (limitPrice.HasValue)
             request.LimitPrice = limitPrice.Value;
+
+        return await _tradingClient.PostOrderAsync(request, cancellationToken);
+    }
+
+    public async Task<IOrder> SubmitTrailingStopOrderAsync(
+        string symbol,
+        OrderQuantity quantity,
+        OrderSide side,
+        decimal trailPercent,
+        TimeInForce timeInForce,
+        CancellationToken cancellationToken = default)
+    {
+        if (trailPercent <= 0m)
+            throw new ArgumentOutOfRangeException(nameof(trailPercent), trailPercent, "Trail percent must be greater than 0.");
+
+        var request = new NewOrderRequest(symbol, quantity, side, OrderType.TrailingStop, timeInForce)
+        {
+            TrailOffsetInPercent = trailPercent,
+        };
 
         return await _tradingClient.PostOrderAsync(request, cancellationToken);
     }

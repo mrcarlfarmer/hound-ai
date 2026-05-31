@@ -9,6 +9,7 @@ describe('SignalrService', () => {
     start: ReturnType<typeof vi.fn>;
     stop: ReturnType<typeof vi.fn>;
     invoke: ReturnType<typeof vi.fn>;
+    onreconnected: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(() => {
@@ -16,7 +17,8 @@ describe('SignalrService', () => {
       on: vi.fn(),
       start: vi.fn().mockResolvedValue(undefined),
       stop: vi.fn(),
-      invoke: vi.fn(),
+      invoke: vi.fn().mockResolvedValue(undefined),
+      onreconnected: vi.fn(),
     };
 
     TestBed.configureTestingModule({
@@ -93,5 +95,46 @@ describe('SignalrService', () => {
 
     expect(received).toHaveLength(1);
     expect(received[0]).toEqual(mockActivity);
+  });
+
+  it('re-subscribes to all active packs after onreconnected fires', async () => {
+    service.connect();
+    service.subscribeToPack('trading-pack');
+    service.subscribeToPack('other-pack');
+
+    await vi.waitFor(() =>
+      expect(mockConnection.invoke).toHaveBeenCalledWith('SubscribeToPack', 'trading-pack'),
+    );
+    await vi.waitFor(() =>
+      expect(mockConnection.invoke).toHaveBeenCalledWith('SubscribeToPack', 'other-pack'),
+    );
+    mockConnection.invoke.mockClear();
+
+    // Pull the onreconnected callback that the service registered and fire it
+    // to simulate SignalR's automatic reconnect handing us a fresh connection.
+    expect(mockConnection.onreconnected).toHaveBeenCalled();
+    const reconnectCb = mockConnection.onreconnected.mock.calls[0][0] as () => void;
+    reconnectCb();
+
+    expect(mockConnection.invoke).toHaveBeenCalledWith('SubscribeToPack', 'trading-pack');
+    expect(mockConnection.invoke).toHaveBeenCalledWith('SubscribeToPack', 'other-pack');
+  });
+
+  it('does not re-subscribe to packs that were unsubscribed before reconnect', async () => {
+    service.connect();
+    service.subscribeToPack('trading-pack');
+    service.subscribeToPack('other-pack');
+    service.unsubscribeFromPack('other-pack');
+
+    await vi.waitFor(() =>
+      expect(mockConnection.invoke).toHaveBeenCalledWith('UnsubscribeFromPack', 'other-pack'),
+    );
+    mockConnection.invoke.mockClear();
+
+    const reconnectCb = mockConnection.onreconnected.mock.calls[0][0] as () => void;
+    reconnectCb();
+
+    expect(mockConnection.invoke).toHaveBeenCalledWith('SubscribeToPack', 'trading-pack');
+    expect(mockConnection.invoke).not.toHaveBeenCalledWith('SubscribeToPack', 'other-pack');
   });
 });

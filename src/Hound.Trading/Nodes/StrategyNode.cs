@@ -55,7 +55,7 @@ public class StrategyNode : INode
                 You are a JSON formatter that outputs trading decisions.
                 You MUST respond with ONLY a single JSON object — no markdown, no explanation, no preamble.
                 The JSON schema is:
-                {"symbol":"AAPL","action":"Buy","quantity":10,"reasoning":"One paragraph explanation.","confidence":0.85}
+                {"symbol":"AAPL","action":"Buy","quantity":10,"reasoning":"One paragraph explanation.","confidence":0.85,"trailPercent":5}
 
                 LANGUAGE: The `reasoning` field MUST be written in ENGLISH. Do not
                 use Chinese, Mandarin, or any other non-English characters. Prices
@@ -76,6 +76,20 @@ public class StrategyNode : INode
                 - confidence is 0.0 to 1.0
                 - reasoning is a single paragraph, no markdown formatting
                 - Output raw JSON only. No ```json fences, no markdown, no extra text.
+
+                TRAILING STOP RULES (Buy only):
+                - Every Buy entry has a trailing-stop SELL attached by the
+                  execution layer as the protective exit. The stop ratchets
+                  UP with price and never DOWN, firing once price pulls back
+                  by `trailPercent` from its high-water mark.
+                - For action "Buy" you MUST include `trailPercent` (a number, NOT a string):
+                  the trail offset expressed as a percentage of the
+                  high-water mark. Valid range: 1 to 10. Tighter (1–3) when
+                  you want to lock in gains aggressively; wider (5–10) to
+                  give the position room to breathe through normal volatility.
+                  Choose based on the symbol's recent volatility and the
+                  analyst confidence.
+                - For "Sell" and "Hold" omit `trailPercent` or set it to null.
 
                 PRICE SANITY RULES — STRICTLY ENFORCED:
                 - The authoritative current price for this symbol is the "Current price" value supplied
@@ -158,6 +172,17 @@ public class StrategyNode : INode
         {
             decision = decision with { Action = TradeAction.Hold, Reasoning = $"Converted to Hold: {decision.Action} with quantity 0 is not actionable. {decision.Reasoning}" };
         }
+
+        // Trailing-stop GTC is attached to every Buy by ExecutionNode as the
+        // protective exit. Normalise TrailPercent here so downstream consumers
+        // can rely on it: Buys get a clamped 1–10% value (defaulting to 5%
+        // when the model omits it), and Sell/Hold always have it cleared so
+        // dashboards don't surface a stale trail offset.
+        decision = decision.Action switch
+        {
+            TradeAction.Buy => decision with { TrailPercent = ClampTrailPercent(decision.TrailPercent) },
+            _ => decision with { TrailPercent = null },
+        };
 
         // Surface the authoritative current price and the resulting notional
         // order value so downstream consumers (RiskNode, dashboard) don't have
@@ -349,6 +374,29 @@ public class StrategyNode : INode
         // exceed the dollar cap when multiplied back by price.
         var shares = Math.Floor(cap / price * 10000m) / 10000m;
         return (cap, shares);
+    }
+
+    /// <summary>
+    /// Default trail percent applied when the strategy hound emits a Buy
+    /// without a <c>trailPercent</c> value. Chosen as a moderate exit cushion
+    /// that fits the 1–10% valid band advertised in the prompt.
+    /// </summary>
+    internal const decimal DefaultBuyTrailPercent = 5m;
+    internal const decimal MinTrailPercent = 1m;
+    internal const decimal MaxTrailPercent = 10m;
+
+    /// <summary>
+    /// Clamps a model-supplied trail percent into the valid <c>1–10%</c>
+    /// band, falling back to <see cref="DefaultBuyTrailPercent"/> when the
+    /// value is missing or non-positive.
+    /// </summary>
+    internal static decimal ClampTrailPercent(decimal? value)
+    {
+        if (value is not decimal v || v <= 0m)
+            return DefaultBuyTrailPercent;
+        if (v < MinTrailPercent) return MinTrailPercent;
+        if (v > MaxTrailPercent) return MaxTrailPercent;
+        return v;
     }
 
     /// <summary>

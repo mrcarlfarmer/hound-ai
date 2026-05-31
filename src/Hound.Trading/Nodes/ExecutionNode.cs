@@ -156,6 +156,11 @@ public class ExecutionNode : INode
 
         // Deterministic order placement. The broker response is the only thing
         // that can set Success = true — no LLM, no self-reported success.
+        //
+        // Buys are placed as a market entry plus a follow-up trailing-stop
+        // Sell (GTC) using the strategy-chosen TrailPercent so the position
+        // has a protective exit that ratchets up with price (and never down).
+        // Sells go out as plain market Day orders.
         ExecutionResult result;
         try
         {
@@ -183,6 +188,64 @@ public class ExecutionNode : INode
                     ? $"Order submitted to Alpaca — status: {order.OrderStatus}"
                     : $"Alpaca returned non-actionable order status: {order.OrderStatus}",
                 tradeDoc.Id);
+
+            // Attach a trailing-stop Sell as the protective exit for any
+            // accepted Buy. Submitted as a separate GTC order because Alpaca's
+            // OTO/Bracket order classes don't support a trailing-stop child
+            // leg; the broker parks the stop until the buy fills and the
+            // position exists. Failures here are logged but do NOT mark the
+            // Buy as failed — the position is open and MonitorNode can place
+            // a stop on the next cycle if needed.
+            if (success && action == TradeAction.Buy)
+            {
+                var trailPercent = assessment.Decision.TrailPercent
+                    ?? StrategyNode.DefaultBuyTrailPercent;
+
+                try
+                {
+                    var stopOrder = await _alpacaService.SubmitTrailingStopOrderAsync(
+                        symbol,
+                        OrderQuantity.Fractional(effectiveQuantity),
+                        OrderSide.Sell,
+                        trailPercent,
+                        TimeInForce.Gtc,
+                        cancellationToken: cancellationToken);
+
+                    await _activityLogger.LogActivityAsync(new ActivityLog
+                    {
+                        PackId = PackId,
+                        HoundId = NodeId,
+                        HoundName = "ExecutionNode",
+                        Message = $"Attached trailing-stop SELL exit for {symbol} @ {trailPercent}% — order {stopOrder.OrderId} status: {stopOrder.OrderStatus}",
+                        Severity = ActivitySeverity.Info,
+                        Metadata = new Dictionary<string, object>
+                        {
+                            ["tradeDocumentId"] = tradeDoc.Id,
+                            ["entryOrderId"] = orderIdString,
+                            ["stopOrderId"] = stopOrder.OrderId.ToString(),
+                            ["trailPercent"] = trailPercent,
+                        },
+                    }, cancellationToken);
+                }
+                catch (Exception stopEx)
+                {
+                    _logger?.LogWarning(stopEx, "ExecutionNode failed to attach trailing-stop exit for {Symbol}", symbol);
+
+                    await _activityLogger.LogActivityAsync(new ActivityLog
+                    {
+                        PackId = PackId,
+                        HoundId = NodeId,
+                        HoundName = "ExecutionNode",
+                        Message = $"Buy entry for {symbol} succeeded but trailing-stop exit submission failed: {stopEx.Message}. Position is open without a protective stop.",
+                        Severity = ActivitySeverity.Warning,
+                        Metadata = new Dictionary<string, object>
+                        {
+                            ["tradeDocumentId"] = tradeDoc.Id,
+                            ["entryOrderId"] = orderIdString,
+                        },
+                    }, cancellationToken);
+                }
+            }
         }
         catch (Exception ex)
         {

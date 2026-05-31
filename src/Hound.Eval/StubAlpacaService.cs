@@ -29,6 +29,15 @@ internal sealed class StubAlpacaService : IAlpacaService
         CancellationToken cancellationToken = default)
         => Task.FromResult<IOrder>(new StubOrder(symbol, side, quantity, limitPrice));
 
+    public Task<IOrder> SubmitTrailingStopOrderAsync(
+        string symbol,
+        OrderQuantity quantity,
+        OrderSide side,
+        decimal trailPercent,
+        TimeInForce timeInForce,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<IOrder>(new StubOrder(symbol, side, quantity, null));
+
     public Task<IReadOnlyList<IBar>> GetBarsAsync(
         string symbol,
         DateTime from,

@@ -16,6 +16,12 @@ services:
       - ./src/Hound.Core:/src/Hound.Core
       - ./src/Hound.Trading:/src/Hound.Trading
       - ./Directory.Build.props:/Directory.Build.props:ro
+      # Shadow build output with anonymous volumes so host-side `dotnet build/test`
+      # and the other dev container can't clobber this container's bin/obj artifacts.
+      - /src/Hound.Core/bin
+      - /src/Hound.Core/obj
+      - /src/Hound.Trading/bin
+      - /src/Hound.Trading/obj
     working_dir: /src/Hound.Trading
     command: ["dotnet", "watch", "run", "--no-launch-profile", "--urls", "http://0.0.0.0:8080"]
     environment:
@@ -31,6 +37,12 @@ services:
       - ./src/Hound.Core:/src/Hound.Core
       - ./src/Hound.Api:/src/Hound.Api
       - ./Directory.Build.props:/Directory.Build.props:ro
+      # Shadow build output with anonymous volumes so host-side `dotnet build/test`
+      # and the other dev container can't clobber this container's bin/obj artifacts.
+      - /src/Hound.Core/bin
+      - /src/Hound.Core/obj
+      - /src/Hound.Api/bin
+      - /src/Hound.Api/obj
     working_dir: /src/Hound.Api
     command: ["dotnet", "watch", "run", "--no-launch-profile", "--urls", "http://0.0.0.0:8080"]
     environment:
