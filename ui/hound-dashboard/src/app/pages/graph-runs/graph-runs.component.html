@@ -18,7 +18,7 @@
           style="text-transform: uppercase"
           [disabled]="submitting"
           autocomplete="off"
-          (input)="symbolInput = symbolInput.toUpperCase()"
+          (input)="onSymbolInput()"
           (keydown.enter)="$event.preventDefault(); submitSymbol()" />
       </div>
       <button

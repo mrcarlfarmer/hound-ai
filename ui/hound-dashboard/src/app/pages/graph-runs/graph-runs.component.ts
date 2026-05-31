@@ -144,6 +144,10 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.pollTimer) clearInterval(this.pollTimer);
   }
 
+  onSymbolInput(): void {
+    this.symbolInput = this.symbolInput.toUpperCase();
+  }
+
   submitSymbol(): void {
     const symbol = this.symbolInput.trim().toUpperCase();
     if (!symbol) return;
