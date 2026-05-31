@@ -75,9 +75,23 @@ public class TradingGraph
     /// <summary>
     /// Run the full graph for a single symbol. Attempts checkpoint resume first.
     /// </summary>
-    public async Task<TradingGraphState> RunAsync(string symbol, CancellationToken cancellationToken)
+    /// <param name="onRunIdAssigned">
+    /// Optional callback invoked synchronously as soon as the initial state
+    /// (and therefore the RunId) has been created, before any node executes.
+    /// Lets callers link external records (e.g. RunRequest) to the run
+    /// without waiting for the graph to yield or complete.
+    /// </param>
+    public async Task<TradingGraphState> RunAsync(
+        string symbol,
+        CancellationToken cancellationToken,
+        Func<string, CancellationToken, Task>? onRunIdAssigned = null)
     {
         var state = TradingGraphState.Initial(symbol);
+
+        if (onRunIdAssigned is not null)
+        {
+            await onRunIdAssigned(state.RunId, cancellationToken);
+        }
 
         await _activityLogger.LogActivityAsync(new ActivityLog
         {
@@ -140,10 +154,21 @@ public class TradingGraph
 
             try
             {
+                // Refinement loops re-enter the same node multiple times; clear
+                // any prior streamed tokens so attempt N's reasoning starts on
+                // a clean buffer instead of being appended to attempt N-1's.
+                _streamPublisher.ResetReasoning(state.RunId, nextNodeId);
+
                 using (NodeStreamContext.Begin(state.RunId, nextNodeId, _streamPublisher))
                 {
                     state = await node.ExecuteAsync(state, cancellationToken);
                 }
+
+                // Drain any buffered token chunks before publishing the next
+                // node's state. Without this the dashboard can show node N+1
+                // "current" while node N's streamed text is still in flight,
+                // making the timeline look as though nodes overlapped.
+                await _streamPublisher.FlushAsync(cancellationToken);
             }
             catch (Exception ex)
             {
@@ -164,6 +189,18 @@ public class TradingGraph
             {
                 await _stateStore.SaveAsync(state, cancellationToken);
                 await _publisher.PublishAsync(state, cancellationToken);
+                return state;
+            }
+
+            // After approval-node, if we are waiting on a human decision,
+            // persist and yield. The worker will resume the run once a
+            // GraphApproval document is written by the API.
+            if (nextNodeId == "approval-node" && state.IsAwaitingApproval)
+            {
+                await _stateStore.SaveAsync(state, cancellationToken);
+                await _publisher.PublishAsync(state, cancellationToken);
+                _logger.LogInformation(
+                    "Graph [{RunId}] yielding \u2014 awaiting human approval", state.RunId);
                 return state;
             }
         }
@@ -233,10 +270,17 @@ public class TradingGraph
 
             try
             {
+                _streamPublisher.ResetReasoning(state.RunId, nextNodeId);
+
                 using (NodeStreamContext.Begin(state.RunId, nextNodeId, _streamPublisher))
                 {
                     state = await node.ExecuteAsync(state, cancellationToken);
                 }
+
+                // Drain buffered token chunks so the dashboard renders the
+                // full streamed output of this node before the next node's
+                // activity events arrive over SignalR.
+                await _streamPublisher.FlushAsync(cancellationToken);
             }
             catch (Exception ex)
             {
@@ -257,6 +301,16 @@ public class TradingGraph
             {
                 await _stateStore.SaveAsync(state, cancellationToken);
                 await _publisher.PublishAsync(state, cancellationToken);
+                return state;
+            }
+
+            // After approval-node, if we are still awaiting a decision, yield.
+            if (nextNodeId == "approval-node" && state.IsAwaitingApproval)
+            {
+                await _stateStore.SaveAsync(state, cancellationToken);
+                await _publisher.PublishAsync(state, cancellationToken);
+                _logger.LogInformation(
+                    "Graph [{RunId}] resume yielding \u2014 still awaiting human approval", state.RunId);
                 return state;
             }
         }
@@ -283,6 +337,7 @@ public class TradingGraph
                 ? EndMarker
                 : "risk-node",
             (GraphPhase.Entry, "risk-node") => RouteAfterRisk(state),
+            (GraphPhase.Entry, "approval-node") => RouteAfterApproval(state),
             (GraphPhase.Entry, "execution-node") => "monitor-node",
 
             // ── Monitor phase ────────────────────────────────────────────────
@@ -299,7 +354,7 @@ public class TradingGraph
             return EndMarker;
 
         if (state.RiskOutput.Verdict != RiskVerdict.Rejected)
-            return "execution-node";
+            return "approval-node";
 
         // Risk rejected — can we refine?
         if (state.RefinementCount < _settings.MaxRefinements)
@@ -307,6 +362,17 @@ public class TradingGraph
 
         // Max refinements exceeded
         return EndMarker;
+    }
+
+    private string RouteAfterApproval(TradingGraphState state)
+    {
+        return state.ApprovalStatus switch
+        {
+            ApprovalStatus.Approved => "execution-node",
+            ApprovalStatus.Rejected => EndMarker,
+            // Pending / NotRequested — stay on approval-node; outer loop yields.
+            _ => "approval-node",
+        };
     }
 
     private string RouteAfterMonitor(TradingGraphState state)

@@ -86,6 +86,10 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   submitError = '';
   closingPosition = false;
   closePositionError = '';
+  // Human-in-the-loop approval UI state
+  approvalNotes = '';
+  approvalSubmitting: 'approve' | 'reject' | null = null;
+  approvalError = '';
   private sub?: Subscription;
   private streamSub?: Subscription;
   private pollTimer?: ReturnType<typeof setInterval>;
@@ -97,6 +101,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     'analysts-team-node': 'Analysts Team',
     'strategy-node': 'Strategy',
     'risk-node': 'Risk Assessment',
+    'approval-node': 'Human Approval',
     'execution-node': 'Execution',
     'monitor-node': 'Monitor',
   };
@@ -105,6 +110,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     'analysts-team-node': 'Market, fundamentals, news, and sentiment analysis',
     'strategy-node': 'Formulates a trading decision based on analysis',
     'risk-node': 'Evaluates risk limits and validates the trade',
+    'approval-node': 'Pauses for a human to review and approve or reject the trade',
     'execution-node': 'Places the order via Alpaca Markets',
     'monitor-node': 'Monitors the position until the trade closes',
   };
@@ -531,6 +537,44 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     if (this.isNoAction(node)) return 'No action';
     if (node.status === 'Pending' && this.selectedRun?.isComplete) return 'Skipped';
     return node.status;
+  }
+
+  // ── Human-in-the-loop approval ────────────────────────────────────────────
+
+  isAwaitingApproval(run?: GraphRun | null): boolean {
+    return !!run && !run.isComplete && run.approvalStatus === 'Pending';
+  }
+
+  submitApproval(decision: 'approve' | 'reject'): void {
+    if (!this.selectedRun || this.approvalSubmitting) return;
+    this.approvalSubmitting = decision;
+    this.approvalError = '';
+
+    const runId = this.selectedRun.runId;
+    const notes = this.approvalNotes.trim() || undefined;
+    const call = decision === 'approve'
+      ? this.api.approveRun(runId, 'dashboard-user', notes)
+      : this.api.rejectRun(runId, 'dashboard-user', notes);
+
+    call.subscribe({
+      next: () => {
+        this.approvalSubmitting = null;
+        this.approvalNotes = '';
+        // Refresh — the worker will pick up the decision on its next poll
+        // and SignalR will push the new run state shortly after.
+        this.loadRuns();
+        this.cdr.detectChanges();
+      },
+      error: (err) => {
+        this.approvalSubmitting = null;
+        const problem = (err as { error?: { title?: string; detail?: string } })?.error;
+        this.approvalError = problem?.detail
+          ?? problem?.title
+          ?? (err as { message?: string })?.message
+          ?? 'Failed to submit decision';
+        this.cdr.detectChanges();
+      },
+    });
   }
 
   nodeStatusClass(status: NodeStatus): string {

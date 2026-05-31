@@ -100,6 +100,7 @@ export interface OrderUpdate {
 
 export type GraphPhase = 'Entry' | 'Monitor';
 export type NodeStatus = 'Pending' | 'Active' | 'Completed' | 'Failed' | 'Skipped';
+export type ApprovalStatus = 'NotRequested' | 'Pending' | 'Approved' | 'Rejected';
 
 export interface NodeSnapshot {
   nodeId: string;
@@ -123,6 +124,10 @@ export interface GraphRun {
   errorMessage?: string;
   refinementCount: number;
   monitorCycleCount: number;
+  approvalStatus?: ApprovalStatus;
+  approvalDecidedBy?: string;
+  approvalDecidedAt?: string;
+  approvalNotes?: string;
   nodes: NodeSnapshot[];
   refinements?: RefinementSnapshot[];
 }

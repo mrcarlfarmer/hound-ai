@@ -99,7 +99,7 @@ public sealed class TradingGraphRoutingTests
     }
 
     [TestMethod]
-    public void Route_EntryPhase_RiskNode_Approved_ReturnsExecutionNode()
+    public void Route_EntryPhase_RiskNode_Approved_ReturnsApprovalNode()
     {
         var graph = CreateGraph();
         var decision = new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.8);
@@ -111,7 +111,58 @@ public sealed class TradingGraphRoutingTests
 
         var next = graph.Route(state);
 
+        Assert.AreEqual("approval-node", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_ApprovalNode_Approved_ReturnsExecutionNode()
+    {
+        var graph = CreateGraph();
+        var decision = new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.8);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "approval-node",
+            RiskOutput = new RiskAssessment(RiskVerdict.Approved, decision, "Within limits"),
+            ApprovalStatus = ApprovalStatus.Approved,
+        };
+
+        var next = graph.Route(state);
+
         Assert.AreEqual("execution-node", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_ApprovalNode_Rejected_ReturnsEnd()
+    {
+        var graph = CreateGraph();
+        var decision = new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.8);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "approval-node",
+            RiskOutput = new RiskAssessment(RiskVerdict.Approved, decision, "Within limits"),
+            ApprovalStatus = ApprovalStatus.Rejected,
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("__end__", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_ApprovalNode_Pending_StaysOnApprovalNode()
+    {
+        var graph = CreateGraph();
+        var decision = new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.8);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "approval-node",
+            RiskOutput = new RiskAssessment(RiskVerdict.Approved, decision, "Within limits"),
+            ApprovalStatus = ApprovalStatus.Pending,
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("approval-node", next);
     }
 
     [TestMethod]

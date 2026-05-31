@@ -107,6 +107,10 @@ builder.Services.AddSingleton<ExecutionNode>(sp => new ExecutionNode(
     sp.GetRequiredService<IDocumentStore>(),
     sp.GetService<ILoggerFactory>()));
 
+builder.Services.AddSingleton<ApprovalNode>(sp => new ApprovalNode(
+    sp.GetRequiredService<IActivityLogger>(),
+    sp.GetService<ILoggerFactory>()));
+
 builder.Services.AddSingleton<MonitorNode>(sp =>
 {
     var settings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<TradingGraphSettings>>().Value;
@@ -126,6 +130,7 @@ builder.Services.AddSingleton<IReadOnlyDictionary<string, INode>>(sp =>
         ["analysts-team-node"] = sp.GetRequiredService<AnalystsTeamNode>(),
         ["strategy-node"] = sp.GetRequiredService<StrategyNode>(),
         ["risk-node"] = sp.GetRequiredService<RiskNode>(),
+        ["approval-node"] = sp.GetRequiredService<ApprovalNode>(),
         ["execution-node"] = sp.GetRequiredService<ExecutionNode>(),
         ["monitor-node"] = sp.GetRequiredService<MonitorNode>(),
     });

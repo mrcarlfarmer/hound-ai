@@ -24,6 +24,12 @@ public class GraphRun
     public int RefinementCount { get; set; }
     public int MonitorCycleCount { get; set; }
 
+    /// <summary>Human-in-the-loop approval state for this run.</summary>
+    public ApprovalStatus ApprovalStatus { get; set; } = ApprovalStatus.NotRequested;
+    public string? ApprovalDecidedBy { get; set; }
+    public DateTime? ApprovalDecidedAt { get; set; }
+    public string? ApprovalNotes { get; set; }
+
     public List<NodeSnapshot> Nodes { get; set; } = [];
     public List<RefinementSnapshot> Refinements { get; set; } = [];
 }

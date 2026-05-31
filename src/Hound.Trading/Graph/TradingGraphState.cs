@@ -29,9 +29,20 @@ public record TradingGraphState
     // ── Refinement history ───────────────────────────────────────────────────
     public List<RefinementEntry> RefinementHistory { get; init; } = [];
 
+    // ── Human approval ───────────────────────────────────────────────────────
+    /// <summary>Current state of the human-in-the-loop approval gate.</summary>
+    public ApprovalStatus ApprovalStatus { get; init; } = ApprovalStatus.NotRequested;
+    public string? ApprovalDecidedBy { get; init; }
+    public DateTime? ApprovalDecidedAt { get; init; }
+    public string? ApprovalNotes { get; init; }
+    public DateTime? ApprovalRequestedAt { get; init; }
+
     // ── Terminal flags ───────────────────────────────────────────────────────
     public bool IsComplete { get; init; }
     public string? ErrorMessage { get; init; }
+
+    /// <summary>Convenience: graph should pause execution and wait for a human.</summary>
+    public bool IsAwaitingApproval => ApprovalStatus == ApprovalStatus.Pending && !IsComplete;
 
     /// <summary>Creates the initial state for a new graph run.</summary>
     public static TradingGraphState Initial(string symbol) => new()

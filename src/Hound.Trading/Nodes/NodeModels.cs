@@ -14,7 +14,22 @@ public record MarketAnalysis(
     string? FundamentalsReport = null,
     string? NewsReport = null,
     string? SentimentReport = null,
-    string? CompanyName = null);
+    string? CompanyName = null,
+    decimal? Atr14 = null,
+    KeyLevels? KeyLevels = null);
+
+/// <summary>
+/// Deterministically-derived price levels surfaced to the strategy hound so
+/// it can <em>select</em> entry / stop / target from a real menu instead of
+/// inventing round-number levels. Always sorted ascending; values are rounded
+/// to 2 decimal places. Both lists may be empty when there aren't enough bars
+/// to compute them confidently.
+/// </summary>
+/// <param name="Support">Levels at or below the current price.</param>
+/// <param name="Resistance">Levels at or above the current price.</param>
+public record KeyLevels(
+    IReadOnlyList<decimal> Support,
+    IReadOnlyList<decimal> Resistance);
 
 public enum TradeAction { Buy, Sell, Hold }
 

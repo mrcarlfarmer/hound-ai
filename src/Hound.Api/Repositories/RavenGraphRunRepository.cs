@@ -52,4 +52,36 @@ public class RavenGraphRunRepository : IGraphRunRepository
             .Take(limit)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task<bool> SubmitApprovalAsync(
+        string runId,
+        ApprovalStatus decision,
+        string? decidedBy,
+        string? notes,
+        CancellationToken cancellationToken = default)
+    {
+        if (decision != ApprovalStatus.Approved && decision != ApprovalStatus.Rejected)
+            throw new ArgumentException("Decision must be Approved or Rejected.", nameof(decision));
+
+        using var session = _store.OpenAsyncSession(Database);
+
+        // Guard: the run must currently exist as a GraphRun and be awaiting approval.
+        var run = await session.LoadAsync<GraphRun>($"GraphRuns/{runId}", cancellationToken);
+        if (run is null || run.ApprovalStatus != ApprovalStatus.Pending)
+            return false;
+
+        var approval = new GraphApproval
+        {
+            Id = $"GraphApprovals/{runId}",
+            RunId = runId,
+            Decision = decision,
+            DecidedBy = decidedBy,
+            Notes = notes,
+            DecidedAt = DateTime.UtcNow,
+        };
+
+        await session.StoreAsync(approval, approval.Id, cancellationToken);
+        await session.SaveChangesAsync(cancellationToken);
+        return true;
+    }
 }

@@ -243,8 +243,9 @@ public class AnalystsTeamNode : INode
         // If not, skip the (expensive, slow) analyst pipeline and emit a clean
         // low-confidence MarketAnalysis so the graph can terminate the run via
         // the existing minimum-confidence routing rule.
-        var (preLastPrice, preVolumeChange) =
-            await ComputeMarketMetricsAsync(state.Symbol, cancellationToken);
+        var preflight = await ComputeMarketMetricsAsync(state.Symbol, cancellationToken);
+        var preLastPrice = preflight.LastPrice;
+        var preVolumeChange = preflight.VolumeChange;
 
         // Resolve the canonical company name so we can disambiguate similar
         // tickers in the analyst prompts (e.g. ROK → Rockwell Automation vs
@@ -338,11 +339,15 @@ public class AnalystsTeamNode : INode
 
         // Attach individual reports + the pre-flight market metrics (override
         // LLM-supplied lastPrice/volumeChange because the broker numbers are
-        // authoritative).
+        // authoritative). ATR(14) and key support/resistance levels are pure
+        // deterministic data — never asked of the LLM — so they're attached
+        // here too for the downstream strategy hound to select from.
         analysis = analysis with
         {
             LastPrice = preLastPrice ?? analysis.LastPrice,
             VolumeChange = preVolumeChange ?? analysis.VolumeChange,
+            Atr14 = preflight.Atr14,
+            KeyLevels = preflight.KeyLevels,
             MarketReport = marketReport,
             FundamentalsReport = fundamentalsReport,
             NewsReport = newsReport,
@@ -431,12 +436,18 @@ public class AnalystsTeamNode : INode
     // ── Tool implementations ─────────────────────────────────────────────────
 
     /// <summary>
-    /// Deterministically derives last price and relative volume change from
-    /// Alpaca daily bars. Returns (null, null) if data is unavailable. Volume
-    /// change is the ratio of the most recent day's volume to the trailing
-    /// 20-day average (capped to 2 decimal places).
+    /// Small immutable view over an OHLCV bar so the technical helpers below
+    /// can be unit-tested without mocking the full Alpaca <see cref="IBar"/>
+    /// surface area. Volume is decimal to mirror the broker SDK.
     /// </summary>
-    private async Task<(decimal? LastPrice, decimal? VolumeChange)> ComputeMarketMetricsAsync(
+    internal record BarSnapshot(decimal High, decimal Low, decimal Close, decimal Volume, DateTime Time);
+
+    /// <summary>
+    /// Deterministically derives last price, relative volume change, ATR(14),
+    /// and key support/resistance levels from Alpaca daily bars. Returns an
+    /// all-null result if data is unavailable.
+    /// </summary>
+    private async Task<PreflightMetrics> ComputeMarketMetricsAsync(
         string symbol, CancellationToken cancellationToken)
     {
         try
@@ -445,9 +456,13 @@ public class AnalystsTeamNode : INode
             var from = to.AddDays(-45);
             var bars = await _alpacaService.GetBarsAsync(symbol, from, to, BarTimeFrame.Day, cancellationToken);
             if (bars.Count == 0)
-                return (null, null);
+                return PreflightMetrics.Empty;
 
-            var ordered = bars.OrderBy(b => b.TimeUtc).ToList();
+            var ordered = bars
+                .OrderBy(b => b.TimeUtc)
+                .Select(b => new BarSnapshot(b.High, b.Low, b.Close, b.Volume, b.TimeUtc))
+                .ToList();
+
             var lastBar = ordered[^1];
             decimal lastPrice = lastBar.Close;
 
@@ -457,18 +472,118 @@ public class AnalystsTeamNode : INode
                 var priorBars = ordered.Take(ordered.Count - 1).TakeLast(20).ToList();
                 if (priorBars.Count > 0)
                 {
-                    var avgPrior = priorBars.Average(b => (decimal)b.Volume);
+                    var avgPrior = priorBars.Average(b => b.Volume);
                     if (avgPrior > 0)
-                        volumeChange = Math.Round((decimal)lastBar.Volume / avgPrior, 2);
+                        volumeChange = Math.Round(lastBar.Volume / avgPrior, 2);
                 }
             }
 
-            return (lastPrice, volumeChange);
+            var atr14 = CalculateAtr14(ordered);
+            var keyLevels = CalculateKeyLevels(ordered, lastPrice);
+
+            return new PreflightMetrics(lastPrice, volumeChange, atr14, keyLevels);
         }
         catch
         {
-            return (null, null);
+            return PreflightMetrics.Empty;
         }
+    }
+
+    /// <summary>
+    /// Result of the broker-data pre-flight: deterministic numbers that the
+    /// downstream analysts and synthesiser can rely on as authoritative.
+    /// </summary>
+    internal record PreflightMetrics(
+        decimal? LastPrice,
+        decimal? VolumeChange,
+        decimal? Atr14,
+        KeyLevels? KeyLevels)
+    {
+        public static readonly PreflightMetrics Empty = new(null, null, null, null);
+    }
+
+    /// <summary>
+    /// Computes 14-period Average True Range using a simple mean of the last
+    /// 14 true ranges (close enough to Wilder's smoothing for sizing decisions
+    /// and far easier to reason about). Returns <c>null</c> when there are
+    /// fewer than 15 bars (14 TR values require a prior close).
+    /// </summary>
+    internal static decimal? CalculateAtr14(IReadOnlyList<BarSnapshot> bars)
+    {
+        if (bars.Count < 15) return null;
+
+        var trs = new List<decimal>(bars.Count - 1);
+        for (int i = 1; i < bars.Count; i++)
+        {
+            var prevClose = bars[i - 1].Close;
+            var hl = bars[i].High - bars[i].Low;
+            var hc = Math.Abs(bars[i].High - prevClose);
+            var lc = Math.Abs(bars[i].Low - prevClose);
+            trs.Add(Math.Max(hl, Math.Max(hc, lc)));
+        }
+
+        var last14 = trs.TakeLast(14).ToList();
+        if (last14.Count < 14) return null;
+        return Math.Round(last14.Average(), 2);
+    }
+
+    /// <summary>
+    /// Extracts a concise menu of support/resistance levels from the bar
+    /// history. Combines the 20-day high/low with classic prior-day pivot
+    /// levels (R1/R2/S1/S2), keeps only values within ±25% of
+    /// <paramref name="currentPrice"/>, dedupes near-duplicates (within 0.5%),
+    /// and partitions them into support (≤ current) and resistance (≥ current),
+    /// both sorted ascending and rounded to 2dp.
+    /// </summary>
+    internal static KeyLevels? CalculateKeyLevels(IReadOnlyList<BarSnapshot> bars, decimal currentPrice)
+    {
+        if (bars.Count == 0 || currentPrice <= 0) return null;
+
+        var candidates = new List<decimal>();
+
+        // 20-day range (or whatever's available).
+        var window = bars.TakeLast(20).ToList();
+        if (window.Count > 0)
+        {
+            candidates.Add(window.Max(b => b.High));
+            candidates.Add(window.Min(b => b.Low));
+        }
+
+        // Classic pivot levels derived from the most recent completed bar.
+        var pivotBar = bars[^1];
+        var pp = (pivotBar.High + pivotBar.Low + pivotBar.Close) / 3m;
+        var range = pivotBar.High - pivotBar.Low;
+        candidates.Add(2m * pp - pivotBar.Low);   // R1
+        candidates.Add(pp + range);                // R2
+        candidates.Add(2m * pp - pivotBar.High);  // S1
+        candidates.Add(pp - range);                // S2
+
+        // Keep only levels within a ±25% band of current price; outside that
+        // a "level" is more likely noise than something a swing trader will
+        // act on.
+        var lower = currentPrice * 0.75m;
+        var upper = currentPrice * 1.25m;
+        var filtered = candidates
+            .Where(c => c >= lower && c <= upper && c > 0)
+            .Select(c => Math.Round(c, 2))
+            .Distinct()
+            .OrderBy(c => c)
+            .ToList();
+
+        // Cluster: drop any level within 0.5% of one we've already kept.
+        var clusterTolerance = currentPrice * 0.005m;
+        var clustered = new List<decimal>();
+        foreach (var c in filtered)
+        {
+            if (clustered.Count == 0 || c - clustered[^1] > clusterTolerance)
+                clustered.Add(c);
+        }
+
+        var support = clustered.Where(c => c <= currentPrice).ToList();
+        var resistance = clustered.Where(c => c >= currentPrice).ToList();
+
+        if (support.Count == 0 && resistance.Count == 0) return null;
+        return new KeyLevels(support, resistance);
     }
 
     private async Task<string> FetchStockDataAsync(

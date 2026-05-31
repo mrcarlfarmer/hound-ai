@@ -15,12 +15,19 @@ namespace Hound.Core.LlmClient;
 /// </summary>
 public sealed class HttpNodeStreamPublisher : BackgroundService, INodeStreamPublisher
 {
-    private readonly Channel<NodeStreamChunk> _queue = Channel.CreateUnbounded<NodeStreamChunk>(
+    private readonly Channel<QueueItem> _queue = Channel.CreateUnbounded<QueueItem>(
         new UnboundedChannelOptions { SingleReader = true, SingleWriter = false });
     private readonly ConcurrentDictionary<string, StringBuilder> _reasoning = new();
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _baseUrl;
     private readonly ILogger<HttpNodeStreamPublisher>? _logger;
+
+    /// <summary>
+    /// Item flowing through the dispatch channel: either a real chunk to POST
+    /// or a sentinel signalling that <see cref="FlushAsync"/> can complete
+    /// because every earlier chunk has now been processed.
+    /// </summary>
+    private readonly record struct QueueItem(NodeStreamChunk? Chunk, TaskCompletionSource? Sentinel);
 
     public HttpNodeStreamPublisher(
         IHttpClientFactory httpClientFactory,
@@ -39,7 +46,7 @@ public sealed class HttpNodeStreamPublisher : BackgroundService, INodeStreamPubl
         {
             buffer.Append(chunk.Text);
         }
-        _queue.Writer.TryWrite(chunk);
+        _queue.Writer.TryWrite(new QueueItem(chunk, null));
     }
 
     public string? GetReasoning(string runId, string nodeId)
@@ -52,13 +59,43 @@ public sealed class HttpNodeStreamPublisher : BackgroundService, INodeStreamPubl
         }
     }
 
+    public void ResetReasoning(string runId, string nodeId)
+    {
+        _reasoning.TryRemove(Key(runId, nodeId), out _);
+    }
+
+    /// <summary>
+    /// Drains all chunks queued before this call. The graph orchestrator awaits
+    /// this between nodes so the dashboard sees the full streamed output of
+    /// node N before any activity from node N+1 lands.
+    /// </summary>
+    public async Task FlushAsync(CancellationToken cancellationToken = default)
+    {
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_queue.Writer.TryWrite(new QueueItem(null, tcs)))
+        {
+            // Writer closed — nothing left to drain.
+            return;
+        }
+        using (cancellationToken.Register(() => tcs.TrySetCanceled(cancellationToken)))
+        {
+            await tcs.Task.ConfigureAwait(false);
+        }
+    }
+
     private static string Key(string runId, string nodeId) => $"{runId}::{nodeId}";
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var client = _httpClientFactory.CreateClient();
-        await foreach (var chunk in _queue.Reader.ReadAllAsync(stoppingToken))
+        await foreach (var item in _queue.Reader.ReadAllAsync(stoppingToken))
         {
+            if (item.Sentinel is { } sentinel)
+            {
+                sentinel.TrySetResult();
+                continue;
+            }
+            if (item.Chunk is not { } chunk) continue;
             try
             {
                 using var response = await client.PostAsJsonAsync(

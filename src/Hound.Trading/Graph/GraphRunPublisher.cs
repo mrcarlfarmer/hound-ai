@@ -24,7 +24,7 @@ public class GraphRunPublisher
     };
 
     private static readonly string[] OrderedNodeIds =
-        ["analysts-team-node", "strategy-node", "risk-node", "execution-node", "monitor-node"];
+        ["analysts-team-node", "strategy-node", "risk-node", "approval-node", "execution-node", "monitor-node"];
 
     private readonly IDocumentStore _store;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -63,6 +63,10 @@ public class GraphRunPublisher
         run.ErrorMessage = state.ErrorMessage;
         run.RefinementCount = state.RefinementCount;
         run.MonitorCycleCount = state.MonitorCycleCount;
+        run.ApprovalStatus = state.ApprovalStatus;
+        run.ApprovalDecidedBy = state.ApprovalDecidedBy;
+        run.ApprovalDecidedAt = state.ApprovalDecidedAt;
+        run.ApprovalNotes = state.ApprovalNotes;
         if (state.IsComplete)
             run.CompletedAt = DateTime.UtcNow;
 
@@ -109,6 +113,16 @@ public class GraphRunPublisher
         var existingLookup = existing?.ToDictionary(n => n.NodeId) ?? [];
         var nodes = new List<NodeSnapshot>();
 
+        // When the graph has looped back into Strategy for a refinement attempt
+        // (Risk rejected, StrategyOutput cleared, RefinementCount incremented),
+        // the previous risk + strategy snapshots are no longer "the current
+        // truth" — they belong to the prior attempt and live on in
+        // RefinementHistory. Suppress their preserved Completed/Failed status
+        // so the dashboard timeline accurately shows the in-flight attempt.
+        var refinementInFlight = state.RefinementCount > 0
+            && state.StrategyOutput is null
+            && state.CurrentNode == "strategy-node";
+
         foreach (var nodeId in OrderedNodeIds)
         {
             var (status, outputJson) = nodeId switch
@@ -116,15 +130,30 @@ public class GraphRunPublisher
                 "analysts-team-node" => GetSlot(state.DataOutput, state.CurrentNode, nodeId),
                 "strategy-node" => GetSlot(state.StrategyOutput, state.CurrentNode, nodeId),
                 "risk-node" => GetSlot(state.RiskOutput, state.CurrentNode, nodeId),
+                "approval-node" => GetApprovalSlot(state),
                 "execution-node" => GetExecutionSlot(state),
                 "monitor-node" => GetSlot(state.MonitorOutput, state.CurrentNode, nodeId),
                 _ => (NodeStatus.Pending, null),
             };
 
+            // While Strategy is being retried (refinement), the prior risk
+            // assessment is still hanging off the state until the new attempt
+            // overwrites it — show that slot as Pending so the dashboard
+            // doesn't display a stale "Rejected" Risk card alongside the
+            // in-flight Strategy.
+            if (refinementInFlight && nodeId == "risk-node")
+            {
+                status = NodeStatus.Pending;
+                outputJson = null;
+            }
+
             // Preserve existing Completed/Failed status and output when the new
             // snapshot would regress to Pending (e.g. during monitor loop cycles
-            // where prior node outputs aren't in the state object).
-            if (status == NodeStatus.Pending
+            // where prior node outputs aren't in the state object). Suppressed
+            // during a refinement attempt so the prior risk-node snapshot
+            // doesn't masquerade as the current truth.
+            if (!refinementInFlight
+                && status == NodeStatus.Pending
                 && existingLookup.TryGetValue(nodeId, out var prev)
                 && prev.Status is NodeStatus.Completed or NodeStatus.Failed)
             {
@@ -167,5 +196,27 @@ public class GraphRunPublisher
             return (NodeStatus.Active, null);
 
         return (NodeStatus.Pending, null);
+    }
+
+    private static (NodeStatus Status, string? OutputJson) GetApprovalSlot(TradingGraphState state)
+    {
+        var payload = new
+        {
+            status = state.ApprovalStatus.ToString(),
+            decidedBy = state.ApprovalDecidedBy,
+            decidedAt = state.ApprovalDecidedAt,
+            notes = state.ApprovalNotes,
+            requestedAt = state.ApprovalRequestedAt,
+        };
+
+        return state.ApprovalStatus switch
+        {
+            ApprovalStatus.Approved => (NodeStatus.Completed, (string?)JsonSerializer.Serialize(payload, JsonOptions)),
+            ApprovalStatus.Rejected => (NodeStatus.Failed, (string?)JsonSerializer.Serialize(payload, JsonOptions)),
+            ApprovalStatus.Pending => (NodeStatus.Active, (string?)JsonSerializer.Serialize(payload, JsonOptions)),
+            _ => state.CurrentNode == "approval-node"
+                ? (NodeStatus.Active, (string?)null)
+                : (NodeStatus.Pending, (string?)null),
+        };
     }
 }

@@ -58,6 +58,55 @@ public class RunsController : ControllerBase
         var requests = await _runs.GetRecentRequestsAsync(limit, cancellationToken);
         return Ok(requests);
     }
+
+    /// <summary>POST /api/runs/{runId}/approve — Approve a run that is awaiting human review.</summary>
+    [HttpPost("{runId}/approve")]
+    public async Task<IActionResult> Approve(
+        string runId,
+        [FromBody] ApprovalDecisionBody? body,
+        CancellationToken cancellationToken = default)
+    {
+        return await SubmitDecisionAsync(runId, ApprovalStatus.Approved, body, cancellationToken);
+    }
+
+    /// <summary>POST /api/runs/{runId}/reject — Reject a run that is awaiting human review.</summary>
+    [HttpPost("{runId}/reject")]
+    public async Task<IActionResult> Reject(
+        string runId,
+        [FromBody] ApprovalDecisionBody? body,
+        CancellationToken cancellationToken = default)
+    {
+        return await SubmitDecisionAsync(runId, ApprovalStatus.Rejected, body, cancellationToken);
+    }
+
+    private async Task<IActionResult> SubmitDecisionAsync(
+        string runId,
+        ApprovalStatus decision,
+        ApprovalDecisionBody? body,
+        CancellationToken cancellationToken)
+    {
+        var decidedBy = string.IsNullOrWhiteSpace(body?.DecidedBy) ? "user" : body!.DecidedBy!.Trim();
+        var notes = string.IsNullOrWhiteSpace(body?.Notes) ? null : body!.Notes!.Trim();
+
+        var applied = await _runs.SubmitApprovalAsync(runId, decision, decidedBy, notes, cancellationToken);
+        if (!applied)
+        {
+            return Problem(
+                statusCode: 409,
+                title: "Run is not awaiting approval",
+                detail: $"Run '{runId}' either does not exist or is not currently in the Pending approval state.");
+        }
+
+        return Accepted(new
+        {
+            runId,
+            decision = decision.ToString(),
+            decidedBy,
+            notes,
+        });
+    }
 }
 
 public record RunRequestBody(string Symbol);
+
+public record ApprovalDecisionBody(string? DecidedBy, string? Notes);

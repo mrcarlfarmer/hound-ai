@@ -71,6 +71,20 @@ export class ApiService {
     return this.http.get<RunRequest[]>(`${this.baseUrl}/api/runs/requests`, { params });
   }
 
+  approveRun(runId: string, decidedBy?: string, notes?: string): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/approve`, {
+      decidedBy: decidedBy ?? null,
+      notes: notes ?? null,
+    });
+  }
+
+  rejectRun(runId: string, decidedBy?: string, notes?: string): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/reject`, {
+      decidedBy: decidedBy ?? null,
+      notes: notes ?? null,
+    });
+  }
+
   getAccount(): Observable<AccountSummary> {
     return this.http.get<AccountSummary>(`${this.baseUrl}/api/portfolio/account`);
   }

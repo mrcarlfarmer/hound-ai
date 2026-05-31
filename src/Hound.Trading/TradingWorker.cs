@@ -1,5 +1,7 @@
+using Hound.Core.Logging;
 using Hound.Core.Models;
 using Hound.Trading.Graph;
+using Hound.Trading.Nodes;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -23,6 +25,8 @@ public class TradingWorker : BackgroundService
     private readonly TradingGraphSettings _settings;
     private readonly IStateStore _stateStore;
     private readonly IDocumentStore _documentStore;
+    private readonly GraphRunPublisher _publisher;
+    private readonly IActivityLogger _activityLogger;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly string _apiBaseUrl;
     private readonly ILogger<TradingWorker> _logger;
@@ -35,6 +39,8 @@ public class TradingWorker : BackgroundService
         IOptions<TradingGraphSettings> settings,
         IStateStore stateStore,
         IDocumentStore documentStore,
+        GraphRunPublisher publisher,
+        IActivityLogger activityLogger,
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
         ILogger<TradingWorker> logger)
@@ -43,6 +49,8 @@ public class TradingWorker : BackgroundService
         _settings = settings.Value;
         _stateStore = stateStore;
         _documentStore = documentStore;
+        _publisher = publisher;
+        _activityLogger = activityLogger;
         _httpClientFactory = httpClientFactory;
         _apiBaseUrl = (configuration["HoundApi:BaseUrl"] ?? "http://hound-api:8080").TrimEnd('/');
         _logger = logger;
@@ -64,6 +72,9 @@ public class TradingWorker : BackgroundService
             {
                 // Process any pending on-demand requests
                 await ProcessPendingRequestsAsync(stoppingToken);
+
+                // Apply any human approval decisions written by the API
+                await ApplyPendingApprovalsAsync(stoppingToken);
 
                 // Advance monitor-phase runs that are due for their next cycle
                 await AdvanceMonitorRunsAsync(stoppingToken);
@@ -114,7 +125,17 @@ public class TradingWorker : BackgroundService
 
         try
         {
-            var state = await _graph.RunAsync(request.Symbol, cancellationToken);
+            var state = await _graph.RunAsync(
+                request.Symbol,
+                cancellationToken,
+                onRunIdAssigned: async (runId, ct) =>
+                {
+                    // Link the request to the GraphRun as soon as the runId
+                    // exists so the dashboard can dedupe the "Waiting for
+                    // worker..." card against the live GraphRun entry.
+                    request.RunId = runId;
+                    await session.SaveChangesAsync(ct);
+                });
             request.RunId = state.RunId;
 
             if (state.IsComplete)
@@ -142,6 +163,148 @@ public class TradingWorker : BackgroundService
             request.CompletedAt = DateTime.UtcNow;
         }
 
+        await session.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Picks up any <see cref="GraphApproval"/> documents written by the API
+    /// (Approve/Reject in the dashboard), applies them to the corresponding
+    /// <see cref="TradingGraphState"/> checkpoint, and either resumes the run
+    /// (on approve) or finalises it with a rejection result (on reject).
+    /// The approval document is deleted once applied.
+    /// </summary>
+    private async Task ApplyPendingApprovalsAsync(CancellationToken cancellationToken)
+    {
+        List<GraphApproval> pending;
+        using (var read = _documentStore.OpenAsyncSession(Database))
+        {
+            pending = await read.Query<GraphApproval>()
+                .OrderBy(a => a.DecidedAt)
+                .Take(10)
+                .ToListAsync(cancellationToken);
+        }
+
+        foreach (var approval in pending)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+
+            try
+            {
+                await ApplySingleApprovalAsync(approval, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Failed to apply approval for run {RunId}", approval.RunId);
+            }
+        }
+    }
+
+    private async Task ApplySingleApprovalAsync(GraphApproval approval, CancellationToken cancellationToken)
+    {
+        var checkpoint = await _stateStore.LoadAsync(approval.RunId, cancellationToken);
+        if (checkpoint is null)
+        {
+            _logger.LogWarning(
+                "Approval received for unknown or completed run {RunId} \u2014 discarding", approval.RunId);
+            await DeleteApprovalAsync(approval.Id, cancellationToken);
+            return;
+        }
+
+        if (checkpoint.ApprovalStatus != ApprovalStatus.Pending)
+        {
+            _logger.LogWarning(
+                "Approval received for run {RunId} not in Pending state (current: {Status}) \u2014 discarding",
+                approval.RunId, checkpoint.ApprovalStatus);
+            await DeleteApprovalAsync(approval.Id, cancellationToken);
+            return;
+        }
+
+        var updated = checkpoint with
+        {
+            ApprovalStatus = approval.Decision,
+            ApprovalDecidedBy = approval.DecidedBy,
+            ApprovalDecidedAt = approval.DecidedAt,
+            ApprovalNotes = approval.Notes,
+        };
+
+        if (approval.Decision == ApprovalStatus.Rejected)
+        {
+            var decision = updated.RiskOutput?.Decision;
+            var note = string.IsNullOrWhiteSpace(approval.Notes)
+                ? "Rejected by human reviewer"
+                : approval.Notes!;
+
+            updated = updated with
+            {
+                ExecutionOutput = new ExecutionResult(
+                    false,
+                    decision?.Symbol ?? updated.Symbol,
+                    decision?.Action ?? TradeAction.Hold,
+                    decision?.Quantity ?? 0m,
+                    null,
+                    string.Empty,
+                    $"Rejected by {approval.DecidedBy ?? "user"}: {note}"),
+                IsComplete = true,
+            };
+
+            await _activityLogger.LogActivityAsync(new ActivityLog
+            {
+                PackId = PackId,
+                HoundId = "approval-node",
+                HoundName = "ApprovalNode",
+                Message = $"Trade rejected by {approval.DecidedBy ?? "user"} for {updated.Symbol}: {note}",
+                Severity = ActivitySeverity.Warning,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["runId"] = updated.RunId,
+                },
+            }, cancellationToken);
+
+            await _stateStore.SaveAsync(updated, cancellationToken);
+            await _publisher.PublishAsync(updated, cancellationToken);
+            await _stateStore.ClearAsync(updated.RunId, cancellationToken);
+            await DeleteApprovalAsync(approval.Id, cancellationToken);
+            return;
+        }
+
+        if (approval.Decision == ApprovalStatus.Approved)
+        {
+            await _activityLogger.LogActivityAsync(new ActivityLog
+            {
+                PackId = PackId,
+                HoundId = "approval-node",
+                HoundName = "ApprovalNode",
+                Message = $"Trade approved by {approval.DecidedBy ?? "user"} for {updated.Symbol}"
+                    + (string.IsNullOrWhiteSpace(approval.Notes) ? "" : $" \u2014 {approval.Notes}"),
+                Severity = ActivitySeverity.Success,
+                Metadata = new Dictionary<string, object>
+                {
+                    ["runId"] = updated.RunId,
+                },
+            }, cancellationToken);
+
+            await _stateStore.SaveAsync(updated, cancellationToken);
+            await _publisher.PublishAsync(updated, cancellationToken);
+            await DeleteApprovalAsync(approval.Id, cancellationToken);
+
+            // Resume the graph \u2014 the router will now bypass approval-node
+            // and proceed to execution-node.
+            await _graph.ResumeAsync(updated.RunId, cancellationToken);
+            return;
+        }
+
+        // Decision was NotRequested or Pending \u2014 nothing to do, drop the doc.
+        _logger.LogWarning(
+            "Ignoring no-op approval for run {RunId} (decision: {Decision})",
+            approval.RunId, approval.Decision);
+        await DeleteApprovalAsync(approval.Id, cancellationToken);
+    }
+
+    private async Task DeleteApprovalAsync(string approvalId, CancellationToken cancellationToken)
+    {
+        using var session = _documentStore.OpenAsyncSession(Database);
+        session.Delete(approvalId);
         await session.SaveChangesAsync(cancellationToken);
     }
 
@@ -269,6 +432,7 @@ public class TradingWorker : BackgroundService
                 new() { Id = "analysts-team-node", Name = "AnalystsTeam" },
                 new() { Id = "strategy-node", Name = "StrategyNode" },
                 new() { Id = "risk-node", Name = "RiskNode" },
+                new() { Id = "approval-node", Name = "ApprovalNode" },
                 new() { Id = "execution-node", Name = "ExecutionNode" },
                 new() { Id = "monitor-node", Name = "MonitorNode" },
             ]
