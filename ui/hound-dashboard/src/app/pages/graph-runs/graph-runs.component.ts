@@ -133,8 +133,12 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     this.signalr.connect();
     this.signalr.subscribeToPack('trading-pack');
     this.sub = this.signalr.onGraphRunUpdate$.subscribe(run => {
-      this.mergeRun(run);
-      if (this.selectedRun?.runId === run.runId) {
+      const isNew = this.mergeRun(run);
+      if (isNew) {
+        // A brand-new run just started — pull it into focus so the user
+        // can watch it execute without manually clicking it in the sidebar.
+        this.selectRun(run);
+      } else if (this.selectedRun?.runId === run.runId) {
         this.selectedRun = run;
         this.autoExpandActive(run);
       }
@@ -237,8 +241,18 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
   private appendStream(chunk: NodeStreamChunk): void {
     const key = `${chunk.runId}:${chunk.nodeId}`;
+    const isFirstChunk = !this.nodeStreams.has(key);
     const current = this.nodeStreams.get(key) ?? '';
     this.nodeStreams.set(key, current + chunk.text);
+    if (isFirstChunk) {
+      // Reasoning just started streaming for this node — always surface the
+      // reasoning tab so the tokens are visible as they arrive. We override
+      // any prior tab choice here so a node re-entered on a refinement loop
+      // (same nodeId, fresh reasoning) also flips back to reasoning. The
+      // `Completed → result` flip in autoExpandActive will move it back
+      // when the node finishes.
+      this.activeTab.set(chunk.nodeId, 'reasoning');
+    }
     if (this.selectedRun?.runId === chunk.runId) {
       this.cdr.detectChanges();
     }
@@ -650,12 +664,13 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + this.formatTime(iso);
   }
 
-  private mergeRun(run: GraphRun): void {
+  private mergeRun(run: GraphRun): boolean {
     const idx = this.runs.findIndex(r => r.runId === run.runId);
     if (idx >= 0) {
       this.runs[idx] = run;
-    } else {
-      this.runs.unshift(run);
+      return false;
     }
+    this.runs.unshift(run);
+    return true;
   }
 }
