@@ -14,9 +14,10 @@ namespace Hound.Trading.Nodes;
 /// Risk management node. Evaluates proposed trades against portfolio exposure,
 /// position limits, and max drawdown rules. Approves, rejects, or modifies orders.
 /// <para>
-/// When the verdict is <see cref="RiskVerdict.Rejected"/> and the refinement count
-/// is below the configured maximum, the graph loops back to <see cref="StrategyNode"/>
-/// with the rejection reasoning as additional context.
+/// A <see cref="RiskVerdict.Rejected"/> verdict is only produced when the proposed
+/// trade would exceed the 80% total-exposure hard cap. Since that limit applies to
+/// the whole account, refining the order can't resolve it, and the graph terminates
+/// the run rather than looping back to <see cref="StrategyNode"/>.
 /// </para>
 /// </summary>
 public class RiskNode : INode
@@ -147,27 +148,10 @@ public class RiskNode : INode
             Severity = assessment.Verdict == RiskVerdict.Rejected ? ActivitySeverity.Warning : ActivitySeverity.Success,
         }, cancellationToken);
 
-        // When rejected, increment refinement count and clear strategy/risk outputs
-        // so the graph can loop back to StrategyNode with fresh state
-        if (assessment.Verdict == RiskVerdict.Rejected)
-        {
-            var entry = new RefinementEntry(
-                Attempt: state.RefinementCount + 1,
-                RejectedDecision: decision,
-                RiskReasoning: assessment.Reasoning,
-                OccurredAt: DateTime.UtcNow);
-
-            var history = new List<RefinementEntry>(state.RefinementHistory) { entry };
-
-            return state with
-            {
-                RiskOutput = assessment,
-                StrategyOutput = null,
-                RefinementCount = state.RefinementCount + 1,
-                RefinementHistory = history,
-            };
-        }
-
+        // Rejected verdicts are driven by the 80% total-exposure hard cap,
+        // which can't be resolved by refining the order. The graph router
+        // terminates the run on Rejected, so we don't clear StrategyOutput
+        // or bump the refinement counter here.
         return state with { RiskOutput = assessment };
     }
 

@@ -166,32 +166,18 @@ public sealed class TradingGraphRoutingTests
     }
 
     [TestMethod]
-    public void Route_EntryPhase_RiskNode_Rejected_BelowMax_ReturnsStrategyNode()
+    public void Route_EntryPhase_RiskNode_Rejected_ReturnsEnd()
     {
+        // The only rejection rule is the 80% total-exposure hard cap, which
+        // can't be resolved by refining the order — so any Rejected verdict
+        // terminates the run regardless of refinement count.
         var graph = CreateGraph(maxRefinements: 2);
         var decision = new TradingDecision("AAPL", TradeAction.Buy, 100, "Bullish", 0.8);
         var state = TradingGraphState.Initial("AAPL") with
         {
             CurrentNode = "risk-node",
-            RefinementCount = 1,
-            RiskOutput = new RiskAssessment(RiskVerdict.Rejected, decision, "Too large"),
-        };
-
-        var next = graph.Route(state);
-
-        Assert.AreEqual("strategy-node", next);
-    }
-
-    [TestMethod]
-    public void Route_EntryPhase_RiskNode_Rejected_AtMax_ReturnsEnd()
-    {
-        var graph = CreateGraph(maxRefinements: 2);
-        var decision = new TradingDecision("AAPL", TradeAction.Buy, 100, "Bullish", 0.8);
-        var state = TradingGraphState.Initial("AAPL") with
-        {
-            CurrentNode = "risk-node",
-            RefinementCount = 2,
-            RiskOutput = new RiskAssessment(RiskVerdict.Rejected, decision, "Still too large"),
+            RefinementCount = 0,
+            RiskOutput = new RiskAssessment(RiskVerdict.Rejected, decision, "Exceeds 80% exposure"),
         };
 
         var next = graph.Route(state);

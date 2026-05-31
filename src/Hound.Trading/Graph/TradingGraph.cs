@@ -33,7 +33,8 @@ public class TradingGraphSettings
 /// <summary>
 /// Cyclic graph executor for the trading pipeline.
 /// <para>
-/// <b>Entry phase:</b> AnalystsTeamNode → StrategyNode → RiskNode → ExecutionNode (with risk-rejection refinement loop).
+/// <b>Entry phase:</b> AnalystsTeamNode → StrategyNode → RiskNode → ApprovalNode → ExecutionNode.
+/// A risk rejection (80% total-exposure hard cap breach) terminates the run.
 /// </para>
 /// <para>
 /// <b>Monitor phase:</b> MonitorNode ↔ AnalystsTeamNode loop until the trade closes.
@@ -356,11 +357,10 @@ public class TradingGraph
         if (state.RiskOutput.Verdict != RiskVerdict.Rejected)
             return "approval-node";
 
-        // Risk rejected — can we refine?
-        if (state.RefinementCount < _settings.MaxRefinements)
-            return "strategy-node";
-
-        // Max refinements exceeded
+        // Risk rejected — the only rejection rule is the 80% total-exposure
+        // hard cap (see RiskNode prompt). Refining the order can't reduce
+        // account-wide exposure, so terminate the run instead of looping
+        // back to StrategyNode.
         return EndMarker;
     }
 
