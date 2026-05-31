@@ -373,7 +373,9 @@ public class AnalystsTeamNode : INode
             HoundId = NodeId,
             HoundName = "AnalystsTeam",
             Message = $"Analysis complete for {state.Symbol}: {analysis.Trend} " +
-                      $"(LLM confidence {llmConfidence:P0}, data-derived confidence {dataConfidence:P0}, divergence {divergence:P0})",
+                      $"(LLM confidence {llmConfidence?.ToString("P0") ?? "N/A"}, " +
+                      $"data-derived confidence {dataConfidence?.ToString("P0") ?? "N/A"}, " +
+                      $"divergence {divergence?.ToString("P0") ?? "N/A"})",
             Severity = ActivitySeverity.Success,
         }, cancellationToken);
 
@@ -463,6 +465,18 @@ public class AnalystsTeamNode : INode
         if (lastPrice is null)
             return null;
 
+        // Tuning constants for the data-derived confidence heuristic.
+        // VolumeImpactMultiplier: how much a 1x volume deviation shifts confidence
+        const double VolumeImpactMultiplier = 0.25;
+        // MaxVolumeAdjustment: ceiling on absolute volume-based adjustment
+        const double MaxVolumeAdjustment = 0.20;
+        // DirectionalBoost: bonus for having a non-neutral trend direction
+        const double DirectionalBoost = 0.15;
+        // StrongVolumeThreshold: volume ratio above which an extra boost applies
+        const decimal StrongVolumeThreshold = 1.2m;
+        // StrongVolumeBonus: extra boost when volume exceeds StrongVolumeThreshold
+        const double StrongVolumeBonus = 0.10;
+
         // Start at a neutral baseline
         double score = 0.5;
 
@@ -471,7 +485,9 @@ public class AnalystsTeamNode : INode
         {
             // vc > 1.0 means above-average volume (stronger signal)
             // vc < 1.0 means below-average volume (weaker signal)
-            var volumeBoost = Math.Clamp((double)(vc - 1.0m) * 0.25, -0.2, 0.2);
+            var volumeBoost = Math.Clamp(
+                (double)(vc - 1.0m) * VolumeImpactMultiplier,
+                -MaxVolumeAdjustment, MaxVolumeAdjustment);
             score += volumeBoost;
         }
 
@@ -479,10 +495,10 @@ public class AnalystsTeamNode : INode
         // higher confidence than a neutral assessment
         if (trend is "Bullish" or "Bearish")
         {
-            score += 0.15;
+            score += DirectionalBoost;
             // Strong volume on a directional move is more convincing
-            if (volumeChange is > 1.2m)
-                score += 0.10;
+            if (volumeChange is > StrongVolumeThreshold)
+                score += StrongVolumeBonus;
         }
         else
         {
