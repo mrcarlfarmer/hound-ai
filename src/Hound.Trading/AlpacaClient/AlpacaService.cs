@@ -19,6 +19,17 @@ public interface IAlpacaService
     Task<IOrder> GetOrderAsync(Guid orderId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<IOrder>> ListOrdersAsync(OrderStatusFilter? statusFilter = null, CancellationToken cancellationToken = default);
     Task<bool> CancelOrderAsync(Guid orderId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Lists historical news articles for one or more symbols via the Alpaca
+    /// Data API. Returns an empty list when the broker responds with an error
+    /// or no articles match — callers must treat news as best-effort.
+    /// </summary>
+    Task<IReadOnlyList<INewsArticle>> ListNewsAsync(
+        IReadOnlyCollection<string> symbols,
+        DateTime since,
+        int maxItems,
+        CancellationToken cancellationToken = default);
 }
 
 public class AlpacaService : IAlpacaService, IDisposable
@@ -104,6 +115,42 @@ public class AlpacaService : IAlpacaService, IDisposable
     public async Task<bool> CancelOrderAsync(Guid orderId, CancellationToken cancellationToken = default)
     {
         return await _tradingClient.CancelOrderAsync(orderId, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<INewsArticle>> ListNewsAsync(
+        IReadOnlyCollection<string> symbols,
+        DateTime since,
+        int maxItems,
+        CancellationToken cancellationToken = default)
+    {
+        if (symbols.Count == 0 || maxItems <= 0)
+            return [];
+
+        try
+        {
+            var request = new NewsArticlesRequest(symbols)
+            {
+                TimeInterval = new Interval<DateTime>(since, DateTime.UtcNow),
+                SortDirection = SortDirection.Descending,
+                ExcludeItemsWithoutContent = false,
+                SendFullContentForItems = false,
+            };
+
+            // Alpaca caps the news page size at 50; honour that cap so we
+            // don't trigger a 422 response for over-large page sizes.
+            const int alpacaMaxNewsPageSize = 50;
+            var pageSize = Math.Min(maxItems, alpacaMaxNewsPageSize);
+            request.Pagination.Size = (uint)pageSize;
+
+            var page = await _dataClient.ListNewsArticlesAsync(request, cancellationToken);
+            return page.Items.Take(maxItems).ToList();
+        }
+        catch
+        {
+            // Treat any broker failure as "no news available" — news is a
+            // best-effort signal and must never break the analyst pipeline.
+            return [];
+        }
     }
 
     public void Dispose()

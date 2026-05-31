@@ -56,6 +56,13 @@ internal sealed class StubAlpacaService : IAlpacaService
 
     public Task<bool> CancelOrderAsync(Guid orderId, CancellationToken cancellationToken = default)
         => Task.FromResult(true);
+
+    public Task<IReadOnlyList<INewsArticle>> ListNewsAsync(
+        IReadOnlyCollection<string> symbols,
+        DateTime since,
+        int maxItems,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<INewsArticle>>(Array.Empty<INewsArticle>());
 }
 
 internal sealed class StubAccount : IAccount

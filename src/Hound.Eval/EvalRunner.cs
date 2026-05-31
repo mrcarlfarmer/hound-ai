@@ -194,7 +194,12 @@ public class EvalRunner
             case "DataNode":
             case "AnalysisHound":
             {
-                var node = new AnalystsTeamNode(chatClient, alpacaService, activityLogger);
+                var node = new AnalystsTeamNode(
+                    chatClient,
+                    alpacaService,
+                    activityLogger,
+                    new StubNewsService(),
+                    new StubSentimentService());
                 var symbol = GetContextString(scenario.Input.Context, "symbol") ?? "AAPL";
                 var state = TradingGraphState.Initial(symbol);
                 var result = await node.ExecuteAsync(state, ct);

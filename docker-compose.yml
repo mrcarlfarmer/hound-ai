@@ -73,6 +73,11 @@ services:
   trading-pack:
     image: ghcr.io/mrcarlfarmer/hound-ai/trading-pack:latest
     container_name: trading-pack
+    # Outbound hosts required by Market Intel services:
+    #   data.alpaca.markets       — Alpaca news + bars
+    #   news.google.com           — Google News RSS
+    #   feeds.finance.yahoo.com   — Yahoo Finance RSS
+    #   api.stocktwits.com        — StockTwits sentiment
     build:
       context: .
       dockerfile: src/Hound.Trading/Dockerfile

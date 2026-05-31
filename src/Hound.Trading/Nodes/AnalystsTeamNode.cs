@@ -1,11 +1,14 @@
 using Alpaca.Markets;
 using Hound.Core.Logging;
+using Hound.Core.MarketIntel;
 using Hound.Core.Models;
 using Hound.Trading.AlpacaClient;
 using Hound.Trading.Graph;
+using Hound.Trading.Services;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.ComponentModel;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -29,15 +32,27 @@ public class AnalystsTeamNode : INode
     private readonly ChatClientAgent _synthesiser;
     private readonly IAlpacaService _alpacaService;
     private readonly IActivityLogger _activityLogger;
+    private readonly INewsService _newsService;
+    private readonly ISentimentService _sentimentService;
+    private readonly NewsSettings _newsSettings;
+    private readonly SentimentSettings _sentimentSettings;
 
     public AnalystsTeamNode(
         IChatClient chatClient,
         IAlpacaService alpacaService,
         IActivityLogger activityLogger,
+        INewsService newsService,
+        ISentimentService sentimentService,
+        IOptions<NewsSettings>? newsOptions = null,
+        IOptions<SentimentSettings>? sentimentOptions = null,
         ILoggerFactory? loggerFactory = null)
     {
         _alpacaService = alpacaService;
         _activityLogger = activityLogger;
+        _newsService = newsService;
+        _sentimentService = sentimentService;
+        _newsSettings = newsOptions?.Value ?? new NewsSettings();
+        _sentimentSettings = sentimentOptions?.Value ?? new SentimentSettings();
 
         // ── Market Analyst ────────────────────────────────────────────────────
         // NOTE: tools are bound via method-group delegates rather than
@@ -141,6 +156,10 @@ public class AnalystsTeamNode : INode
                 /no_think
                 You are a news analyst tasked with analysing recent news and market trends.
                 Use the get_news tool to retrieve recent news for the company.
+                Cite headlines returned by the tool directly — do NOT invent additional
+                stories or paraphrase headlines into fabricated facts.
+                If the tool reports zero articles, say so plainly and rely on general
+                market knowledge of the company; do not pretend you have current news.
                 Analyse the news for impact on trading — earnings, regulatory changes,
                 sector trends, and macroeconomic factors.
                 Provide specific, actionable insights with supporting evidence.
@@ -179,6 +198,9 @@ public class AnalystsTeamNode : INode
                 /no_think
                 You are a social media and sentiment analyst.
                 Use the get_sentiment tool to retrieve sentiment data for the company.
+                The tool returns Bullish/Bearish/Neutral counts and recent messages.
+                Base your analysis on those counts and quoted messages; do not invent
+                sentiment data. If the tool returns zero messages, say so plainly.
                 Analyse public sentiment, social media trends, and market mood.
                 Assess whether sentiment is bullish, bearish, or neutral.
                 Provide specific insights on how sentiment may affect near-term trading.
@@ -658,44 +680,156 @@ public class AnalystsTeamNode : INode
     private async Task<string> FetchNewsAsync(
         [Description("Ticker symbol")] string symbol)
     {
-        // Alpaca doesn't provide a news API in the current client.
-        // Return a stub that still names the underlying company so the LLM
-        // can't drift to a similarly-spelled ticker from its training data.
         var asset = await _alpacaService.GetAssetAsync(symbol);
         var companyLine = asset?.Name is { Length: > 0 } n
             ? $"Underlying company: {n} (ticker {symbol}, exchange {asset!.Exchange})."
             : $"Underlying company: ticker {symbol} (company name not resolved from broker).";
 
+        var lookback = TimeSpan.FromHours(Math.Max(1, _newsSettings.LookbackHours));
+        var articles = await _newsService.GetRecentNewsAsync(
+            symbol, _newsSettings.MaxItems, lookback);
+
+        await LogFetchedNewsAsync(symbol, articles, lookback);
+
+        if (articles.Count == 0)
+        {
+            return $"""
+                News data for {symbol} (as of {DateTime.UtcNow:yyyy-MM-dd} UTC):
+                {companyLine}
+                No articles were returned by configured news providers in the
+                last {(int)lookback.TotalHours} hours. State this clearly in
+                your report rather than inventing news; base impact assessment
+                on general market knowledge of THIS specific company (do not
+                substitute a similarly-spelled ticker).
+                """;
+        }
+
+        var lines = articles.Select((a, i) => FormatArticle(i + 1, a));
         return $"""
-            News data for {symbol} (as of {DateTime.UtcNow:yyyy-MM-dd}):
+            News data for {symbol} (as of {DateTime.UtcNow:yyyy-MM-dd} UTC):
             {companyLine}
-            Note: No external news API is currently configured.
-            Base your analysis on general market knowledge of THIS specific company
-            (do not substitute a different company with a similar ticker).
-            Consider recent earnings seasons, sector trends, and macroeconomic factors
-            that may affect {symbol}.
+            {articles.Count} article(s) from the last {(int)lookback.TotalHours} hours,
+            ordered most recent first. Cite these headlines directly in your report —
+            do NOT invent additional items.
+
+            {string.Join("\n\n", lines)}
             """;
     }
 
     private async Task<string> FetchSentimentAsync(
         [Description("Ticker symbol")] string symbol)
     {
-        // Stub — no social media API configured yet. Include the canonical
-        // company name so the LLM can't confuse similar tickers (e.g. ROK vs
-        // ROKU) by pattern-matching against more famous symbols.
         var asset = await _alpacaService.GetAssetAsync(symbol);
         var companyLine = asset?.Name is { Length: > 0 } n
             ? $"Underlying company: {n} (ticker {symbol}, exchange {asset!.Exchange})."
             : $"Underlying company: ticker {symbol} (company name not resolved from broker).";
 
+        var snapshot = await _sentimentService.GetSentimentAsync(
+            symbol, _sentimentSettings.MaxMessages);
+
+        await LogFetchedSentimentAsync(symbol, snapshot);
+
+        if (snapshot.Total == 0)
+        {
+            return $"""
+                Sentiment data for {symbol} (as of {DateTime.UtcNow:yyyy-MM-dd} UTC):
+                {companyLine}
+                No sentiment messages were returned by configured providers.
+                State this clearly in your report rather than inventing sentiment;
+                base mood assessment on general market knowledge of THIS specific
+                company (do not substitute a similarly-spelled ticker).
+                """;
+        }
+
+        var sampleSection = snapshot.RecentMessages.Count == 0
+            ? string.Empty
+            : "\n\nRecent messages:\n" + string.Join("\n",
+                snapshot.RecentMessages.Take(5).Select(m => $"- {Truncate(m, 200)}"));
+
         return $"""
-            Sentiment data for {symbol} (as of {DateTime.UtcNow:yyyy-MM-dd}):
+            Sentiment data for {symbol} (as of {DateTime.UtcNow:yyyy-MM-dd} UTC, source {snapshot.Source}):
             {companyLine}
-            Note: No social media or sentiment API is currently configured.
-            Base your sentiment analysis on general market knowledge of THIS
-            specific company (do not substitute a similarly-spelled ticker).
-            Consider the overall market mood, sector sentiment, and any widely known
-            factors affecting {symbol}.
+            Counts (last {snapshot.Total} tagged messages): Bullish={snapshot.Bullish}, Bearish={snapshot.Bearish}, Neutral={snapshot.Neutral}.{sampleSection}
             """;
+    }
+
+    private static string FormatArticle(int index, NewsArticle article)
+    {
+        var summary = string.IsNullOrWhiteSpace(article.Summary)
+            ? string.Empty
+            : $"\n   {Truncate(article.Summary, 280)}";
+        var url = string.IsNullOrWhiteSpace(article.Url)
+            ? string.Empty
+            : $"\n   {article.Url}";
+        return $"{index}. [{article.Source}] {article.Headline} ({article.PublishedAt:yyyy-MM-dd HH:mm} UTC){summary}{url}";
+    }
+
+    private static string Truncate(string value, int max)
+    {
+        if (string.IsNullOrEmpty(value) || value.Length <= max) return value;
+        return value[..max].TrimEnd() + "…";
+    }
+
+    private async Task LogFetchedNewsAsync(
+        string symbol, IReadOnlyList<NewsArticle> articles, TimeSpan lookback)
+    {
+        var bySource = articles
+            .GroupBy(a => a.Source, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => (object)g.Count(), StringComparer.OrdinalIgnoreCase);
+
+        var compact = articles.Select(a => (object)new Dictionary<string, object?>
+        {
+            ["source"] = a.Source,
+            ["headline"] = a.Headline,
+            ["url"] = a.Url,
+            ["publishedAt"] = a.PublishedAt.ToString("O"),
+        }).ToList();
+
+        var metadata = new Dictionary<string, object>
+        {
+            ["symbol"] = symbol,
+            ["articleCount"] = articles.Count,
+            ["lookbackHours"] = (int)lookback.TotalHours,
+            ["countsBySource"] = bySource,
+            ["articles"] = compact,
+        };
+
+        await _activityLogger.LogActivityAsync(new ActivityLog
+        {
+            PackId = PackId,
+            HoundId = NodeId,
+            HoundName = "AnalystsTeam",
+            Message = articles.Count > 0
+                ? $"NewsAnalyst fetched {articles.Count} article(s) for {symbol}"
+                : $"NewsAnalyst fetched 0 articles for {symbol} (last {(int)lookback.TotalHours}h)",
+            Severity = articles.Count > 0 ? ActivitySeverity.Info : ActivitySeverity.Warning,
+            Metadata = metadata,
+        });
+    }
+
+    private async Task LogFetchedSentimentAsync(string symbol, SentimentSnapshot snapshot)
+    {
+        var metadata = new Dictionary<string, object>
+        {
+            ["symbol"] = symbol,
+            ["source"] = snapshot.Source,
+            ["bullish"] = snapshot.Bullish,
+            ["bearish"] = snapshot.Bearish,
+            ["neutral"] = snapshot.Neutral,
+            ["total"] = snapshot.Total,
+            ["recentSample"] = snapshot.RecentMessages.Take(5).ToList(),
+        };
+
+        await _activityLogger.LogActivityAsync(new ActivityLog
+        {
+            PackId = PackId,
+            HoundId = NodeId,
+            HoundName = "AnalystsTeam",
+            Message = snapshot.Total > 0
+                ? $"SentimentAnalyst fetched {snapshot.Total} message(s) for {symbol} (B{snapshot.Bullish}/Br{snapshot.Bearish}/N{snapshot.Neutral})"
+                : $"SentimentAnalyst fetched 0 messages for {symbol}",
+            Severity = snapshot.Total > 0 ? ActivitySeverity.Info : ActivitySeverity.Warning,
+            Metadata = metadata,
+        });
     }
 }
