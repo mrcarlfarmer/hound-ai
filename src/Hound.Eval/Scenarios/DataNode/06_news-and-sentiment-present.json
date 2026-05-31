@@ -1,0 +1,23 @@
+{
+  "scenarioName": "News present, sentiment bullish",
+  "description": "When stub services return a real headline and bullish sentiment, the analyst team should still produce a synthesised MarketAnalysis that contains the symbol and a non-empty news report.",
+  "houndName": "DataNode",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Analyse AAPL given fresh news and bullish sentiment.",
+    "context": {
+      "symbol": "AAPL"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_news", "get_sentiment"],
+    "outputMustContain": ["AAPL"],
+    "outputMustNotContain": ["No external news API is currently configured"],
+    "outputFormat": "JSON MarketAnalysis with non-empty newsReport and sentimentReport.",
+    "decisionCriteria": "Synthesised analysis must reference the symbol; must not emit the legacy 'no API configured' wording now that real news is wired in."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'AAPL' and does not contain the legacy 'No external news API' phrase."
+  }
+}

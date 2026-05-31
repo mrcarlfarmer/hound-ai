@@ -1,9 +1,13 @@
 using Hound.Core.LlmClient;
 using Hound.Core.Logging;
+using Hound.Core.MarketIntel;
+using Hound.Core.Models;
 using Hound.Trading;
 using Hound.Trading.AlpacaClient;
 using Hound.Trading.Graph;
 using Hound.Trading.Nodes;
+using Hound.Trading.Services;
+using Hound.Trading.Services.News;
 using Microsoft.Extensions.AI;
 using Raven.Client.Documents;
 
@@ -15,7 +19,11 @@ builder.Services.Configure<AlpacaSettings>(
 
 builder.Services.Configure<TradingGraphSettings>(
     builder.Configuration.GetSection(TradingGraphSettings.SectionName));
+builder.Services.Configure<NewsSettings>(
+    builder.Configuration.GetSection(NewsSettings.SectionName));
 
+builder.Services.Configure<SentimentSettings>(
+    builder.Configuration.GetSection(SentimentSettings.SectionName));
 // ── RavenDB ──────────────────────────────────────────────────────────────────
 var ravenUrl = builder.Configuration["RavenDb:Url"] ?? "http://ravendb:8080";
 builder.Services.AddSingleton<IDocumentStore>(_ =>
@@ -52,7 +60,32 @@ builder.Services.AddSingleton<IOllamaClientFactory>(sp =>
 
 // ── Alpaca ────────────────────────────────────────────────────────────────────
 builder.Services.AddSingleton<IAlpacaService, AlpacaService>();
+// ── News & Sentiment ───────────────────────────────────────────────────────────
+var newsSettingsForHttp = builder.Configuration
+    .GetSection(NewsSettings.SectionName).Get<NewsSettings>() ?? new NewsSettings();
+builder.Services.AddHttpClient(NewsHttpClients.RssClientName, client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(Math.Max(1, newsSettingsForHttp.HttpTimeoutSeconds));
+    client.DefaultRequestHeaders.UserAgent.ParseAdd("HoundAI/1.0 (+https://github.com/mrcarlfarmer/hound-ai)");
+});
 
+builder.Services.AddSingleton<INewsProvider, AlpacaNewsProvider>();
+builder.Services.AddSingleton<INewsProvider, GoogleNewsRssProvider>();
+builder.Services.AddSingleton<INewsProvider, YahooFinanceRssProvider>();
+builder.Services.AddSingleton<INewsService>(sp =>
+{
+    var settings = sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<NewsSettings>>().Value;
+    var allowed = settings.Providers is { Count: > 0 }
+        ? new HashSet<string>(settings.Providers, StringComparer.OrdinalIgnoreCase)
+        : null;
+
+    var providers = sp.GetServices<INewsProvider>()
+        .Where(p => allowed is null || allowed.Contains(p.Name))
+        .ToList();
+
+    return new NewsService(providers, sp.GetService<ILoggerFactory>()?.CreateLogger<NewsService>());
+});
+builder.Services.AddSingleton<ISentimentService, StockTwitsSentimentService>();
 // ── Keyed IChatClient instances ──────────────────────────────────────────────
 // StrategyNode uses qwen3:14b; all other nodes use qwen3.5:9b.
 var strategyModel = builder.Configuration["Ollama:StrategyModel"] ?? "qwen3:14b";
@@ -87,6 +120,10 @@ builder.Services.AddSingleton<AnalystsTeamNode>(sp => new AnalystsTeamNode(
     sp.GetRequiredKeyedService<IChatClient>("default"),
     sp.GetRequiredService<IAlpacaService>(),
     sp.GetRequiredService<IActivityLogger>(),
+    sp.GetRequiredService<INewsService>(),
+    sp.GetRequiredService<ISentimentService>(),
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<NewsSettings>>(),
+    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SentimentSettings>>(),
     sp.GetService<ILoggerFactory>()));
 
 builder.Services.AddSingleton<StrategyNode>(sp => new StrategyNode(
