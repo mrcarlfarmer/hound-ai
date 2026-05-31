@@ -65,6 +65,23 @@
         }
 
         <div class="space-y-1.5 max-h-[calc(100vh-16rem)] overflow-y-auto">
+          @for (req of pendingRequests; track req.id) {
+            <div class="w-full text-left p-3 rounded-md border border-yellow-600/40 bg-yellow-900/10">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-mono text-sm font-semibold">{{ req.symbol }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-yellow-900/50 text-yellow-400">
+                  {{ req.status === 'Running' ? 'Running' : 'Queued' }}
+                </span>
+              </div>
+              <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <svg class="animate-spin h-3 w-3 text-yellow-400" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                Waiting for worker...
+              </div>
+            </div>
+          }
           @for (run of runs; track run.runId) {
             <button
               (click)="selectRun(run)"

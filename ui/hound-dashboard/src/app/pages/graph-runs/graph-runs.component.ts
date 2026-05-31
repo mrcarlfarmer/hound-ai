@@ -7,7 +7,7 @@ import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { ApiService } from '../../services/api.service';
 import { SignalrService } from '../../services/signalr.service';
-import { GraphRun, NodeSnapshot, NodeStatus, NodeStreamChunk } from '../../models';
+import { GraphRun, NodeSnapshot, NodeStatus, NodeStreamChunk, RunRequest } from '../../models';
 import { HlmTabsImports } from '@spartan-ng/helm/tabs';
 
 interface AnalystsOutput {
@@ -73,6 +73,7 @@ interface MonitorOutput {
 })
 export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   runs: GraphRun[] = [];
+  pendingRequests: RunRequest[] = [];
   selectedRun?: GraphRun;
   loading = false;
   expandedNodes = new Set<string>();
@@ -177,6 +178,16 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       },
       error: () => {
         this.loading = false;
+        this.cdr.detectChanges();
+      },
+    });
+    this.api.getRunRequests(10).subscribe({
+      next: requests => {
+        // Show requests that are Pending or Running and don't yet have a GraphRun
+        this.pendingRequests = requests.filter(r =>
+          (r.status === 'Pending' || r.status === 'Running') &&
+          !this.runs.some(run => run.runId === r.runId)
+        );
         this.cdr.detectChanges();
       },
     });

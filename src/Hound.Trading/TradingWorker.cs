@@ -27,6 +27,9 @@ public class TradingWorker : BackgroundService
     private readonly string _apiBaseUrl;
     private readonly ILogger<TradingWorker> _logger;
 
+    /// <summary>Tracks the last time each monitor-phase run was advanced, keyed by RunId.</summary>
+    private readonly Dictionary<string, DateTimeOffset> _lastMonitorCycle = new();
+
     public TradingWorker(
         TradingGraph graph,
         IOptions<TradingGraphSettings> settings,
@@ -62,6 +65,9 @@ public class TradingWorker : BackgroundService
                 // Process any pending on-demand requests
                 await ProcessPendingRequestsAsync(stoppingToken);
 
+                // Advance monitor-phase runs that are due for their next cycle
+                await AdvanceMonitorRunsAsync(stoppingToken);
+
                 // Run scheduled symbols if due
                 if (_settings.Symbols.Count > 0 && DateTimeOffset.UtcNow >= nextScheduledRun)
                 {
@@ -94,37 +100,109 @@ public class TradingWorker : BackgroundService
         var pending = await session.Query<RunRequest>()
             .Where(r => r.Status == RunRequestStatus.Pending)
             .OrderBy(r => r.RequestedAt)
-            .Take(5)
+            .Take(1)
             .ToListAsync(cancellationToken);
 
-        foreach (var request in pending)
+        if (pending.Count == 0) return;
+
+        var request = pending[0];
+        _logger.LogInformation("Processing run request {Id} for {Symbol}", request.Id, request.Symbol);
+
+        request.Status = RunRequestStatus.Running;
+        request.StartedAt = DateTime.UtcNow;
+        await session.SaveChangesAsync(cancellationToken);
+
+        try
         {
-            if (cancellationToken.IsCancellationRequested) break;
+            var state = await _graph.RunAsync(request.Symbol, cancellationToken);
+            request.RunId = state.RunId;
 
-            _logger.LogInformation("Processing run request {Id} for {Symbol}", request.Id, request.Symbol);
-
-            request.Status = RunRequestStatus.Running;
-            request.StartedAt = DateTime.UtcNow;
-            await session.SaveChangesAsync(cancellationToken);
-
-            try
+            if (state.IsComplete)
             {
-                var state = await _graph.RunAsync(request.Symbol, cancellationToken);
                 request.Status = state.ErrorMessage is not null
                     ? RunRequestStatus.Failed
                     : RunRequestStatus.Completed;
-                request.RunId = state.RunId;
                 request.ErrorMessage = state.ErrorMessage;
+                request.CompletedAt = DateTime.UtcNow;
+            }
+            else
+            {
+                // Run yielded in monitor phase — mark request completed
+                // (the monitor loop continues via AdvanceMonitorRunsAsync)
+                request.Status = RunRequestStatus.Completed;
+                request.CompletedAt = DateTime.UtcNow;
+                _lastMonitorCycle[state.RunId] = DateTimeOffset.UtcNow;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Run request {Id} failed", request.Id);
+            request.Status = RunRequestStatus.Failed;
+            request.ErrorMessage = ex.Message;
+            request.CompletedAt = DateTime.UtcNow;
+        }
+
+        await session.SaveChangesAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Advances at most ONE monitor-phase run that is due for its next cycle.
+    /// Only one is advanced per poll iteration so the loop returns to
+    /// <see cref="ProcessPendingRequestsAsync"/> promptly, ensuring queued
+    /// requests are not starved by long-running monitor LLM calls.
+    /// </summary>
+    private async Task AdvanceMonitorRunsAsync(CancellationToken cancellationToken)
+    {
+        var monitorDelay = TimeSpan.FromSeconds(_settings.MonitorDelaySeconds);
+        IReadOnlyList<TradingGraphState> incomplete;
+
+        try
+        {
+            incomplete = await _stateStore.ListIncompleteAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to query incomplete runs for monitor advancement");
+            return;
+        }
+
+        foreach (var checkpoint in incomplete)
+        {
+            if (cancellationToken.IsCancellationRequested) break;
+
+            // Only advance runs that are in monitor phase
+            if (checkpoint.Phase != GraphPhase.Monitor) continue;
+
+            // Respect the delay between monitor cycles
+            if (_lastMonitorCycle.TryGetValue(checkpoint.RunId, out var lastCycle)
+                && DateTimeOffset.UtcNow - lastCycle < monitorDelay)
+            {
+                continue;
+            }
+
+            _logger.LogInformation("Advancing monitor cycle for {RunId} ({Symbol})",
+                checkpoint.RunId, checkpoint.Symbol);
+
+            try
+            {
+                var state = await _graph.ResumeAsync(checkpoint.RunId, cancellationToken);
+                if (state is null || state.IsComplete)
+                {
+                    _lastMonitorCycle.Remove(checkpoint.RunId);
+                }
+                else
+                {
+                    _lastMonitorCycle[checkpoint.RunId] = DateTimeOffset.UtcNow;
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Run request {Id} failed", request.Id);
-                request.Status = RunRequestStatus.Failed;
-                request.ErrorMessage = ex.Message;
+                _logger.LogError(ex, "Failed to advance monitor run {RunId}", checkpoint.RunId);
+                _lastMonitorCycle[checkpoint.RunId] = DateTimeOffset.UtcNow;
             }
 
-            request.CompletedAt = DateTime.UtcNow;
-            await session.SaveChangesAsync(cancellationToken);
+            // Only advance one run per poll cycle to avoid starving pending requests
+            break;
         }
     }
 
@@ -156,9 +234,22 @@ public class TradingWorker : BackgroundService
             _logger.LogInformation("Resuming run {RunId} for {Symbol} (node: {Node}, phase: {Phase})",
                 checkpoint.RunId, checkpoint.Symbol, checkpoint.CurrentNode, checkpoint.Phase);
 
+            // Monitor-phase runs are handled by AdvanceMonitorRunsAsync on
+            // the regular poll cycle. Seed the tracker so they run immediately
+            // on the first iteration.
+            if (checkpoint.Phase == GraphPhase.Monitor)
+            {
+                _lastMonitorCycle[checkpoint.RunId] = DateTimeOffset.MinValue;
+                continue;
+            }
+
             try
             {
-                await _graph.ResumeAsync(checkpoint.RunId, cancellationToken);
+                var state = await _graph.ResumeAsync(checkpoint.RunId, cancellationToken);
+                if (state is not null && !state.IsComplete)
+                {
+                    _lastMonitorCycle[state.RunId] = DateTimeOffset.UtcNow;
+                }
             }
             catch (Exception ex)
             {

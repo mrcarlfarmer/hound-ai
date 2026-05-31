@@ -62,6 +62,11 @@ export class ApiService {
     return this.http.post<RunRequest>(`${this.baseUrl}/api/runs`, { symbol });
   }
 
+  getRunRequests(limit = 10): Observable<RunRequest[]> {
+    const params = new HttpParams().set('limit', limit.toString());
+    return this.http.get<RunRequest[]>(`${this.baseUrl}/api/runs/requests`, { params });
+  }
+
   getAccount(): Observable<AccountSummary> {
     return this.http.get<AccountSummary>(`${this.baseUrl}/api/portfolio/account`);
   }

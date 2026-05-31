@@ -197,10 +197,9 @@ public class MonitorNode : INode
             MonitorCycleCount = state.MonitorCycleCount + 1,
         };
 
-        // If trade is still open, delay and reset KV caches before looping
+        // Reset KV caches so the next analysts cycle starts fresh
         if (monitor.TradeOpen)
         {
-            await Task.Delay(TimeSpan.FromSeconds(_monitorDelaySeconds), cancellationToken);
             await _resetter.ResetAsync(cancellationToken);
         }
 

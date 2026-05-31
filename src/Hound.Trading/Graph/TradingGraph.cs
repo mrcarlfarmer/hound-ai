@@ -157,6 +157,15 @@ public class TradingGraph
                 await _publisher.PublishAsync(state, cancellationToken);
                 break;
             }
+
+            // After monitor-node, if trade is still open, yield back to the
+            // worker so pending requests can be processed between monitor cycles.
+            if (nextNodeId == "monitor-node" && state.MonitorOutput?.TradeOpen == true)
+            {
+                await _stateStore.SaveAsync(state, cancellationToken);
+                await _publisher.PublishAsync(state, cancellationToken);
+                return state;
+            }
         }
 
         var severity = state.ErrorMessage is not null ? ActivitySeverity.Error : ActivitySeverity.Success;
@@ -240,6 +249,15 @@ public class TradingGraph
                 await _stateStore.SaveAsync(state, cancellationToken);
                 await _publisher.PublishAsync(state, cancellationToken);
                 break;
+            }
+
+            // After monitor-node, if trade is still open, yield back to the
+            // worker so pending requests can be processed between monitor cycles.
+            if (nextNodeId == "monitor-node" && state.MonitorOutput?.TradeOpen == true)
+            {
+                await _stateStore.SaveAsync(state, cancellationToken);
+                await _publisher.PublishAsync(state, cancellationToken);
+                return state;
             }
         }
 
