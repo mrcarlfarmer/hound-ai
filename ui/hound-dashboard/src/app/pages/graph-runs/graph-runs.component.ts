@@ -442,6 +442,17 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     return `${Math.round(this.normalizeConfidence(score) * 100)}%`;
   }
 
+  /**
+   * Initial trailing-stop trigger price = currentPrice * (1 - trailPercent/100).
+   * Returns null when either input is missing so the template can hide the line.
+   * Note: the live broker stop ratchets up with price; this is the starting level.
+   */
+  trailingStopPrice(s: StrategyOutput): number | null {
+    if (s.currentPrice == null || s.trailPercent == null) return null;
+    const stop = s.currentPrice * (1 - s.trailPercent / 100);
+    return stop > 0 ? stop : null;
+  }
+
   hasAnalystReports(output: AnalystsOutput): boolean {
     return !!(output.marketReport || output.fundamentalsReport || output.newsReport || output.sentimentReport);
   }
