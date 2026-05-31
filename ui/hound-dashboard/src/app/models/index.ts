@@ -181,3 +181,13 @@ export interface PositionInfo {
   changeToday: number;
   side: string;
 }
+
+export interface AlpacaSyncResult {
+  checked: number;
+  updated: number;
+  imported: number;
+  errors: number;
+  startedAt: string;
+  completedAt: string;
+  changedTradeIds: string[];
+}

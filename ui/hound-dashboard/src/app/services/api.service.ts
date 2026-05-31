@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest, AccountSummary, PositionInfo } from '../models';
+import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest, AccountSummary, PositionInfo, AlpacaSyncResult } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -47,6 +47,10 @@ export class ApiService {
 
   getTrade(id: string): Observable<TradeDocument> {
     return this.http.get<TradeDocument>(`${this.baseUrl}/api/trades/${id}`);
+  }
+
+  syncTradesFromAlpaca(): Observable<AlpacaSyncResult> {
+    return this.http.post<AlpacaSyncResult>(`${this.baseUrl}/api/trades/sync`, {});
   }
 
   getRuns(limit = 20): Observable<GraphRun[]> {

@@ -1,4 +1,48 @@
-<h1 class="mb-6 text-2xl font-bold text-foreground">Execution Dashboard</h1>
+<div class="mb-6 flex items-center justify-between gap-4">
+  <h1 class="text-2xl font-bold text-foreground">Execution Dashboard</h1>
+  <div class="flex items-center gap-3">
+    @if (lastSync) {
+      <span class="text-xs text-muted-foreground">
+        Last sync {{ lastSync.completedAt | date:'shortTime' }}
+        · checked {{ lastSync.checked }}
+        @if (lastSync.updated > 0) { · <span class="text-yellow-400">updated {{ lastSync.updated }}</span> }
+        @if (lastSync.imported > 0) { · <span class="text-green-400">imported {{ lastSync.imported }}</span> }
+        @if (lastSync.errors > 0) { · <span class="text-red-400">errors {{ lastSync.errors }}</span> }
+      </span>
+    }
+    <button
+      type="button"
+      class="inline-flex items-center gap-2 rounded border border-border bg-card px-3 py-1.5 text-sm font-medium text-foreground hover:bg-muted disabled:opacity-50 disabled:cursor-not-allowed"
+      [disabled]="syncing"
+      (click)="syncFromAlpaca()">
+      @if (syncing) {
+        <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+      }
+      Sync from Alpaca
+    </button>
+  </div>
+</div>
+
+@if (syncError) {
+  <div class="mb-4 flex items-start justify-between gap-3 rounded-md border border-red-600 bg-red-900/30 px-4 py-2 text-sm text-red-300">
+    <span>{{ syncError }}</span>
+    <button type="button" class="text-red-300 hover:text-red-100" (click)="syncError = null" aria-label="Dismiss">×</button>
+  </div>
+}
+
+@if (closeError) {
+  <div class="mb-4 flex items-start justify-between gap-3 rounded-md border border-red-600 bg-red-900/30 px-4 py-2 text-sm text-red-300">
+    <span>{{ closeError }}</span>
+    <button type="button" class="text-red-300 hover:text-red-100" (click)="closeError = null" aria-label="Dismiss">×</button>
+  </div>
+}
+
+@if (closeInfo) {
+  <div class="mb-4 flex items-start justify-between gap-3 rounded-md border border-blue-600 bg-blue-900/30 px-4 py-2 text-sm text-blue-200">
+    <span>{{ closeInfo }}</span>
+    <button type="button" class="text-blue-200 hover:text-blue-50" (click)="closeInfo = null" aria-label="Dismiss">×</button>
+  </div>
+}
 
 <section class="mb-8">
   <h2 class="mb-3 text-lg font-semibold text-foreground">Live Order Status</h2>
@@ -13,12 +57,21 @@
           <th class="px-4 py-2 text-right font-medium text-muted-foreground">Filled Qty</th>
           <th class="px-4 py-2 text-right font-medium text-muted-foreground">Avg Price</th>
           <th class="px-4 py-2 text-left font-medium text-muted-foreground">Execution Time</th>
+          <th class="px-4 py-2 text-right font-medium text-muted-foreground">Actions</th>
         </tr>
       </thead>
       <tbody>
         @for (trade of trades; track trade.id) {
           <tr class="border-b border-border last:border-0">
-            <td class="px-4 py-2 font-medium text-foreground">{{ trade.symbol }}</td>
+            <td class="px-4 py-2 font-medium text-foreground">
+              {{ trade.symbol }}
+              @if (trade.packId === 'external') {
+                <span class="ml-2 inline-flex items-center rounded border border-purple-600 bg-purple-900/30 px-1.5 py-0.5 text-[10px] font-medium text-purple-300"
+                      title="Order placed directly in Alpaca (not via Hound)">
+                  external
+                </span>
+              }
+            </td>
             <td class="px-4 py-2 text-foreground">{{ trade.action }}</td>
             <td class="px-4 py-2 text-right text-foreground">{{ trade.requestedQuantity }}</td>
             <td class="px-4 py-2">
@@ -34,11 +87,34 @@
             <td class="px-4 py-2 text-muted-foreground">
               {{ trade.executionTime ? (trade.executionTime | date:'short') : '—' }}
             </td>
+            <td class="px-4 py-2 text-right">
+              @if (canClose(trade)) {
+                <button
+                  class="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium bg-red-900/40 text-red-400 border border-red-600 hover:bg-red-900/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  [disabled]="closingSymbol === trade.symbol"
+                  (click)="closePosition(trade.symbol)">
+                  @if (closingSymbol === trade.symbol) {
+                    <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                  }
+                  Close
+                </button>
+              } @else if (trade.fillStatus === 'Filled' && trade.action?.toUpperCase() === 'BUY' && hasOpenPosition(trade.symbol) && hasPendingSell(trade.symbol)) {
+                <span class="text-xs text-muted-foreground italic" title="A sell order for this symbol is pending on Alpaca">
+                  Closing…
+                </span>
+              } @else if (trade.fillStatus === 'Filled' && trade.action?.toUpperCase() === 'BUY') {
+                <span class="text-xs text-muted-foreground italic" title="No open Alpaca position for this symbol">
+                  Position closed
+                </span>
+              } @else {
+                <span class="text-xs text-muted-foreground">—</span>
+              }
+            </td>
           </tr>
         }
         @if (trades.length === 0) {
           <tr>
-            <td colspan="7" class="px-4 py-8 text-center text-muted-foreground">No trades found</td>
+            <td colspan="8" class="px-4 py-8 text-center text-muted-foreground">No trades found</td>
           </tr>
         }
       </tbody>

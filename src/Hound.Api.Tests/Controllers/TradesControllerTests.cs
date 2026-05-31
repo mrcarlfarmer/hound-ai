@@ -1,6 +1,7 @@
 using Hound.Api.Controllers;
 using Hound.Api.Hubs;
 using Hound.Api.Repositories;
+using Hound.Api.Services;
 using Hound.Core.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -13,6 +14,7 @@ public sealed class TradesControllerTests
 {
     private Mock<ITradeRepository> _mockRepo = null!;
     private Mock<IHubContext<ActivityHub>> _mockHubContext = null!;
+    private Mock<IAlpacaSyncService> _mockSyncService = null!;
     private TradesController _controller = null!;
 
     [TestInitialize]
@@ -20,13 +22,14 @@ public sealed class TradesControllerTests
     {
         _mockRepo = new Mock<ITradeRepository>();
         _mockHubContext = new Mock<IHubContext<ActivityHub>>();
+        _mockSyncService = new Mock<IAlpacaSyncService>();
 
         var mockClients = new Mock<IHubClients>();
         var mockClientProxy = new Mock<IClientProxy>();
         mockClients.Setup(c => c.Group(It.IsAny<string>())).Returns(mockClientProxy.Object);
         _mockHubContext.Setup(h => h.Clients).Returns(mockClients.Object);
 
-        _controller = new TradesController(_mockRepo.Object, _mockHubContext.Object);
+        _controller = new TradesController(_mockRepo.Object, _mockHubContext.Object, _mockSyncService.Object);
     }
 
     [TestMethod]
