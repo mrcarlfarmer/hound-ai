@@ -231,7 +231,10 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       if (n.status === 'Active') {
         this.expandedNodes.add(n.nodeId);
         if (!this.activeTab.has(n.nodeId)) {
-          this.activeTab.set(n.nodeId, 'reasoning');
+          // approval-node never streams reasoning — the active state IS the
+          // approval CTA, so open the result tab so the Approve/Reject
+          // buttons are visible without an extra click.
+          this.activeTab.set(n.nodeId, n.nodeId === 'approval-node' ? 'result' : 'reasoning');
         }
       } else if (n.status === 'Completed' && this.activeTab.get(n.nodeId) === 'reasoning') {
         // Once the node has a result, flip back to the result tab
@@ -245,13 +248,14 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     const isFirstChunk = !this.nodeStreams.has(key);
     const current = this.nodeStreams.get(key) ?? '';
     this.nodeStreams.set(key, current + chunk.text);
-    if (isFirstChunk) {
+    if (isFirstChunk && chunk.nodeId !== 'approval-node') {
       // Reasoning just started streaming for this node — always surface the
       // reasoning tab so the tokens are visible as they arrive. We override
       // any prior tab choice here so a node re-entered on a refinement loop
       // (same nodeId, fresh reasoning) also flips back to reasoning. The
       // `Completed → result` flip in autoExpandActive will move it back
-      // when the node finishes.
+      // when the node finishes. approval-node is excluded — it never streams,
+      // and its result tab carries the approve/reject CTAs.
       this.activeTab.set(chunk.nodeId, 'reasoning');
     }
     if (this.selectedRun?.runId === chunk.runId) {
@@ -331,6 +335,10 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   tabFor(node: NodeSnapshot): 'result' | 'reasoning' {
+    // approval-node has no reasoning stream — keep it on the result tab
+    // (which renders the approve/reject CTAs) so the user isn't shown an
+    // empty "Waiting for the model to start streaming…" placeholder.
+    if (node.nodeId === 'approval-node') return 'result';
     return this.activeTab.get(node.nodeId)
       ?? (node.status === 'Active' ? 'reasoning' : 'result');
   }
