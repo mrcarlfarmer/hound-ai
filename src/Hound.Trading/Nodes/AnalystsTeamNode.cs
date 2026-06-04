@@ -238,13 +238,30 @@ public class AnalystsTeamNode : INode
                 - volumeChange = volume ratio from the market report (e.g. 1.2 means 20% above average). Must be > 0.
                 - trend = exactly one of: "Bullish", "Bearish", "Neutral"
                 - confidenceScore = a value between 0.05 and 1.0. NEVER emit 0; if signals are weak, use 0.25.
-                  Derive this by counting how many of the four analysts agree on direction:
-                    * 4/4 agree → 0.85–1.0
-                    * 3/4 agree → 0.60–0.84
-                    * 2/4 agree → 0.35–0.59
-                    * No agreement → 0.10–0.34
-                  Adjust within the sub-range based on the strength of evidence cited in each report.
+
+                  STEP 1 — Count how many analysts ACTUALLY HAVE A DIRECTIONAL SIGNAL.
+                  An analyst report that says it has "no data", "no messages", "no articles",
+                  "unable to assess", or otherwise abstains from a directional call is NOT
+                  counted. Do NOT count an abstention as Neutral. Only Bullish / Bearish /
+                  Neutral calls supported by cited evidence count as a signal. Call this
+                  count N (1 to 4). The number of those analysts that agree with the
+                  majority direction is A.
+
+                  STEP 2 — Map A/N to a confidence band:
+                    * A/N = 1.00 (all signalling analysts agree)        → 0.85–1.00
+                    * A/N ≥ 0.66 (clear majority)                        → 0.60–0.84
+                    * A/N ≥ 0.50 (split)                                 → 0.35–0.59
+                    * A/N < 0.50 (no majority)                           → 0.10–0.34
+
+                  STEP 3 — If N < 4 (one or more analysts abstained), multiply the chosen
+                  value by N/4 only when N == 1. Otherwise leave it as-is: missing data
+                  should not be double-counted against confidence when the remaining
+                  analysts give a clear, evidence-backed reading.
+
+                  Adjust within the sub-range based on the strength of evidence cited.
+
                 - summary = 1-3 sentences combining all four reports. Keep it under 200 words.
+                  If an analyst abstained, mention it briefly (e.g. "no sentiment data available").
                 - LANGUAGE: All string values (especially `summary` and `trend`) MUST be in English.
                   Do NOT emit Chinese, Mandarin, or any other non-English characters. Prices are in
                   US dollars (USD, $). Do NOT use yuan/元, euro, or any other currency symbol.
@@ -327,6 +344,18 @@ public class AnalystsTeamNode : INode
         var sentimentReport = await RunAnalystAsync(_sentimentAnalyst, "SentimentAnalyst",
             $"Analyse social media sentiment and public opinion for {symbolLabel}. {priceLine}",
             state.Symbol, cancellationToken);
+
+        // Defensive truncation: an analyst that landed in a repetition loop can
+        // emit tens of KBs of degenerate text (we have observed 48 KB single
+        // reports). Feeding that into the synthesiser dominates the prompt and
+        // pushes confidence toward "no agreement". MaxOutputTokens on the LLM
+        // client is the primary guard; this is belt-and-braces in case a model
+        // ignores the cap or a future client wraps multiple turns into one
+        // report.
+        marketReport = TruncateReport(marketReport, "MarketAnalyst", state.Symbol, cancellationToken);
+        fundamentalsReport = TruncateReport(fundamentalsReport, "FundamentalsAnalyst", state.Symbol, cancellationToken);
+        newsReport = TruncateReport(newsReport, "NewsAnalyst", state.Symbol, cancellationToken);
+        sentimentReport = TruncateReport(sentimentReport, "SentimentAnalyst", state.Symbol, cancellationToken);
 
         // Synthesise all reports
         var synthesisPrompt = $"""
@@ -429,6 +458,47 @@ public class AnalystsTeamNode : INode
             cancellationToken: cancellationToken);
 
         return response.Text ?? $"No report from {analystName}";
+    }
+
+    /// <summary>
+    /// Soft upper bound on the per-analyst report size sent to the synthesiser
+    /// (and persisted on the run snapshot). Sized to comfortably hold the
+    /// largest healthy report we observe (~5 KB) with headroom (~3x), while
+    /// still capping the worst-case repetition-loop tail.
+    /// </summary>
+    internal const int MaxAnalystReportChars = 16_000;
+
+    /// <summary>
+    /// Trims an analyst report to <see cref="MaxAnalystReportChars"/> and
+    /// appends a clear truncation marker so the synthesiser doesn't treat the
+    /// abrupt cut-off as part of the analyst's signal. Healthy reports
+    /// (~3-5 KB) pass through untouched.
+    /// </summary>
+    internal string TruncateReport(
+        string report, string analystName, string symbol, CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrEmpty(report) || report.Length <= MaxAnalystReportChars)
+            return report;
+
+        var originalLength = report.Length;
+        var truncated = report.Substring(0, MaxAnalystReportChars)
+            + $"\n\n[…report truncated by orchestrator: original was {originalLength:N0} chars, "
+            + $"capped at {MaxAnalystReportChars:N0}. Likely a model repetition loop — "
+            + "treat any trailing content as low signal.]";
+
+        // Fire-and-forget log; truncation is a real signal worth surfacing on
+        // the activity feed but we don't want to block synthesis on it.
+        _ = _activityLogger.LogActivityAsync(new ActivityLog
+        {
+            PackId = PackId,
+            HoundId = NodeId,
+            HoundName = "AnalystsTeam",
+            Message = $"{analystName} report for {symbol} truncated from {originalLength:N0} to "
+                + $"{MaxAnalystReportChars:N0} chars (likely repetition loop).",
+            Severity = ActivitySeverity.Warning,
+        }, cancellationToken);
+
+        return truncated;
     }
 
     private static MarketAnalysis ParseSynthesisJson(string json, string symbol)
