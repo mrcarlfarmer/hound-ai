@@ -28,6 +28,7 @@ describe('GraphRunsComponent', () => {
     const mockApi = {
       getRuns: vi.fn().mockReturnValue(of(runs)),
       getRun: vi.fn().mockReturnValue(of(runs[0])),
+      getRunRequests: vi.fn().mockReturnValue(of([])),
     };
     const mockSignalr = {
       connect: vi.fn(),

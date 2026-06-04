@@ -589,7 +589,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
   displayStatus(node: NodeSnapshot): string {
     if (this.isNoAction(node)) return 'No action';
-    if (node.status === 'Pending' && this.selectedRun?.isComplete) return 'Skipped';
+    if (node.status === 'Skipped') return 'Skipped';
     return node.status;
   }
 
