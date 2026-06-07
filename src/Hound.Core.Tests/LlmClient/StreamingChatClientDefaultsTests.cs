@@ -119,7 +119,13 @@ public sealed class StreamingChatClientDefaultsTests
             .ReturnsAsync(new ChatResponse([]));
 
         // Replicate what the factory does
-        var defaults = new ChatOptions { Temperature = 0.0f, TopP = 0.1f };
+        var defaults = new ChatOptions
+        {
+            Temperature = 0.0f,
+            TopP = 0.1f,
+            FrequencyPenalty = 0.4f,
+            MaxOutputTokens = 2048,
+        };
         var client = new StreamingChatClient(innerClient.Object, defaults);
 
         await client.GetResponseAsync([new ChatMessage(ChatRole.User, "test")]);
@@ -127,5 +133,9 @@ public sealed class StreamingChatClientDefaultsTests
         Assert.IsNotNull(capturedOptions);
         Assert.AreEqual(0.0f, capturedOptions.Temperature, "Temperature must be 0.0 for deterministic output");
         Assert.AreEqual(0.1f, capturedOptions.TopP, "TopP must be 0.1 for deterministic output");
+        Assert.AreEqual(0.4f, capturedOptions.FrequencyPenalty,
+            "FrequencyPenalty must be > 0 to prevent repetition loops under greedy sampling");
+        Assert.AreEqual(2048, capturedOptions.MaxOutputTokens,
+            "MaxOutputTokens must cap runaway generations");
     }
 }

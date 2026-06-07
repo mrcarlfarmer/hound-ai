@@ -32,6 +32,9 @@ public sealed class StreamingChatClient : DelegatingChatClient
         // Call-site options take precedence; fill in defaults for unset fields
         callOptions.Temperature ??= _defaultOptions.Temperature;
         callOptions.TopP ??= _defaultOptions.TopP;
+        callOptions.FrequencyPenalty ??= _defaultOptions.FrequencyPenalty;
+        callOptions.PresencePenalty ??= _defaultOptions.PresencePenalty;
+        callOptions.MaxOutputTokens ??= _defaultOptions.MaxOutputTokens;
         return callOptions;
     }
 

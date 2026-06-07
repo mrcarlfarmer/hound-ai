@@ -1,4 +1,5 @@
 using Hound.Trading.Nodes;
+using Hound.Trading.Nodes.Analysts;
 
 namespace Hound.Trading.Tests.Nodes;
 
@@ -13,7 +14,7 @@ public sealed class AnalystsTeamNodeTests
     [TestMethod]
     public void ComputeDataDerivedConfidence_ReturnsNull_WhenNoPriceData()
     {
-        var result = AnalystsTeamNode.ComputeDataDerivedConfidence(null, null, "Bullish");
+        var result = PreflightMetricsCalculator.ComputeDataDerivedConfidence(null, null, "Bullish");
         Assert.IsNull(result);
     }
 
@@ -21,7 +22,7 @@ public sealed class AnalystsTeamNodeTests
     public void ComputeDataDerivedConfidence_ReturnsBaseline_WhenNeutralTrendAverageVolume()
     {
         // Neutral trend with average volume (1.0) → capped at 0.55
-        var result = AnalystsTeamNode.ComputeDataDerivedConfidence(100m, 1.0m, "Neutral");
+        var result = PreflightMetricsCalculator.ComputeDataDerivedConfidence(100m, 1.0m, "Neutral");
         Assert.IsNotNull(result);
         Assert.IsTrue(result!.Value <= 0.55, $"Neutral trend should cap at 0.55, got {result.Value}");
         Assert.IsTrue(result.Value >= 0.05);
@@ -31,7 +32,7 @@ public sealed class AnalystsTeamNodeTests
     public void ComputeDataDerivedConfidence_HigherForBullishWithStrongVolume()
     {
         // Bullish with high volume → should be near the top end
-        var result = AnalystsTeamNode.ComputeDataDerivedConfidence(150m, 1.5m, "Bullish");
+        var result = PreflightMetricsCalculator.ComputeDataDerivedConfidence(150m, 1.5m, "Bullish");
         Assert.IsNotNull(result);
         Assert.IsTrue(result!.Value >= 0.75, $"Bullish with strong volume should be >= 0.75, got {result.Value}");
     }
@@ -40,7 +41,7 @@ public sealed class AnalystsTeamNodeTests
     public void ComputeDataDerivedConfidence_HigherForBearishWithStrongVolume()
     {
         // Bearish with high volume → same directional logic as bullish
-        var result = AnalystsTeamNode.ComputeDataDerivedConfidence(50m, 1.8m, "Bearish");
+        var result = PreflightMetricsCalculator.ComputeDataDerivedConfidence(50m, 1.8m, "Bearish");
         Assert.IsNotNull(result);
         Assert.IsTrue(result!.Value >= 0.75, $"Bearish with strong volume should be >= 0.75, got {result.Value}");
     }
@@ -49,7 +50,7 @@ public sealed class AnalystsTeamNodeTests
     public void ComputeDataDerivedConfidence_LowerForDirectionalWithWeakVolume()
     {
         // Bullish with very low volume → less confidence
-        var result = AnalystsTeamNode.ComputeDataDerivedConfidence(200m, 0.5m, "Bullish");
+        var result = PreflightMetricsCalculator.ComputeDataDerivedConfidence(200m, 0.5m, "Bullish");
         Assert.IsNotNull(result);
         Assert.IsTrue(result!.Value < 0.75, $"Directional with weak volume should be < 0.75, got {result.Value}");
     }
@@ -58,11 +59,11 @@ public sealed class AnalystsTeamNodeTests
     public void ComputeDataDerivedConfidence_ClampsToValidRange()
     {
         // Extreme volume values should not push score outside [0.05, 1.0]
-        var highResult = AnalystsTeamNode.ComputeDataDerivedConfidence(100m, 10.0m, "Bullish");
+        var highResult = PreflightMetricsCalculator.ComputeDataDerivedConfidence(100m, 10.0m, "Bullish");
         Assert.IsNotNull(highResult);
         Assert.IsTrue(highResult!.Value <= 1.0, $"Score should not exceed 1.0, got {highResult.Value}");
 
-        var lowResult = AnalystsTeamNode.ComputeDataDerivedConfidence(100m, 0.01m, "Neutral");
+        var lowResult = PreflightMetricsCalculator.ComputeDataDerivedConfidence(100m, 0.01m, "Neutral");
         Assert.IsNotNull(lowResult);
         Assert.IsTrue(lowResult!.Value >= 0.05, $"Score should not go below 0.05, got {lowResult.Value}");
     }
@@ -71,7 +72,7 @@ public sealed class AnalystsTeamNodeTests
     public void ComputeDataDerivedConfidence_NullVolume_UsesBaselineOnly()
     {
         // No volume data available, but price exists → should still work
-        var result = AnalystsTeamNode.ComputeDataDerivedConfidence(100m, null, "Bullish");
+        var result = PreflightMetricsCalculator.ComputeDataDerivedConfidence(100m, null, "Bullish");
         Assert.IsNotNull(result);
         // Base 0.5 + directional 0.15 = 0.65 (no volume boost)
         Assert.AreEqual(0.65, result!.Value, 0.01);

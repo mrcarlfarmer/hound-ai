@@ -1,4 +1,5 @@
 using Hound.Trading.Nodes;
+using Hound.Trading.Nodes.Analysts;
 
 namespace Hound.Trading.Tests.Nodes;
 
@@ -17,7 +18,7 @@ public sealed class AnalystsTeamMetricsTests
     public void CalculateAtr14_FewerThan15Bars_ReturnsNull()
     {
         var bars = MakeBars(count: 10, baseClose: 100m);
-        var atr = AnalystsTeamNode.CalculateAtr14(bars);
+        var atr = PreflightMetricsCalculator.CalculateAtr14(bars);
         Assert.IsNull(atr, "ATR requires 14 true ranges (so 15 bars). Anything less should refuse to compute.");
     }
 
@@ -27,12 +28,12 @@ public sealed class AnalystsTeamMetricsTests
         // Every bar: H=101, L=99, C=100. TR = H-L = 2 (prevClose comparisons are also 2).
         // 14-period mean -> 2.
         var bars = Enumerable.Range(0, 20)
-            .Select(i => new AnalystsTeamNode.BarSnapshot(
+            .Select(i => new PreflightMetricsCalculator.BarSnapshot(
                 High: 101m, Low: 99m, Close: 100m, Volume: 1_000m,
                 Time: DateTime.UtcNow.Date.AddDays(-20 + i)))
             .ToList();
 
-        var atr = AnalystsTeamNode.CalculateAtr14(bars);
+        var atr = PreflightMetricsCalculator.CalculateAtr14(bars);
         Assert.AreEqual(2m, atr);
     }
 
@@ -41,15 +42,15 @@ public sealed class AnalystsTeamMetricsTests
     {
         // Steady $1 daily range, then one bar that gaps from prevClose 100 up to
         // L=105, H=108. TR for that bar = max(3, |108-100|, |105-100|) = 8.
-        var bars = new List<AnalystsTeamNode.BarSnapshot>();
+        var bars = new List<PreflightMetricsCalculator.BarSnapshot>();
         for (int i = 0; i < 14; i++)
         {
-            bars.Add(new AnalystsTeamNode.BarSnapshot(100.5m, 99.5m, 100m, 1_000m,
+            bars.Add(new PreflightMetricsCalculator.BarSnapshot(100.5m, 99.5m, 100m, 1_000m,
                 DateTime.UtcNow.Date.AddDays(-15 + i)));
         }
-        bars.Add(new AnalystsTeamNode.BarSnapshot(108m, 105m, 107m, 1_000m, DateTime.UtcNow.Date));
+        bars.Add(new PreflightMetricsCalculator.BarSnapshot(108m, 105m, 107m, 1_000m, DateTime.UtcNow.Date));
 
-        var atr = AnalystsTeamNode.CalculateAtr14(bars);
+        var atr = PreflightMetricsCalculator.CalculateAtr14(bars);
 
         Assert.IsNotNull(atr);
         // 13 prior TRs of 1.0 + one TR of 8.0 across the last 14 → mean ≈ 1.5.
@@ -59,7 +60,7 @@ public sealed class AnalystsTeamMetricsTests
     [TestMethod]
     public void CalculateKeyLevels_EmptyBars_ReturnsNull()
     {
-        var levels = AnalystsTeamNode.CalculateKeyLevels(Array.Empty<AnalystsTeamNode.BarSnapshot>(), currentPrice: 100m);
+        var levels = PreflightMetricsCalculator.CalculateKeyLevels(Array.Empty<PreflightMetricsCalculator.BarSnapshot>(), currentPrice: 100m);
         Assert.IsNull(levels);
     }
 
@@ -67,7 +68,7 @@ public sealed class AnalystsTeamMetricsTests
     public void CalculateKeyLevels_ZeroCurrentPrice_ReturnsNull()
     {
         var bars = MakeBars(20, 100m);
-        var levels = AnalystsTeamNode.CalculateKeyLevels(bars, currentPrice: 0m);
+        var levels = PreflightMetricsCalculator.CalculateKeyLevels(bars, currentPrice: 0m);
         Assert.IsNull(levels);
     }
 
@@ -77,7 +78,7 @@ public sealed class AnalystsTeamMetricsTests
         // 20 bars oscillating 90..110, current price 100. Expect at least the
         // 20-day high (110) above and the 20-day low (90) below.
         var bars = Enumerable.Range(0, 20)
-            .Select(i => new AnalystsTeamNode.BarSnapshot(
+            .Select(i => new PreflightMetricsCalculator.BarSnapshot(
                 High: 110m - i * 0.1m,
                 Low: 90m + i * 0.1m,
                 Close: 100m + (i % 2 == 0 ? 1m : -1m),
@@ -85,7 +86,7 @@ public sealed class AnalystsTeamMetricsTests
                 Time: DateTime.UtcNow.Date.AddDays(-20 + i)))
             .ToList();
 
-        var levels = AnalystsTeamNode.CalculateKeyLevels(bars, currentPrice: 100m);
+        var levels = PreflightMetricsCalculator.CalculateKeyLevels(bars, currentPrice: 100m);
 
         Assert.IsNotNull(levels);
         Assert.IsTrue(levels!.Support.All(s => s <= 100m), "Support entries must be ≤ current price.");
@@ -101,9 +102,9 @@ public sealed class AnalystsTeamMetricsTests
     {
         // One outlier bar with absurd high; current price $100 so anything > $125 is dropped.
         var bars = MakeBars(20, 100m).ToList();
-        bars.Add(new AnalystsTeamNode.BarSnapshot(High: 500m, Low: 99m, Close: 100m, Volume: 1_000m, Time: DateTime.UtcNow.Date));
+        bars.Add(new PreflightMetricsCalculator.BarSnapshot(High: 500m, Low: 99m, Close: 100m, Volume: 1_000m, Time: DateTime.UtcNow.Date));
 
-        var levels = AnalystsTeamNode.CalculateKeyLevels(bars, currentPrice: 100m);
+        var levels = PreflightMetricsCalculator.CalculateKeyLevels(bars, currentPrice: 100m);
 
         Assert.IsNotNull(levels);
         Assert.IsFalse(levels!.Resistance.Any(r => r > 125m), "Levels outside ±25% of current price should be filtered out.");
@@ -113,7 +114,7 @@ public sealed class AnalystsTeamMetricsTests
     public void CalculateKeyLevels_LevelsAreRoundedToTwoDecimals()
     {
         var bars = MakeBars(20, 100m);
-        var levels = AnalystsTeamNode.CalculateKeyLevels(bars, currentPrice: 100m);
+        var levels = PreflightMetricsCalculator.CalculateKeyLevels(bars, currentPrice: 100m);
 
         Assert.IsNotNull(levels);
         foreach (var l in levels!.Support.Concat(levels.Resistance))
@@ -122,14 +123,14 @@ public sealed class AnalystsTeamMetricsTests
         }
     }
 
-    private static List<AnalystsTeamNode.BarSnapshot> MakeBars(int count, decimal baseClose)
+    private static List<PreflightMetricsCalculator.BarSnapshot> MakeBars(int count, decimal baseClose)
     {
         var rng = new Random(42);
         return Enumerable.Range(0, count)
             .Select(i =>
             {
                 var close = baseClose + (decimal)(rng.NextDouble() - 0.5);
-                return new AnalystsTeamNode.BarSnapshot(
+                return new PreflightMetricsCalculator.BarSnapshot(
                     High: close + 0.5m,
                     Low: close - 0.5m,
                     Close: close,

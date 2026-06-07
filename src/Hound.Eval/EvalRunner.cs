@@ -3,6 +3,7 @@ using Hound.Core.Models;
 using Hound.Trading.AlpacaClient;
 using Hound.Trading.Graph;
 using Hound.Trading.Nodes;
+using Hound.Trading.Nodes.Analysts;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using System.ClientModel;
@@ -194,12 +195,16 @@ public class EvalRunner
             case "DataNode":
             case "AnalysisHound":
             {
+                var newsService = new StubNewsService();
+                var sentimentService = new StubSentimentService();
                 var node = new AnalystsTeamNode(
-                    chatClient,
+                    new MarketAnalyst(chatClient, alpacaService, activityLogger),
+                    new FundamentalsAnalyst(chatClient, alpacaService, activityLogger),
+                    new NewsAnalyst(chatClient, alpacaService, activityLogger, newsService),
+                    new SentimentAnalyst(chatClient, alpacaService, activityLogger, sentimentService),
+                    new AnalystSynthesiser(chatClient, activityLogger),
                     alpacaService,
-                    activityLogger,
-                    new StubNewsService(),
-                    new StubSentimentService());
+                    activityLogger);
                 var symbol = GetContextString(scenario.Input.Context, "symbol") ?? "AAPL";
                 var state = TradingGraphState.Initial(symbol);
                 var result = await node.ExecuteAsync(state, ct);

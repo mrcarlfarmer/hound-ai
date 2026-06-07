@@ -6,6 +6,7 @@ using Hound.Trading;
 using Hound.Trading.AlpacaClient;
 using Hound.Trading.Graph;
 using Hound.Trading.Nodes;
+using Hound.Trading.Nodes.Analysts;
 using Hound.Trading.Services;
 using Hound.Trading.Services.News;
 using Microsoft.Extensions.AI;
@@ -115,16 +116,51 @@ builder.Services.AddSingleton<IResettableExecutor>(sp =>
         sp.GetService<ILoggerFactory>()?.CreateLogger<OllamaResettableExecutor>());
 });
 
-// ── Nodes ─────────────────────────────────────────────────────────────────────
-builder.Services.AddSingleton<AnalystsTeamNode>(sp => new AnalystsTeamNode(
+// ── Analyst Team ──────────────────────────────────────────────────────────────
+// Each specialist analyst owns its own ChatClientAgent (prompt + tools); the
+// AnalystsTeamNode below just orchestrates them.
+builder.Services.AddSingleton<MarketAnalyst>(sp => new MarketAnalyst(
+    sp.GetRequiredKeyedService<IChatClient>("default"),
+    sp.GetRequiredService<IAlpacaService>(),
+    sp.GetRequiredService<IActivityLogger>(),
+    sp.GetService<ILoggerFactory>()));
+
+builder.Services.AddSingleton<FundamentalsAnalyst>(sp => new FundamentalsAnalyst(
+    sp.GetRequiredKeyedService<IChatClient>("default"),
+    sp.GetRequiredService<IAlpacaService>(),
+    sp.GetRequiredService<IActivityLogger>(),
+    sp.GetService<ILoggerFactory>()));
+
+builder.Services.AddSingleton<NewsAnalyst>(sp => new NewsAnalyst(
     sp.GetRequiredKeyedService<IChatClient>("default"),
     sp.GetRequiredService<IAlpacaService>(),
     sp.GetRequiredService<IActivityLogger>(),
     sp.GetRequiredService<INewsService>(),
-    sp.GetRequiredService<ISentimentService>(),
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<NewsSettings>>(),
+    sp.GetService<ILoggerFactory>()));
+
+builder.Services.AddSingleton<SentimentAnalyst>(sp => new SentimentAnalyst(
+    sp.GetRequiredKeyedService<IChatClient>("default"),
+    sp.GetRequiredService<IAlpacaService>(),
+    sp.GetRequiredService<IActivityLogger>(),
+    sp.GetRequiredService<ISentimentService>(),
     sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<SentimentSettings>>(),
     sp.GetService<ILoggerFactory>()));
+
+builder.Services.AddSingleton<AnalystSynthesiser>(sp => new AnalystSynthesiser(
+    sp.GetRequiredKeyedService<IChatClient>("default"),
+    sp.GetRequiredService<IActivityLogger>(),
+    sp.GetService<ILoggerFactory>()));
+
+// ── Nodes ─────────────────────────────────────────────────────────────────────
+builder.Services.AddSingleton<AnalystsTeamNode>(sp => new AnalystsTeamNode(
+    sp.GetRequiredService<MarketAnalyst>(),
+    sp.GetRequiredService<FundamentalsAnalyst>(),
+    sp.GetRequiredService<NewsAnalyst>(),
+    sp.GetRequiredService<SentimentAnalyst>(),
+    sp.GetRequiredService<AnalystSynthesiser>(),
+    sp.GetRequiredService<IAlpacaService>(),
+    sp.GetRequiredService<IActivityLogger>()));
 
 builder.Services.AddSingleton<StrategyNode>(sp => new StrategyNode(
     sp.GetRequiredKeyedService<IChatClient>("strategy"),

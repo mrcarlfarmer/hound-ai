@@ -143,6 +143,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
         this.selectedRun = run;
         this.autoExpandActive(run);
       }
+      this.maybeClearApprovalSubmitting(run);
       this.cdr.detectChanges();
     });
     this.streamSub = this.signalr.onNodeStream$.subscribe(chunk => this.appendStream(chunk));
@@ -191,6 +192,15 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
         this.runs = runs;
         if (!this.selectedRun && runs.length > 0) {
           this.selectRun(runs[0]);
+        } else if (this.selectedRun) {
+          // Keep the in-memory selectedRun in sync with the polled snapshot —
+          // notably so the approval-submit flag clears even if a SignalR push
+          // was missed.
+          const fresh = runs.find(r => r.runId === this.selectedRun!.runId);
+          if (fresh) {
+            this.selectedRun = fresh;
+            this.maybeClearApprovalSubmitting(fresh);
+          }
         }
         this.loading = false;
         this.cdr.detectChanges();
@@ -611,6 +621,10 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     if (!this.selectedRun || this.approvalSubmitting) return;
     this.approvalSubmitting = decision;
     this.approvalError = '';
+    // Paint the disabled state immediately so a slow round-trip can't be
+    // mistaken for a missed click — the buttons stay disabled until the
+    // worker resumes the graph and SignalR pushes the new approvalStatus.
+    this.cdr.detectChanges();
 
     const runId = this.selectedRun.runId;
     const notes = this.approvalNotes.trim() || undefined;
@@ -620,10 +634,14 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
     call.subscribe({
       next: () => {
-        this.approvalSubmitting = null;
+        // Do NOT clear approvalSubmitting here. The API only writes the
+        // GraphApproval document; the trading worker polls and applies it
+        // asynchronously. Keeping the buttons disabled until SignalR pushes
+        // the resumed run state prevents double-submits in that gap and
+        // gives the user accurate “still working” feedback.
         this.approvalNotes = '';
-        // Refresh — the worker will pick up the decision on its next poll
-        // and SignalR will push the new run state shortly after.
+        // Nudge a refresh so the new state arrives quickly even if the
+        // SignalR push is delayed.
         this.loadRuns();
         this.cdr.detectChanges();
       },
@@ -637,6 +655,21 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
         this.cdr.detectChanges();
       },
     });
+  }
+
+  /**
+   * Clears the in-flight approval flag once the worker has applied the
+   * decision and pushed the new run state. We watch for the
+   * <c>Pending → Approved/Rejected</c> transition on the currently selected
+   * run so the Approve/Reject buttons re-enable (or stay hidden) at exactly
+   * the moment the graph has actually resumed.
+   */
+  private maybeClearApprovalSubmitting(run: GraphRun): void {
+    if (!this.approvalSubmitting) return;
+    if (this.selectedRun?.runId !== run.runId) return;
+    if (run.approvalStatus && run.approvalStatus !== 'Pending') {
+      this.approvalSubmitting = null;
+    }
   }
 
   nodeStatusClass(status: NodeStatus): string {
