@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Hound.Core.Models;
 using Hound.Api.Repositories;
+using Hound.Api.Services;
 
 namespace Hound.Api.Controllers;
 
@@ -9,10 +10,12 @@ namespace Hound.Api.Controllers;
 public class RunsController : ControllerBase
 {
     private readonly IGraphRunRepository _runs;
+    private readonly DebateBackfillService _debateBackfill;
 
-    public RunsController(IGraphRunRepository runs)
+    public RunsController(IGraphRunRepository runs, DebateBackfillService debateBackfill)
     {
         _runs = runs;
+        _debateBackfill = debateBackfill;
     }
 
     /// <summary>GET /api/runs — Recent graph runs (newest first).</summary>
@@ -22,6 +25,7 @@ public class RunsController : ControllerBase
         CancellationToken cancellationToken = default)
     {
         var runs = await _runs.GetRecentRunsAsync(limit, cancellationToken);
+        await _debateBackfill.BackfillAsync(runs, cancellationToken);
         return Ok(runs);
     }
 
@@ -32,6 +36,7 @@ public class RunsController : ControllerBase
         var run = await _runs.GetRunAsync(runId, cancellationToken);
         if (run is null)
             return NotFound();
+        await _debateBackfill.BackfillAsync(run, cancellationToken);
         return Ok(run);
     }
 

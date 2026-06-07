@@ -5,6 +5,7 @@ using Hound.Trading.Graph;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -34,22 +35,29 @@ public class StrategyNode : INode
         @"\$\s?(\d{1,3}(?:[,]\d{3})*(?:\.\d+)?|\d+(?:\.\d+)?)",
         RegexOptions.Compiled);
 
-    private readonly ChatClientAgent _agent;
+    private readonly ChatClientAgent _coordinatorAgent;
+    private readonly ChatClientAgent _bullAgent;
+    private readonly ChatClientAgent _bearAgent;
     private readonly IAlpacaService _alpacaService;
     private readonly IActivityLogger _activityLogger;
+    private readonly ILoggerFactory? _loggerFactory;
     private readonly ILogger<StrategyNode>? _logger;
+    private readonly StrategyHoundConfig _debateConfig;
 
     public StrategyNode(
         IChatClient chatClient,
         IAlpacaService alpacaService,
         IActivityLogger activityLogger,
+        IOptions<StrategyHoundConfig>? debateConfig = null,
         ILoggerFactory? loggerFactory = null)
     {
         _alpacaService = alpacaService;
         _activityLogger = activityLogger;
+        _loggerFactory = loggerFactory;
         _logger = loggerFactory?.CreateLogger<StrategyNode>();
+        _debateConfig = debateConfig?.Value ?? new StrategyHoundConfig();
 
-        _agent = new ChatClientAgent(
+        _coordinatorAgent = new ChatClientAgent(
             chatClient,
             instructions: """
                 You are a JSON formatter that outputs trading decisions.
@@ -105,13 +113,63 @@ public class StrategyNode : INode
                 - Do not output any price level for a different ticker, even if it
                   looks similar.
 
+                If a "Debate transcript" section is present you have already observed a
+                short bull-vs-bear debate. Weigh both sides, decide which case is
+                stronger, and produce the final JSON decision. The debate is advisory
+                only — the price-sanity and decision rules above still apply.
+
                 If you receive risk rejection feedback, adjust your decision to address
                 the specific concerns and output the revised JSON.
                 """,
             name: "StrategyNode",
             description: "Determines buy/sell/hold strategy based on market analysis",
             loggerFactory: loggerFactory);
+
+        _bullAgent = new ChatClientAgent(
+            chatClient,
+            instructions: BullSystemPrompt,
+            name: "BullDebater",
+            description: "Argues the bullish case in the strategy debate",
+            loggerFactory: loggerFactory);
+
+        _bearAgent = new ChatClientAgent(
+            chatClient,
+            instructions: BearSystemPrompt,
+            name: "BearDebater",
+            description: "Argues the bearish case in the strategy debate",
+            loggerFactory: loggerFactory);
     }
+
+    private const string BullSystemPrompt = """
+        You are the BULL debater in a short trading debate. Your only job is to argue
+        the strongest, evidence-based case FOR buying or holding a long position in
+        the symbol presented.
+
+        Rules:
+        - Respond in 2–4 sentences of plain English. No markdown, no JSON, no preamble.
+        - Cite concrete signals from the analysis: trend, confidence, volume, key levels,
+          ATR, fundamentals, news, sentiment.
+        - If a previous BEAR argument is present, rebut its strongest point directly.
+        - Never mention price levels that contradict the "Current price" in the prompt.
+        - Do NOT propose a quantity, trail percent, or final action. The coordinator
+          decides those after the debate.
+        """;
+
+    private const string BearSystemPrompt = """
+        You are the BEAR debater in a short trading debate. Your only job is to argue
+        the strongest, evidence-based case AGAINST buying — either for selling an
+        existing long, or for holding off on a new entry.
+
+        Rules:
+        - Respond in 2–4 sentences of plain English. No markdown, no JSON, no preamble.
+        - Cite concrete risks from the analysis: weak trend, low confidence, volume
+          divergence, resistance overhead, fundamental concerns, negative news, bearish
+          sentiment.
+        - If a previous BULL argument is present, rebut its strongest point directly.
+        - Never mention price levels that contradict the "Current price" in the prompt.
+        - Do NOT propose a quantity, trail percent, or final action. The coordinator
+          decides those after the debate.
+        """;
 
     public async Task<TradingGraphState> ExecuteAsync(
         TradingGraphState state, CancellationToken cancellationToken)
@@ -147,9 +205,19 @@ public class StrategyNode : INode
 
         var prompt = BuildPrompt(state, analysis, equity, buyingPower, cash);
 
-        var session = await _agent.CreateSessionAsync(cancellationToken);
-        var response = await _agent.RunAsync(
-            [new ChatMessage(ChatRole.User, prompt)],
+        // Optional bull-vs-bear debate before the coordinator decides.
+        IReadOnlyList<DebateTurn> debateTurns = Array.Empty<DebateTurn>();
+        string coordinatorPrompt = prompt;
+
+        if (_debateConfig.DebateEnabled && _debateConfig.DebateTurnsPerSide > 0)
+        {
+            debateTurns = await RunDebateAsync(state, prompt, cancellationToken);
+            coordinatorPrompt = BuildCoordinatorPrompt(prompt, debateTurns);
+        }
+
+        var session = await _coordinatorAgent.CreateSessionAsync(cancellationToken);
+        var response = await _coordinatorAgent.RunAsync(
+            [new ChatMessage(ChatRole.User, coordinatorPrompt)],
             session,
             cancellationToken: cancellationToken);
 
@@ -232,10 +300,210 @@ public class StrategyNode : INode
             HoundName = "StrategyNode",
             Message = $"Decision for {state.Symbol}: {decision.Action} (confidence {decision.Confidence:P0})",
             Severity = ActivitySeverity.Success,
+            Metadata = debateTurns.Count > 0
+                ? new Dictionary<string, object>
+                {
+                    ["debateTurnCount"] = debateTurns.Count,
+                    ["debateEnabled"] = true,
+                }
+                : null,
         }, cancellationToken);
 
-        return state with { StrategyOutput = decision };
+        return state with
+        {
+            StrategyOutput = decision,
+            StrategyDebate = debateTurns.Count > 0 ? debateTurns : null,
+        };
     }
+
+    /// <summary>
+    /// Runs a bounded round-robin bull-vs-bear debate. Each side speaks
+    /// <see cref="StrategyHoundConfig.DebateTurnsPerSide"/> times in alternating
+    /// order (Bull → Bear → Bull → Bear …). Captures each turn into a
+    /// <see cref="DebateTurn"/> list and emits one <see cref="ActivityLog"/>
+    /// per turn (with <c>type=debate-turn</c> metadata) so the dashboard can
+    /// render the conversation live via the existing SignalR push.
+    /// </summary>
+    /// <remarks>
+    /// Implemented as a direct loop over <see cref="ChatClientAgent.RunAsync"/>
+    /// rather than via <c>AgentWorkflowBuilder.CreateGroupChatBuilderWith</c>:
+    /// MAF 1.1.0's <c>RoundRobinGroupChatManager</c> termination is unreliable
+    /// (see agent-framework issues #754 and #1560) and a manual loop matches
+    /// the established pattern used by <see cref="AnalystsTeamNode"/>.
+    /// </remarks>
+    private async Task<IReadOnlyList<DebateTurn>> RunDebateAsync(
+        TradingGraphState state, string analysisPrompt, CancellationToken cancellationToken)
+    {
+        var transcript = new List<DebateTurn>();
+        int turnsPerSide = _debateConfig.DebateTurnsPerSide;
+
+        await _activityLogger.LogActivityAsync(new ActivityLog
+        {
+            PackId = PackId,
+            HoundId = NodeId,
+            HoundName = "StrategyNode",
+            Message = $"Debate starting for {state.Symbol} ({turnsPerSide} turn(s) per side)",
+            Severity = ActivitySeverity.Info,
+            Metadata = new Dictionary<string, object>
+            {
+                ["type"] = "debate-start",
+                ["symbol"] = state.Symbol,
+                ["runId"] = state.RunId,
+                ["turnsPerSide"] = turnsPerSide,
+            },
+        }, cancellationToken);
+
+        var seed = $"""
+            Symbol: {state.Symbol}
+
+            The following analysis snapshot is the basis for the debate. Argue your
+            side in 2–4 sentences, citing concrete signals. Do not propose a final
+            action.
+
+            {analysisPrompt}
+            """;
+
+        try
+        {
+            for (int round = 0; round < turnsPerSide; round++)
+            {
+                await AppendTurnAsync("Bull", round * 2, _bullAgent, seed, transcript, state.Symbol, state.RunId, cancellationToken);
+                await AppendTurnAsync("Bear", round * 2 + 1, _bearAgent, seed, transcript, state.Symbol, state.RunId, cancellationToken);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex,
+                "Debate failed for {Symbol}; falling back to coordinator-only decision",
+                state.Symbol);
+            await _activityLogger.LogActivityAsync(new ActivityLog
+            {
+                PackId = PackId,
+                HoundId = NodeId,
+                HoundName = "StrategyNode",
+                Message = $"Debate failed for {state.Symbol}: {ex.Message}. Falling back to coordinator-only path.",
+                Severity = ActivitySeverity.Warning,
+            }, cancellationToken);
+            return Array.Empty<DebateTurn>();
+        }
+
+        await _activityLogger.LogActivityAsync(new ActivityLog
+        {
+            PackId = PackId,
+            HoundId = NodeId,
+            HoundName = "StrategyNode",
+            Message = $"Debate concluded after {transcript.Count} turn(s); coordinator deliberating for {state.Symbol}",
+            Severity = ActivitySeverity.Info,
+            Metadata = new Dictionary<string, object>
+            {
+                ["type"] = "debate-end",
+                ["symbol"] = state.Symbol,
+                ["runId"] = state.RunId,
+                ["turnCount"] = transcript.Count,
+            },
+        }, cancellationToken);
+
+        return transcript;
+    }
+
+    /// <summary>
+    /// Runs a single debater turn and appends it to the transcript plus the
+    /// activity log. The prompt is the original seed plus all preceding turns
+    /// so debaters can rebut each other.
+    /// </summary>
+    private async Task AppendTurnAsync(
+        string role,
+        int index,
+        ChatClientAgent agent,
+        string seed,
+        List<DebateTurn> transcript,
+        string symbol,
+        string runId,
+        CancellationToken cancellationToken)
+    {
+        var prompt = BuildDebaterPrompt(role, seed, transcript);
+        var session = await agent.CreateSessionAsync(cancellationToken);
+        var response = await agent.RunAsync(
+            [new ChatMessage(ChatRole.User, prompt)],
+            session,
+            cancellationToken: cancellationToken);
+
+        var text = (response.Text ?? string.Empty).Trim();
+        var turn = new DebateTurn(role, index, text, DateTime.UtcNow);
+        transcript.Add(turn);
+
+        await _activityLogger.LogActivityAsync(new ActivityLog
+        {
+            PackId = PackId,
+            HoundId = NodeId,
+            HoundName = "StrategyNode",
+            Message = $"[{role.ToUpperInvariant()}] {Truncate(text, 240)}",
+            Severity = ActivitySeverity.Info,
+            Metadata = new Dictionary<string, object>
+            {
+                ["type"] = "debate-turn",
+                ["role"] = role,
+                ["turnIndex"] = index,
+                ["symbol"] = symbol,
+                ["runId"] = runId,
+                ["fullMessage"] = text,
+            },
+        }, cancellationToken);
+    }
+
+    /// <summary>
+    /// Builds the prompt for a debater turn: the original seed plus the
+    /// preceding turns (so each debater can rebut the other).
+    /// </summary>
+    private static string BuildDebaterPrompt(string role, string seed, IReadOnlyList<DebateTurn> precedingTurns)
+    {
+        if (precedingTurns.Count == 0)
+        {
+            return $"{seed}\n\nIt is your turn ({role.ToUpperInvariant()}). Open the debate.";
+        }
+
+        var sb = new StringBuilder(seed);
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.AppendLine("## Debate so far");
+        foreach (var t in precedingTurns)
+        {
+            sb.Append('[').Append(t.Role.ToUpperInvariant()).Append("] ").AppendLine(t.Message);
+        }
+        sb.AppendLine();
+        sb.Append("It is your turn (").Append(role.ToUpperInvariant()).AppendLine("). Make your strongest point, rebutting the previous turn if relevant.");
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Wraps the original analysis prompt with the captured debate transcript
+    /// so the coordinator can weigh both sides before emitting the final JSON.
+    /// </summary>
+    private static string BuildCoordinatorPrompt(string analysisPrompt, IReadOnlyList<DebateTurn> transcript)
+    {
+        if (transcript.Count == 0) return analysisPrompt;
+
+        var sb = new StringBuilder(analysisPrompt);
+        sb.AppendLine();
+        sb.AppendLine();
+        sb.AppendLine("## Debate transcript");
+        sb.AppendLine("Two debaters reviewed the analysis above. Weigh both sides, then output the JSON decision.");
+        sb.AppendLine();
+        foreach (var turn in transcript)
+        {
+            sb.Append('[').Append(turn.Role.ToUpperInvariant()).Append("] ").AppendLine(turn.Message);
+        }
+        sb.AppendLine();
+        sb.AppendLine("Now output ONLY the final JSON decision object.");
+        return sb.ToString();
+    }
+
+    private static string Truncate(string value, int maxLength)
+        => value.Length <= maxLength ? value : value[..maxLength] + "…";
 
     /// <summary>
     /// Builds a structured, plain-text prompt that surfaces the authoritative

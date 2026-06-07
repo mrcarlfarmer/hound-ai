@@ -25,6 +25,26 @@ export interface ActivityLog {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Strongly-typed view of an ActivityLog whose metadata.type === 'debate-turn'.
+ * Emitted once per turn by StrategyNode when the bull-vs-bear debate is enabled.
+ * Use {@link isDebateTurn} to narrow an ActivityLog before reading these fields.
+ */
+export interface DebateTurnMetadata {
+  type: 'debate-turn';
+  role: 'Bull' | 'Bear';
+  turnIndex: number;
+  symbol: string;
+  fullMessage: string;
+}
+
+/** Type guard: is this ActivityLog a StrategyNode debate turn? */
+export function isDebateTurn(log: ActivityLog): log is ActivityLog & { metadata: DebateTurnMetadata } {
+  return log.metadata?.['type'] === 'debate-turn'
+    && typeof log.metadata?.['role'] === 'string'
+    && typeof log.metadata?.['fullMessage'] === 'string';
+}
+
 export interface ActivityFilter {
   pack?: string;
   hound?: string;
@@ -130,6 +150,20 @@ export interface GraphRun {
   approvalNotes?: string;
   nodes: NodeSnapshot[];
   refinements?: RefinementSnapshot[];
+  /**
+   * Transcript of the bull-vs-bear debate that ran inside StrategyNode for
+   * this run (when DebateEnabled). Persisted on the GraphRun document and
+   * surfaced by the /graph route's Strategy panel.
+   */
+  strategyDebate?: DebateTurnSnapshot[];
+}
+
+/** Single turn of a StrategyNode debate, persisted on a GraphRun. */
+export interface DebateTurnSnapshot {
+  role: 'Bull' | 'Bear';
+  index: number;
+  message: string;
+  timestamp: string;
 }
 
 export interface RefinementSnapshot {

@@ -1,0 +1,28 @@
+{
+  "scenarioName": "Debate Coordinator Overrides on Mixed Signals",
+  "description": "When bull and bear can both make a strong case (mixed signals, moderate confidence), the coordinator must default to Hold rather than picking a side it cannot defend with conviction.",
+  "houndName": "StrategyNode",
+  "category": "debate",
+  "input": {
+    "userMessage": "Market analysis for MSFT shows mixed signals with moderate confidence.",
+    "context": {
+      "symbol": "MSFT",
+      "lastPrice": 410.00,
+      "volumeChange": 0.05,
+      "trend": "Neutral",
+      "confidenceScore": 0.55,
+      "summary": "Sideways price action with tight range; bullish RSI but bearish MACD crossover; flat volume."
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Hold"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with symbol, action, quantity, reasoning, confidence",
+    "decisionCriteria": "Mixed signals + sub-0.7 confidence must yield Hold even after a vigorous debate."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains the action 'Hold'."
+  }
+}

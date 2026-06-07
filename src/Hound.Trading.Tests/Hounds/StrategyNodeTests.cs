@@ -1,4 +1,11 @@
 using Hound.Trading.Nodes;
+using Hound.Core.Logging;
+using Hound.Core.Models;
+using Hound.Trading.AlpacaClient;
+using Hound.Trading.Graph;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
+using Moq;
 
 namespace Hound.Trading.Tests.Nodes;
 
@@ -79,5 +86,198 @@ public sealed class StrategyNodeTests
 
         Assert.IsNull(dollarCap);
         Assert.IsNull(maxShares);
+    }
+
+    // ── Debate flow ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// End-to-end happy path: with debate enabled, StrategyNode runs the
+    /// MAF round-robin group chat for the configured number of turns,
+    /// captures the transcript onto graph state, and lets the coordinator
+    /// produce the final JSON decision.
+    /// </summary>
+    [TestMethod]
+    public async Task Debate_RoundRobinProducesTurnsThenCoordinatorDecides()
+    {
+        var responses = new Queue<string>(
+        [
+            "BULL: Strong upward momentum, RSI 65, volume 2x average.",
+            "BEAR: Resistance overhead at +5%, hold off until breakout confirms.",
+            "BULL: Volume divergence supports breakout in this session.",
+            "BEAR: Risk/reward unfavorable without a confirmed close above resistance.",
+            "{\"symbol\":\"AAPL\",\"action\":\"Buy\",\"quantity\":1,\"reasoning\":\"Bull case prevails on momentum and volume.\",\"confidence\":0.8,\"trailPercent\":5}",
+        ]);
+        var node = BuildNodeWithChatResponses(responses, debateEnabled: true, turnsPerSide: 2);
+
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            DataOutput = new MarketAnalysis(
+                Symbol: "AAPL",
+                LastPrice: 175m,
+                VolumeChange: 2.0m,
+                Trend: "Bullish",
+                ConfidenceScore: 0.85,
+                Summary: "Strong upward price momentum with above-average volume."),
+        };
+
+        var result = await node.ExecuteAsync(state, CancellationToken.None);
+
+        Assert.IsNotNull(result.StrategyOutput);
+        Assert.AreEqual(TradeAction.Buy, result.StrategyOutput!.Action);
+        Assert.IsNotNull(result.StrategyDebate);
+        Assert.AreEqual(4, result.StrategyDebate!.Count, "Two turns per side should yield 4 debate messages.");
+        Assert.AreEqual("Bull", result.StrategyDebate[0].Role);
+        Assert.AreEqual("Bear", result.StrategyDebate[1].Role);
+        Assert.AreEqual("Bull", result.StrategyDebate[2].Role);
+        Assert.AreEqual("Bear", result.StrategyDebate[3].Role);
+    }
+
+    [TestMethod]
+    public async Task Debate_DisabledViaConfig_UsesSingleAgentPathAndProducesNoTranscript()
+    {
+        var responses = new Queue<string>(
+        [
+            "{\"symbol\":\"AAPL\",\"action\":\"Hold\",\"quantity\":0,\"reasoning\":\"Insufficient signal.\",\"confidence\":0.3}",
+        ]);
+        var node = BuildNodeWithChatResponses(responses, debateEnabled: false, turnsPerSide: 2);
+
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            DataOutput = new MarketAnalysis(
+                Symbol: "AAPL",
+                LastPrice: 100m,
+                VolumeChange: 1.0m,
+                Trend: "Neutral",
+                ConfidenceScore: 0.3,
+                Summary: "No clear signal."),
+        };
+
+        var result = await node.ExecuteAsync(state, CancellationToken.None);
+
+        Assert.IsNotNull(result.StrategyOutput);
+        Assert.AreEqual(TradeAction.Hold, result.StrategyOutput!.Action);
+        Assert.IsNull(result.StrategyDebate, "Debate disabled — transcript slot must remain null.");
+        Assert.AreEqual(0, responses.Count, "Coordinator should consume exactly one chat call when debate is disabled.");
+    }
+
+    [TestMethod]
+    public async Task Debate_LogsPerTurnActivityWithDebateTurnMetadata()
+    {
+        var responses = new Queue<string>(
+        [
+            "BULL: case A",
+            "BEAR: case B",
+            "{\"symbol\":\"AAPL\",\"action\":\"Hold\",\"quantity\":0,\"reasoning\":\"Coordinator decides Hold.\",\"confidence\":0.5}",
+        ]);
+        var activityLogs = new List<ActivityLog>();
+        var activityMock = new Mock<IActivityLogger>();
+        activityMock
+            .Setup(l => l.LogActivityAsync(It.IsAny<ActivityLog>(), It.IsAny<CancellationToken>()))
+            .Callback<ActivityLog, CancellationToken>((log, _) => activityLogs.Add(log))
+            .Returns(Task.CompletedTask);
+
+        var node = BuildNodeWithChatResponses(
+            responses, debateEnabled: true, turnsPerSide: 1,
+            activityLoggerOverride: activityMock.Object);
+
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            DataOutput = new MarketAnalysis(
+                Symbol: "AAPL",
+                LastPrice: 175m,
+                VolumeChange: 1.5m,
+                Trend: "Bullish",
+                ConfidenceScore: 0.7,
+                Summary: "Mixed but leaning bull."),
+        };
+
+        await node.ExecuteAsync(state, CancellationToken.None);
+
+        var debateTurnLogs = activityLogs
+            .Where(l => l.Metadata is not null
+                && l.Metadata.TryGetValue("type", out var t)
+                && t as string == "debate-turn")
+            .ToList();
+        Assert.AreEqual(2, debateTurnLogs.Count, "Each debate turn should produce a debate-turn activity log.");
+        CollectionAssert.AreEqual(
+            new[] { "Bull", "Bear" },
+            debateTurnLogs.Select(l => l.Metadata!["role"] as string).ToArray());
+        Assert.IsTrue(debateTurnLogs.All(l => l.Metadata!.ContainsKey("fullMessage")));
+        Assert.IsTrue(debateTurnLogs.All(l => l.Metadata!.ContainsKey("turnIndex")));
+        Assert.IsTrue(debateTurnLogs.All(l => l.Metadata!["symbol"] as string == "AAPL"));
+    }
+
+    [TestMethod]
+    public async Task Debate_CancellationTokenCancelsBeforeCoordinator()
+    {
+        var responses = new Queue<string>(
+        [
+            "BULL: never consumed",
+            "BEAR: never consumed",
+            "{\"symbol\":\"AAPL\",\"action\":\"Hold\",\"quantity\":0,\"reasoning\":\".\",\"confidence\":0.0}",
+        ]);
+        var node = BuildNodeWithChatResponses(responses, debateEnabled: true, turnsPerSide: 1);
+
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            DataOutput = new MarketAnalysis(
+                Symbol: "AAPL",
+                LastPrice: 175m,
+                VolumeChange: 1.0m,
+                Trend: "Bullish",
+                ConfidenceScore: 0.7,
+                Summary: "Test."),
+        };
+
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        await Assert.ThrowsExceptionAsync<OperationCanceledException>(
+            () => node.ExecuteAsync(state, cts.Token));
+    }
+
+    // ── Test helpers ──────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Builds a <see cref="StrategyNode"/> backed by a single Moq'd
+    /// <see cref="IChatClient"/> that returns <paramref name="responses"/> in
+    /// FIFO order across all agents (bull, bear, coordinator). The mocked
+    /// <see cref="IAlpacaService"/> throws on account fetch so the prompt is
+    /// built without account context — sufficient for the debate flow.
+    /// </summary>
+    private static StrategyNode BuildNodeWithChatResponses(
+        Queue<string> responses,
+        bool debateEnabled,
+        int turnsPerSide,
+        IActivityLogger? activityLoggerOverride = null)
+    {
+        var chatMock = new Mock<IChatClient>();
+        chatMock
+            .Setup(c => c.GetResponseAsync(
+                It.IsAny<IEnumerable<ChatMessage>>(),
+                It.IsAny<ChatOptions?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<IEnumerable<ChatMessage>, ChatOptions?, CancellationToken>((_, _, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                if (responses.Count == 0)
+                    throw new InvalidOperationException("No more canned chat responses available.");
+                var text = responses.Dequeue();
+                return Task.FromResult(new ChatResponse([new ChatMessage(ChatRole.Assistant, text)]));
+            });
+
+        var alpacaMock = new Mock<IAlpacaService>();
+        alpacaMock
+            .Setup(a => a.GetAccountAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("test: no account context"));
+
+        var activity = activityLoggerOverride ?? Mock.Of<IActivityLogger>();
+        var config = Options.Create(new StrategyHoundConfig
+        {
+            DebateEnabled = debateEnabled,
+            DebateTurnsPerSide = turnsPerSide,
+        });
+
+        return new StrategyNode(chatMock.Object, alpacaMock.Object, activity, config, loggerFactory: null);
     }
 }

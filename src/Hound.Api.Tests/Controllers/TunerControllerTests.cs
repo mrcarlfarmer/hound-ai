@@ -176,6 +176,11 @@ public class TunerControllerTests
 
         try
         {
+            WriteAllowlist(tempDir, new Dictionary<string, List<string>>
+            {
+                ["StrategyHound"] = new() { "Temperature" }
+            });
+
             var configuration = new ConfigurationBuilder()
                 .AddInMemoryCollection(new Dictionary<string, string?>
                 {
@@ -190,7 +195,7 @@ public class TunerControllerTests
                 Id = "TunerExperiments/1",
                 HoundName = "StrategyHound",
                 Status = TunerExperimentStatus.PendingReview,
-                ConfigAfter = "{\"Model\":\"gemma3\",\"Temperature\":0.05}"
+                ConfigAfter = "{\"Temperature\":0.05}"
             };
             _mockRepo
                 .Setup(r => r.GetExperimentAsync("TunerExperiments/1", default))
@@ -213,6 +218,139 @@ public class TunerControllerTests
         {
             Directory.Delete(tempDir, true);
         }
+    }
+
+    [TestMethod]
+    public async Task ApplyExperiment_ReturnsBadRequest_WhenFieldOutsideAllowlist()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            WriteAllowlist(tempDir, new Dictionary<string, List<string>>
+            {
+                ["StrategyHound"] = new() { "Temperature", "DebateTurnsPerSide" }
+            });
+
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Tuner:ConfigDirectory"] = tempDir
+                })
+                .Build();
+            var controller = new TunerController(_mockRepo.Object, _tunerState, configuration);
+
+            var experiment = new TunerExperiment
+            {
+                Id = "TunerExperiments/9",
+                HoundName = "StrategyHound",
+                Status = TunerExperimentStatus.PendingReview,
+                // Model is NOT allowlisted; must be rejected.
+                ConfigAfter = "{\"Temperature\":0.05,\"Model\":\"evil-model\"}"
+            };
+            _mockRepo
+                .Setup(r => r.GetExperimentAsync("TunerExperiments/9", default))
+                .ReturnsAsync(experiment);
+
+            var result = await controller.ApplyExperiment("TunerExperiments/9", cancellationToken: default);
+
+            Assert.IsInstanceOfType<BadRequestObjectResult>(result);
+            Assert.IsFalse(File.Exists(Path.Combine(tempDir, "StrategyHound.json")),
+                "Disallowed config must NOT be written to disk.");
+            _mockRepo.Verify(
+                r => r.UpdateStatusAsync(It.IsAny<string>(), It.IsAny<TunerExperimentStatus>(), It.IsAny<CancellationToken>()),
+                Times.Never);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task ApplyExperiment_ReturnsBadRequest_WhenNoAllowlistConfigured()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            // Intentionally omit TunerConstraints.json → fail-closed.
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Tuner:ConfigDirectory"] = tempDir
+                })
+                .Build();
+            var controller = new TunerController(_mockRepo.Object, _tunerState, configuration);
+
+            var experiment = new TunerExperiment
+            {
+                Id = "TunerExperiments/10",
+                HoundName = "StrategyHound",
+                Status = TunerExperimentStatus.PendingReview,
+                ConfigAfter = "{\"Temperature\":0.05}"
+            };
+            _mockRepo
+                .Setup(r => r.GetExperimentAsync("TunerExperiments/10", default))
+                .ReturnsAsync(experiment);
+
+            var result = await controller.ApplyExperiment("TunerExperiments/10", cancellationToken: default);
+
+            Assert.IsInstanceOfType<BadRequestObjectResult>(result);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    [TestMethod]
+    public async Task ApplyExperiment_ReturnsBadRequest_WhenConfigAfterIsInvalidJson()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName());
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            WriteAllowlist(tempDir, new Dictionary<string, List<string>>
+            {
+                ["StrategyHound"] = new() { "Temperature" }
+            });
+            var configuration = new ConfigurationBuilder()
+                .AddInMemoryCollection(new Dictionary<string, string?>
+                {
+                    ["Tuner:ConfigDirectory"] = tempDir
+                })
+                .Build();
+            var controller = new TunerController(_mockRepo.Object, _tunerState, configuration);
+
+            var experiment = new TunerExperiment
+            {
+                Id = "TunerExperiments/11",
+                HoundName = "StrategyHound",
+                Status = TunerExperimentStatus.PendingReview,
+                ConfigAfter = "{not valid json"
+            };
+            _mockRepo
+                .Setup(r => r.GetExperimentAsync("TunerExperiments/11", default))
+                .ReturnsAsync(experiment);
+
+            var result = await controller.ApplyExperiment("TunerExperiments/11", cancellationToken: default);
+
+            Assert.IsInstanceOfType<BadRequestObjectResult>(result);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, true);
+        }
+    }
+
+    private static void WriteAllowlist(string dir, Dictionary<string, List<string>> allowed)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(new { AllowedModifications = allowed });
+        File.WriteAllText(Path.Combine(dir, "TunerConstraints.json"), json);
     }
 
     // ── RejectExperiment ──────────────────────────────────────────────────────

@@ -234,4 +234,34 @@ describe('GraphRunsComponent', () => {
     expect(c.displayStatus(buyRun.nodes[2])).toBe('Pending');
     expect(c.displayStatus(buyRun.nodes[3])).toBe('Pending');
   });
+
+  // ── Strategy Debate panel ──────────────────────────────────────────────────
+
+  it('should hide the debate panel when the run has no strategyDebate', () => {
+    const { fixture } = createComponent([mockRun]);
+    fixture.detectChanges();
+    const panel = fixture.nativeElement.querySelector('.debate-panel');
+    expect(panel).toBeNull();
+  });
+
+  it('should render bull and bear turns from strategyDebate on the selected run', () => {
+    const debateRun: GraphRun = {
+      ...mockRun,
+      strategyDebate: [
+        { role: 'Bull', index: 0, message: 'Momentum is strong', timestamp: '2026-05-10T12:00:01Z' },
+        { role: 'Bear', index: 1, message: 'Resistance overhead', timestamp: '2026-05-10T12:00:02Z' },
+        { role: 'Bull', index: 2, message: 'Volume confirms breakout', timestamp: '2026-05-10T12:00:03Z' },
+      ],
+    };
+    const { fixture } = createComponent([debateRun]);
+    fixture.detectChanges();
+
+    const turnEls = fixture.nativeElement.querySelectorAll('.debate-turn');
+    expect(turnEls.length).toBe(3);
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Momentum is strong');
+    expect(text).toContain('Resistance overhead');
+    expect(text).toContain('Volume confirms breakout');
+    expect(text).toMatch(/3 turn\(s\)/);
+  });
 });

@@ -91,6 +91,16 @@ public class GraphRunPublisher
             }
         }
 
+        // Preserve the most recent StrategyNode debate transcript so the
+        // dashboard can render it on the run-detail view. We copy only when
+        // the current state has a fresh debate to avoid clobbering the
+        // existing snapshot when downstream nodes (Risk, Execution) push
+        // updates that don't include a debate of their own.
+        if (state.StrategyDebate is { Count: > 0 } debate)
+        {
+            run.StrategyDebate = [.. debate];
+        }
+
         await session.StoreAsync(run, docId, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
 

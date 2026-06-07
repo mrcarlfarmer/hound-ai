@@ -3,8 +3,17 @@ import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { ApiService } from '../../services/api.service';
 import { SignalrService } from '../../services/signalr.service';
-import { Pack, HoundInfo, ActivityLog } from '../../models';
+import { Pack, HoundInfo, ActivityLog, DebateTurnMetadata, isDebateTurn } from '../../models';
 import { Subscription } from 'rxjs';
+
+interface DebateTurnView {
+  id: string;
+  role: 'Bull' | 'Bear';
+  turnIndex: number;
+  symbol: string;
+  message: string;
+  timestamp: string;
+}
 
 @Component({
   selector: 'app-pack-detail',
@@ -25,6 +34,35 @@ export class PackDetailComponent implements OnInit, OnDestroy {
     private signalr: SignalrService,
     private cdr: ChangeDetectorRef,
   ) {}
+
+  /**
+   * Debate turns extracted from the activity feed, ordered oldest → newest
+   * within each symbol. Used by the "Strategy Debate" panel to render the
+   * bull-vs-bear conversation that preceded the most recent decision.
+   */
+  get debateTurns(): DebateTurnView[] {
+    const turns: DebateTurnView[] = [];
+    for (const log of this.activities) {
+      if (!isDebateTurn(log)) continue;
+      const meta = log.metadata as DebateTurnMetadata;
+      turns.push({
+        id: log.id,
+        role: meta.role,
+        turnIndex: meta.turnIndex,
+        symbol: meta.symbol,
+        message: meta.fullMessage,
+        timestamp: log.timestamp,
+      });
+    }
+    // Newest symbol's debate first; within a symbol, oldest turn first.
+    turns.sort((a, b) => {
+      if (a.symbol !== b.symbol) {
+        return b.timestamp.localeCompare(a.timestamp);
+      }
+      return a.turnIndex - b.turnIndex;
+    });
+    return turns;
+  }
 
   ngOnInit(): void {
     const packId = this.route.snapshot.paramMap.get('id')!;

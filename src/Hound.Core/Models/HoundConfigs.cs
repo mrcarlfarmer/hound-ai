@@ -22,7 +22,8 @@ public class AnalysisHoundConfig : BaseHoundConfig
 }
 
 /// <summary>
-/// Configuration for StrategyNode — indicators, timeframes, and entry/exit thresholds.
+/// Configuration for StrategyNode — indicators, timeframes, entry/exit thresholds,
+/// and bull-vs-bear debate parameters.
 /// </summary>
 public class StrategyHoundConfig : BaseHoundConfig
 {
@@ -32,6 +33,20 @@ public class StrategyHoundConfig : BaseHoundConfig
     public double BearishConfidenceThreshold { get; set; } = 0.7;
     public double EntryThreshold { get; set; } = 0.7;
     public double ExitThreshold { get; set; } = 0.6;
+
+    /// <summary>
+    /// When <c>true</c>, StrategyNode runs a bull-vs-bear MAF group-chat debate
+    /// before the coordinator agent produces the final <see cref="TradingDecision"/>.
+    /// When <c>false</c>, StrategyNode falls back to its single-agent legacy path.
+    /// </summary>
+    public bool DebateEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Number of debate turns each side (bull, bear) takes. Total debate messages
+    /// = <c>DebateTurnsPerSide * 2</c>. Keep small to bound latency; 2 is a good
+    /// balance between rebuttal depth and Ollama wall-clock budget.
+    /// </summary>
+    public int DebateTurnsPerSide { get; set; } = 2;
 }
 
 /// <summary>
@@ -61,4 +76,29 @@ public class ExecutionHoundConfig : BaseHoundConfig
 /// </summary>
 public class MonitorNodeConfig : BaseHoundConfig
 {
+}
+
+/// <summary>
+/// Allowlist describing which JSON fields the Tuner is permitted to modify on
+/// each hound's config. Used by <c>TunerController.ApplyExperiment</c> to
+/// reject experiments that would mutate fields outside the allowlist (e.g.,
+/// silently flipping <c>StrategyHound.DebateEnabled</c> to <c>false</c>).
+/// Loaded from <c>Config/TunerConstraints.json</c>.
+/// </summary>
+public class TunerConstraints
+{
+    /// <summary>
+    /// Map of hound name (e.g., <c>"StrategyHound"</c>) to the list of field
+    /// names the Tuner may mutate on that hound's config document.
+    /// </summary>
+    public Dictionary<string, List<string>> AllowedModifications { get; set; } = new();
+
+    /// <summary>
+    /// Returns the allowlisted fields for <paramref name="houndName"/>, or an
+    /// empty list when no allowlist is registered (meaning: nothing tunable).
+    /// </summary>
+    public IReadOnlyList<string> GetAllowedFields(string houndName) =>
+        AllowedModifications.TryGetValue(houndName, out var fields)
+            ? fields
+            : Array.Empty<string>();
 }

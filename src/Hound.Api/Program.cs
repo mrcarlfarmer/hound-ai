@@ -67,6 +67,7 @@ builder.Services.AddScoped<IActivityLogger, RavenActivityService>();
 builder.Services.AddScoped<ITunerExperimentRepository, RavenTunerExperimentRepository>();
 builder.Services.AddScoped<ITradeRepository, RavenTradeRepository>();
 builder.Services.AddScoped<IGraphRunRepository, RavenGraphRunRepository>();
+builder.Services.AddScoped<DebateBackfillService>();
 builder.Services.AddSingleton<TunerStateService>();
 builder.Services.AddSingleton<IAlpacaPortfolioService, AlpacaPortfolioService>();
 builder.Services.AddScoped<IAlpacaSyncService, AlpacaSyncService>();

@@ -8,5 +8,7 @@
   "BullishConfidenceThreshold": 0.7,
   "BearishConfidenceThreshold": 0.7,
   "EntryThreshold": 0.7,
-  "ExitThreshold": 0.6
+  "ExitThreshold": 0.6,
+  "DebateEnabled": true,
+  "DebateTurnsPerSide": 2
 }

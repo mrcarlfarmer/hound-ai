@@ -114,4 +114,61 @@ describe('PackDetailComponent', () => {
     fixture.destroy();
     expect(mockSignalr.disconnect).toHaveBeenCalled();
   });
+
+  // ── Strategy Debate panel ───────────────────────────────────────────────────
+
+  function debateTurn(role: 'Bull' | 'Bear', turnIndex: number, message: string, symbol = 'AAPL', timestamp = '2024-01-01T00:00:00Z'): ActivityLog {
+    return {
+      id: `dbg-${role}-${turnIndex}`,
+      packId: 'pack1',
+      houndId: 'strategy-node',
+      houndName: 'StrategyNode',
+      message: `[${role.toUpperCase()}] ${message}`,
+      severity: 'Info',
+      timestamp,
+      metadata: {
+        type: 'debate-turn',
+        role,
+        turnIndex,
+        symbol,
+        fullMessage: message,
+      },
+    };
+  }
+
+  it('should hide the debate panel and show empty state when no debate turns are present', () => {
+    const { fixture } = createComponent();
+
+    expect(fixture.componentInstance.debateTurns).toHaveLength(0);
+    const emptyEl = fixture.nativeElement.querySelector('.debate-empty');
+    expect(emptyEl).toBeTruthy();
+  });
+
+  it('should expose debate turns in chronological order (oldest turnIndex first)', () => {
+    const { fixture } = createComponent();
+    // SignalR pushes turns in arrival order — bull first, then bear. The
+    // component prepends, so the latest arrival is at index 0 of `activities`.
+    activitySubject.next(debateTurn('Bull', 0, 'Momentum is strong'));
+    activitySubject.next(debateTurn('Bear', 1, 'Resistance overhead'));
+    activitySubject.next(debateTurn('Bull', 2, 'Volume confirms breakout'));
+
+    const turns = fixture.componentInstance.debateTurns;
+    expect(turns).toHaveLength(3);
+    expect(turns.map(t => t.role)).toEqual(['Bull', 'Bear', 'Bull']);
+    expect(turns.map(t => t.turnIndex)).toEqual([0, 1, 2]);
+    expect(turns[0].message).toBe('Momentum is strong');
+  });
+
+  it('should ignore non-debate activity logs when building the debate transcript', () => {
+    const { fixture } = createComponent();
+    const regular: ActivityLog = {
+      id: 'a-normal', packId: 'pack1', houndId: 'h1', houndName: 'AnalysisHound',
+      message: 'Analysis complete', severity: 'Success', timestamp: '2024-01-01T00:00:00Z',
+    };
+    activitySubject.next(regular);
+    activitySubject.next(debateTurn('Bull', 0, 'Hello'));
+
+    expect(fixture.componentInstance.debateTurns).toHaveLength(1);
+    expect(fixture.componentInstance.debateTurns[0].role).toBe('Bull');
+  });
 });

@@ -25,6 +25,8 @@ builder.Services.Configure<NewsSettings>(
 
 builder.Services.Configure<SentimentSettings>(
     builder.Configuration.GetSection(SentimentSettings.SectionName));
+builder.Services.Configure<StrategyHoundConfig>(
+    builder.Configuration.GetSection("Strategy"));
 // ── RavenDB ──────────────────────────────────────────────────────────────────
 var ravenUrl = builder.Configuration["RavenDb:Url"] ?? "http://ravendb:8080";
 builder.Services.AddSingleton<IDocumentStore>(_ =>
@@ -166,6 +168,7 @@ builder.Services.AddSingleton<StrategyNode>(sp => new StrategyNode(
     sp.GetRequiredKeyedService<IChatClient>("strategy"),
     sp.GetRequiredService<IAlpacaService>(),
     sp.GetRequiredService<IActivityLogger>(),
+    sp.GetService<Microsoft.Extensions.Options.IOptions<StrategyHoundConfig>>(),
     sp.GetService<ILoggerFactory>()));
 
 builder.Services.AddSingleton<RiskNode>(sp => new RiskNode(
