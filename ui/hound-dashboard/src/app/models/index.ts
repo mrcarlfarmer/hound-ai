@@ -25,6 +25,50 @@ export interface ActivityLog {
   metadata?: Record<string, unknown>;
 }
 
+/**
+ * Strongly-typed view of an ActivityLog whose metadata.type === 'debate-turn'.
+ * Emitted once per turn by StrategyNode when the bull-vs-bear debate is enabled.
+ * Use {@link isDebateTurn} to narrow an ActivityLog before reading these fields.
+ */
+export interface DebateTurnMetadata {
+  type: 'debate-turn';
+  role: 'Bull' | 'Bear';
+  turnIndex: number;
+  symbol: string;
+  fullMessage: string;
+}
+
+/** Type guard: is this ActivityLog a StrategyNode debate turn? */
+export function isDebateTurn(log: ActivityLog): log is ActivityLog & { metadata: DebateTurnMetadata } {
+  return log.metadata?.['type'] === 'debate-turn'
+    && typeof log.metadata?.['role'] === 'string'
+    && typeof log.metadata?.['fullMessage'] === 'string';
+}
+
+/**
+ * Strongly-typed view of an ActivityLog whose metadata.type === 'strategy-decision'.
+ * Emitted once by StrategyNode at the end of each cycle, carrying the coordinator's
+ * final verdict so the dashboard can render it without re-fetching graph-run state.
+ * Use {@link isStrategyDecision} to narrow an ActivityLog before reading these fields.
+ */
+export interface StrategyDecisionMetadata {
+  type: 'strategy-decision';
+  symbol: string;
+  runId: string;
+  action: 'Buy' | 'Sell' | 'Hold';
+  quantity: number;
+  confidence: number;
+  debateEnabled: boolean;
+  debateTurnCount: number;
+}
+
+/** Type guard: is this ActivityLog a StrategyNode coordinator decision? */
+export function isStrategyDecision(log: ActivityLog): log is ActivityLog & { metadata: StrategyDecisionMetadata } {
+  return log.metadata?.['type'] === 'strategy-decision'
+    && typeof log.metadata?.['symbol'] === 'string'
+    && typeof log.metadata?.['action'] === 'string';
+}
+
 export interface ActivityFilter {
   pack?: string;
   hound?: string;
@@ -130,6 +174,20 @@ export interface GraphRun {
   approvalNotes?: string;
   nodes: NodeSnapshot[];
   refinements?: RefinementSnapshot[];
+  /**
+   * Transcript of the bull-vs-bear debate that ran inside StrategyNode for
+   * this run (when DebateEnabled). Persisted on the GraphRun document and
+   * surfaced by the /graph route's Strategy panel.
+   */
+  strategyDebate?: DebateTurnSnapshot[];
+}
+
+/** Single turn of a StrategyNode debate, persisted on a GraphRun. */
+export interface DebateTurnSnapshot {
+  role: 'Bull' | 'Bear';
+  index: number;
+  message: string;
+  timestamp: string;
 }
 
 export interface RefinementSnapshot {

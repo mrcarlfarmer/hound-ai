@@ -32,7 +32,26 @@ public class GraphRun
 
     public List<NodeSnapshot> Nodes { get; set; } = [];
     public List<RefinementSnapshot> Refinements { get; set; } = [];
+
+    /// <summary>
+    /// Transcript of the bull-vs-bear debate run inside <c>StrategyNode</c>
+    /// (when <c>StrategyHoundConfig.DebateEnabled</c> is true). Captured in
+    /// the order the debaters spoke and persisted so the dashboard can show
+    /// the reasoning that led to the final <c>TradingDecision</c>.
+    /// </summary>
+    public List<DebateTurn>? StrategyDebate { get; set; }
 }
+
+/// <summary>
+/// One turn of the bull-vs-bear debate run inside <c>StrategyNode</c>.
+/// Captured in the order the debaters spoke; <see cref="Index"/> is the
+/// zero-based position within the debate (0 = first speaker = Bull).
+/// </summary>
+public record DebateTurn(
+    string Role,
+    int Index,
+    string Message,
+    DateTime Timestamp);
 
 /// <summary>
 /// Snapshot of a single node's state within a graph run.

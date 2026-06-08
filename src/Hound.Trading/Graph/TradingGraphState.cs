@@ -18,6 +18,7 @@ public record TradingGraphState
     // ── Node output slots ────────────────────────────────────────────────────
     public MarketAnalysis? DataOutput { get; init; }
     public TradingDecision? StrategyOutput { get; init; }
+    public IReadOnlyList<DebateTurn>? StrategyDebate { get; init; }
     public RiskAssessment? RiskOutput { get; init; }
     public ExecutionResult? ExecutionOutput { get; init; }
     public MonitorResult? MonitorOutput { get; init; }

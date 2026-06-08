@@ -50,6 +50,10 @@ public record TradingDecision(
     decimal? EstimatedCost = null,
     decimal? TrailPercent = null);
 
+// DebateTurn moved to Hound.Core.Models so the persisted GraphRun snapshot can
+// reference it without taking a dependency on Hound.Trading. The type alias
+// below is no longer needed — callers import Hound.Core.Models directly.
+
 public enum RiskVerdict { Approved, Rejected, Modified }
 
 public record RiskAssessment(

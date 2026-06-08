@@ -1,0 +1,28 @@
+{
+  "scenarioName": "Debate Bull Wins on Strong Momentum",
+  "description": "With strongly bullish signals, the bull-vs-bear debate should produce a transcript that the coordinator weighs in favour of a Buy decision.",
+  "houndName": "StrategyNode",
+  "category": "debate",
+  "input": {
+    "userMessage": "Market analysis for AAPL shows strong bullish momentum with high confidence.",
+    "context": {
+      "symbol": "AAPL",
+      "lastPrice": 175.50,
+      "volumeChange": 1.80,
+      "trend": "Bullish",
+      "confidenceScore": 0.90,
+      "summary": "Multi-week uptrend confirmed by rising volume, no resistance overhead, supportive macro."
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Buy"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with symbol, action, quantity, reasoning, confidence, trailPercent",
+    "decisionCriteria": "After the bull-vs-bear debate, the coordinator must emit a Buy with confidence >= 0.7."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains the action 'Buy'."
+  }
+}
