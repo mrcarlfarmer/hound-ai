@@ -45,6 +45,30 @@ export function isDebateTurn(log: ActivityLog): log is ActivityLog & { metadata:
     && typeof log.metadata?.['fullMessage'] === 'string';
 }
 
+/**
+ * Strongly-typed view of an ActivityLog whose metadata.type === 'strategy-decision'.
+ * Emitted once by StrategyNode at the end of each cycle, carrying the coordinator's
+ * final verdict so the dashboard can render it without re-fetching graph-run state.
+ * Use {@link isStrategyDecision} to narrow an ActivityLog before reading these fields.
+ */
+export interface StrategyDecisionMetadata {
+  type: 'strategy-decision';
+  symbol: string;
+  runId: string;
+  action: 'Buy' | 'Sell' | 'Hold';
+  quantity: number;
+  confidence: number;
+  debateEnabled: boolean;
+  debateTurnCount: number;
+}
+
+/** Type guard: is this ActivityLog a StrategyNode coordinator decision? */
+export function isStrategyDecision(log: ActivityLog): log is ActivityLog & { metadata: StrategyDecisionMetadata } {
+  return log.metadata?.['type'] === 'strategy-decision'
+    && typeof log.metadata?.['symbol'] === 'string'
+    && typeof log.metadata?.['action'] === 'string';
+}
+
 export interface ActivityFilter {
   pack?: string;
   hound?: string;

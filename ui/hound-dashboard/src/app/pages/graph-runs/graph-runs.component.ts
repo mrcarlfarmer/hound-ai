@@ -595,6 +595,20 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     }
   }
 
+  /**
+   * Background/border styling for the coordinator-verdict banner that closes
+   * the strategy-debate panel. Mirrors `actionClass` colours but uses a
+   * stronger border and softer fill so the banner reads as a conclusion to
+   * the bull-vs-bear transcript above it.
+   */
+  verdictBannerClass(action?: string): string {
+    switch (action?.toLowerCase()) {
+      case 'buy': return 'bg-green-900/20 border-green-600 text-green-100';
+      case 'sell': return 'bg-red-900/20 border-red-600 text-red-100';
+      default: return 'bg-yellow-900/20 border-yellow-600 text-yellow-100';
+    }
+  }
+
   private readonly _downstreamNodes = new Set(['risk-node', 'execution-node', 'monitor-node']);
 
   isNoAction(node: NodeSnapshot): boolean {

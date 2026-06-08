@@ -513,6 +513,32 @@
                             </div>
                           }
                         </div>
+
+                        <!-- ── Coordinator verdict — closes the debate ── -->
+                        <div class="mt-4 rounded-lg border-2 p-3"
+                             [ngClass]="verdictBannerClass(s.action)">
+                          <div class="flex items-center gap-2 mb-2">
+                            <span class="text-lg" aria-hidden="true">⚖️</span>
+                            <span class="text-xs font-semibold uppercase tracking-wider opacity-80">
+                              Coordinator Verdict
+                            </span>
+                          </div>
+                          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <span class="inline-flex items-center rounded-md border px-3 py-1 text-base font-bold uppercase"
+                                  [ngClass]="actionClass(s.action)">
+                              {{ s.action ?? '—' }}
+                            </span>
+                            @if (s.symbol) {
+                              <span class="font-mono text-base font-semibold">
+                                {{ s.quantity ?? 0 }} × {{ s.symbol }}
+                              </span>
+                            }
+                            <span class="flex items-center gap-2 text-sm">
+                              <span class="text-muted-foreground">Confidence</span>
+                              <span class="font-mono font-semibold">{{ confidencePercent(s.confidence) }}</span>
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     }
 

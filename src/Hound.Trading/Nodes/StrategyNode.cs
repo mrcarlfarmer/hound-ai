@@ -300,13 +300,20 @@ public class StrategyNode : INode
             HoundName = "StrategyNode",
             Message = $"Decision for {state.Symbol}: {decision.Action} (confidence {decision.Confidence:P0})",
             Severity = ActivitySeverity.Success,
-            Metadata = debateTurns.Count > 0
-                ? new Dictionary<string, object>
-                {
-                    ["debateTurnCount"] = debateTurns.Count,
-                    ["debateEnabled"] = true,
-                }
-                : null,
+            // Structured fields let the dashboard render a "Coordinator
+            // Verdict" banner at the foot of the live debate panel without
+            // having to regex-parse the human-readable message above.
+            Metadata = new Dictionary<string, object>
+            {
+                ["type"] = "strategy-decision",
+                ["symbol"] = state.Symbol,
+                ["runId"] = state.RunId,
+                ["action"] = decision.Action.ToString(),
+                ["quantity"] = decision.Quantity,
+                ["confidence"] = decision.Confidence,
+                ["debateEnabled"] = debateTurns.Count > 0,
+                ["debateTurnCount"] = debateTurns.Count,
+            },
         }, cancellationToken);
 
         return state with
