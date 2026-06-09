@@ -12,7 +12,19 @@ using Hound.Trading.Services.News;
 using Microsoft.Extensions.AI;
 using Raven.Client.Documents;
 
-var builder = Host.CreateApplicationBuilder(args);
+var builder = WebApplication.CreateBuilder(args);
+
+// ── Web API surface ──────────────────────────────────────────────────────────
+// Exposes a small intra-cluster HTTP API so Hound.Api can proxy read-only
+// market data (bars, etc.) without holding its own Alpaca credentials. Not
+// intended for external consumption — only reachable on the `hound-net`
+// Docker bridge.
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+    });
 
 // ── Configuration ────────────────────────────────────────────────────────────
 builder.Services.Configure<AlpacaSettings>(
@@ -220,5 +232,6 @@ builder.Services.AddSingleton<GraphRunPublisher>(sp =>
 builder.Services.AddSingleton<TradingGraph>();
 builder.Services.AddHostedService<TradingWorker>();
 
-var host = builder.Build();
-host.Run();
+var app = builder.Build();
+app.MapControllers();
+app.Run();

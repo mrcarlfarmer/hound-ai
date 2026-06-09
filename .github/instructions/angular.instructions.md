@@ -61,7 +61,16 @@ beforeEach(async () => {
 - Import Helm directives from `@spartan-ng/helm/<component>` (e.g., `@spartan-ng/helm/button`)
 - Use existing primitives before creating custom components
 - `HlmToaster` registered in root `AppComponent` for toast notifications
-
+## Adding npm packages (dev container gotcha)
+- The `hound-ui` dev container masks `/app/node_modules` with an anonymous Docker volume that is NOT re-synced when `package.json` changes on the host. Symptom: Angular compiles silently without the new dep (`TS2307: Cannot find module …`) and ships a stale bundle missing whichever components imported it.
+- After ANY `package.json` change (add, remove, version bump), run:
+  ```bash
+  docker compose -f docker-compose.yml -f docker-compose.dev.yml restart hound-ui
+  ```
+  The entrypoint re-runs `npm install` against the new `package.json`.
+- If the restart doesn't pick up the change, recreate the volume: `docker compose … down hound-ui -v` then `up -d hound-ui`.
+- Always hard-reload the browser (`Ctrl + Shift + R`) afterwards.
+- See `.github/instructions/docker.instructions.md` for the matching infra note.
 ## Styling
 - SCSS (configured in `angular.json`)
 - 2-space indentation

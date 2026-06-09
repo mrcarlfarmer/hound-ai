@@ -180,6 +180,12 @@ export interface GraphRun {
    * surfaced by the /graph route's Strategy panel.
    */
   strategyDebate?: DebateTurnSnapshot[];
+  /**
+   * OHLCV bars captured by AnalystsTeamNode during this run, persisted so
+   * the Chart tab can replay the exact data the analysts saw — even days
+   * later when live broker data has moved on.
+   */
+  chartSnapshot?: ChartSnapshot;
 }
 
 /** Single turn of a StrategyNode debate, persisted on a GraphRun. */
@@ -254,3 +260,44 @@ export interface AlpacaSyncResult {
   completedAt: string;
   changedTradeIds: string[];
 }
+
+// ── Chart models ─────────────────────────────────────────────────────────────
+
+/** Supported bar resolutions exposed by the trading-pack bars endpoint. */
+export type ChartTimeframe = '1Min' | '5Min' | '15Min' | '1Hour' | '1Day' | '1Week' | '1Month';
+
+/** Single OHLCV bar, as returned by `GET /api/charts/{symbol}`. */
+export interface BarPoint {
+  /** ISO-8601 UTC timestamp of the bar's open. */
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+/** Envelope returned by `GET /api/charts/{symbol}`. */
+export interface BarsResponse {
+  symbol: string;
+  timeframe: ChartTimeframe;
+  from: string;
+  to: string;
+  bars: BarPoint[];
+}
+
+/**
+ * Persisted OHLCV snapshot captured during AnalystsTeamNode's pre-flight.
+ * Lives on a GraphRun document so the Chart tab can replay the exact bars
+ * the analysts saw at run time.
+ */
+export interface ChartSnapshot {
+  symbol: string;
+  timeframe: ChartTimeframe;
+  from: string;
+  to: string;
+  /** ISO-8601 UTC timestamp recording when the snapshot was taken. */
+  capturedAt: string;
+  bars: BarPoint[];
+}
+

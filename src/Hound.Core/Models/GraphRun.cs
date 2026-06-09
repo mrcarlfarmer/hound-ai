@@ -40,7 +40,37 @@ public class GraphRun
     /// the reasoning that led to the final <c>TradingDecision</c>.
     /// </summary>
     public List<DebateTurn>? StrategyDebate { get; set; }
+
+    /// <summary>
+    /// OHLCV bar snapshot captured during the analysts-team pre-flight step.
+    /// Persisted so the dashboard's Chart tab can replay the exact bar data
+    /// the analysts saw, even days/weeks after the run completed and Alpaca
+    /// has filled in newer bars.
+    /// </summary>
+    public ChartSnapshot? ChartSnapshot { get; set; }
 }
+
+/// <summary>
+/// OHLCV chart data captured at a specific point in time and persisted on a
+/// <see cref="GraphRun"/>. Schema mirrors the live <c>/api/charts/{symbol}</c>
+/// response so the dashboard can render persisted and live data identically.
+/// </summary>
+public record ChartSnapshot(
+    string Symbol,
+    string Timeframe,
+    DateTime From,
+    DateTime To,
+    DateTime CapturedAt,
+    IReadOnlyList<ChartBar> Bars);
+
+/// <summary>Single OHLCV bar stored inside a <see cref="ChartSnapshot"/>.</summary>
+public record ChartBar(
+    DateTime Time,
+    decimal Open,
+    decimal High,
+    decimal Low,
+    decimal Close,
+    decimal Volume);
 
 /// <summary>
 /// One turn of the bull-vs-bear debate run inside <c>StrategyNode</c>.

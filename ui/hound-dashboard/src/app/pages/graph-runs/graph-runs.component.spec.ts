@@ -29,6 +29,16 @@ describe('GraphRunsComponent', () => {
       getRuns: vi.fn().mockReturnValue(of(runs)),
       getRun: vi.fn().mockReturnValue(of(runs[0])),
       getRunRequests: vi.fn().mockReturnValue(of([])),
+      // ChartPanelComponent (embedded in the analysts tab) calls getBars
+      // during AfterViewInit. Return an empty bar set so tests don't blow
+      // up with "getBars is not a function".
+      getBars: vi.fn().mockReturnValue(of({
+        symbol: 'AAPL',
+        timeframe: '1Day',
+        from: new Date().toISOString(),
+        to: new Date().toISOString(),
+        bars: [],
+      })),
     };
     const mockSignalr = {
       connect: vi.fn(),

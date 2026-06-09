@@ -1,4 +1,5 @@
 using Alpaca.Markets;
+using Hound.Core.Models;
 using Hound.Trading.AlpacaClient;
 
 namespace Hound.Trading.Nodes.Analysts;
@@ -26,15 +27,27 @@ public static class PreflightMetricsCalculator
         decimal? LastPrice,
         decimal? VolumeChange,
         decimal? Atr14,
-        KeyLevels? KeyLevels)
+        KeyLevels? KeyLevels,
+        IReadOnlyList<ChartBar>? Bars = null,
+        DateTime? BarsFrom = null,
+        DateTime? BarsTo = null)
     {
         public static readonly PreflightMetrics Empty = new(null, null, null, null);
     }
 
     /// <summary>
+    /// Daily-bar lookback used by <see cref="ComputeAsync"/>. Sized to match
+    /// the dashboard's default 90-day chart window so the persisted
+    /// <see cref="ChartSnapshot"/> covers the full default view without a
+    /// second Alpaca round-trip.
+    /// </summary>
+    public const int LookbackDays = 90;
+
+    /// <summary>
     /// Deterministically derives last price, relative volume change, ATR(14),
     /// and key support/resistance levels from Alpaca daily bars. Returns an
-    /// all-null result if data is unavailable.
+    /// all-null result if data is unavailable. Also returns the full OHLCV
+    /// bars so callers can persist them for the dashboard's Chart tab.
     /// </summary>
     public static async Task<PreflightMetrics> ComputeAsync(
         IAlpacaService alpacaService, string symbol, CancellationToken cancellationToken)
@@ -42,7 +55,7 @@ public static class PreflightMetricsCalculator
         try
         {
             var to = DateTime.UtcNow.Date;
-            var from = to.AddDays(-45);
+            var from = to.AddDays(-LookbackDays);
             var bars = await alpacaService.GetBarsAsync(symbol, from, to, BarTimeFrame.Day, cancellationToken);
             if (bars.Count == 0)
                 return PreflightMetrics.Empty;
@@ -50,6 +63,14 @@ public static class PreflightMetricsCalculator
             var ordered = bars
                 .OrderBy(b => b.TimeUtc)
                 .Select(b => new BarSnapshot(b.High, b.Low, b.Close, b.Volume, b.TimeUtc))
+                .ToList();
+
+            // Full OHLCV captured separately because BarSnapshot intentionally
+            // omits Open (only used by the static technical helpers). Persisted
+            // on the GraphRun so reviewers can rebuild the analysts' chart.
+            var chartBars = bars
+                .OrderBy(b => b.TimeUtc)
+                .Select(b => new ChartBar(b.TimeUtc, b.Open, b.High, b.Low, b.Close, b.Volume))
                 .ToList();
 
             var lastBar = ordered[^1];
@@ -70,7 +91,7 @@ public static class PreflightMetricsCalculator
             var atr14 = CalculateAtr14(ordered);
             var keyLevels = CalculateKeyLevels(ordered, lastPrice);
 
-            return new PreflightMetrics(lastPrice, volumeChange, atr14, keyLevels);
+            return new PreflightMetrics(lastPrice, volumeChange, atr14, keyLevels, chartBars, from, to);
         }
         catch
         {

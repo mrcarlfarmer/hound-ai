@@ -139,6 +139,23 @@ public class RiskNode : INode
             assessment = new RiskAssessment(RiskVerdict.Rejected, decision, json);
         }
 
+        // The LLM sometimes returns `"reasoning":""` (or omits the field
+        // entirely), which leaves the dashboard panel with a verdict and no
+        // explanation. Fall back to a deterministic message derived from the
+        // pre-computed metrics so reviewers always see *why* a run was
+        // rejected / modified / approved.
+        if (string.IsNullOrWhiteSpace(assessment.Reasoning))
+        {
+            var fallback = BuildFallbackReasoning(
+                assessment.Verdict,
+                positionPct,
+                totalExposurePct,
+                decision.Quantity,
+                maxQuantityByLimit,
+                assessment.AdjustedQuantity);
+            assessment = assessment with { Reasoning = fallback };
+        }
+
         await _activityLogger.LogActivityAsync(new ActivityLog
         {
             PackId = PackId,
@@ -166,5 +183,42 @@ public class RiskNode : INode
         return $"Equity: ${account.Equity:F2}\n" +
                $"Cash: ${account.TradableCash:F2}\n" +
                $"Positions:\n{string.Join("\n", positionSummary)}";
+    }
+
+    /// <summary>
+    /// Generates a deterministic reasoning string from the same pre-computed
+    /// risk metrics the LLM saw. Used when the LLM returns no reasoning text
+    /// so the dashboard never shows a verdict without an explanation.
+    /// </summary>
+    private static string BuildFallbackReasoning(
+        RiskVerdict verdict,
+        decimal positionPct,
+        decimal totalExposurePct,
+        decimal proposedQuantity,
+        decimal maxQuantityByLimit,
+        decimal? adjustedQuantity)
+    {
+        var reasonParts = new List<string>();
+
+        if (totalExposurePct > 80m)
+            reasonParts.Add($"projected total exposure {totalExposurePct:F1}% exceeds the 80% cap");
+        if (positionPct > 20m)
+            reasonParts.Add($"proposed position {positionPct:F1}% exceeds the 20% per-position limit (max {maxQuantityByLimit} shares)");
+        if (proposedQuantity > 1000m)
+            reasonParts.Add($"proposed quantity {proposedQuantity} exceeds the 1000-share per-order cap");
+
+        return verdict switch
+        {
+            RiskVerdict.Rejected when reasonParts.Count > 0 =>
+                $"Rejected: {string.Join("; ", reasonParts)}.",
+            RiskVerdict.Rejected =>
+                $"Rejected without explanation from the model. Pre-computed metrics: position {positionPct:F1}% of equity, total exposure {totalExposurePct:F1}%.",
+            RiskVerdict.Modified when adjustedQuantity.HasValue =>
+                $"Modified to {adjustedQuantity.Value} shares: {(reasonParts.Count > 0 ? string.Join("; ", reasonParts) : $"position {positionPct:F1}% / exposure {totalExposurePct:F1}%")}.",
+            RiskVerdict.Modified =>
+                $"Modified by the model: position {positionPct:F1}% of equity, total exposure {totalExposurePct:F1}%.",
+            _ =>
+                $"Approved: position {positionPct:F1}% of equity (limit 20%), total exposure {totalExposurePct:F1}% (limit 80%), quantity {proposedQuantity} (limit 1000).",
+        };
     }
 }

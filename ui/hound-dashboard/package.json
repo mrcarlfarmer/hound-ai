@@ -26,6 +26,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "dompurify": "^3.4.5",
+    "lightweight-charts": "^5.2.0",
     "marked": "^18.0.3",
     "postcss": "^8.5.9",
     "rxjs": "~7.8.0",

@@ -107,6 +107,7 @@ services:
       - .env
     environment:
       - RavenDb__Url=http://ravendb:8080
+      - TradingPack__BaseUrl=http://trading-pack:8080
     depends_on:
       ravendb:
         condition: service_healthy

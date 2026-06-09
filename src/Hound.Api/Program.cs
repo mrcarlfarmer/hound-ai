@@ -73,6 +73,8 @@ builder.Services.AddSingleton<IAlpacaPortfolioService, AlpacaPortfolioService>()
 builder.Services.AddScoped<IAlpacaSyncService, AlpacaSyncService>();
 builder.Services.AddHostedService<AlpacaSyncBackgroundService>();
 builder.Services.AddHttpClient("health");
+builder.Services.AddHttpClient("trading-pack");
+builder.Services.AddScoped<IMarketDataClient, HttpMarketDataClient>();
 builder.Services.AddScoped<IHealthCheckService, HealthCheckService>();
 
 var app = builder.Build();

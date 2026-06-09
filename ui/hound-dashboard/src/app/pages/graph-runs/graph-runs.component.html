@@ -398,11 +398,12 @@
                     <!-- Analyst report tabs -->
                     @if (hasAnalystReports(a)) {
                       <hlm-tabs tab="market" class="block">
-                        <div hlmTabsList class="w-full grid grid-cols-4">
+                        <div hlmTabsList class="w-full grid grid-cols-5">
                           <button hlmTabsTrigger="market" class="text-xs sm:text-sm">Market</button>
                           <button hlmTabsTrigger="fundamentals" class="text-xs sm:text-sm">Fundamentals</button>
                           <button hlmTabsTrigger="news" class="text-xs sm:text-sm">News</button>
                           <button hlmTabsTrigger="sentiment" class="text-xs sm:text-sm">Sentiment</button>
+                          <button hlmTabsTrigger="chart" class="text-xs sm:text-sm">Chart</button>
                         </div>
                         <div hlmTabsContent="market" class="pt-3">
                           <div class="prose text-sm max-h-96 overflow-y-auto" [innerHTML]="renderMarkdown(a.marketReport ?? 'No market report available.')"></div>
@@ -415,6 +416,19 @@
                         </div>
                         <div hlmTabsContent="sentiment" class="pt-3">
                           <div class="prose text-sm max-h-96 overflow-y-auto" [innerHTML]="renderMarkdown(a.sentimentReport ?? 'No sentiment report available.')"></div>
+                        </div>
+                        <div hlmTabsContent="chart" class="pt-3">
+                          @if (a.symbol ?? selectedRun.symbol; as chartSymbol) {
+                            <div class="h-[480px]">
+                              <app-chart-panel
+                                [symbol]="chartSymbol"
+                                [snapshot]="selectedRun.chartSnapshot ?? null"
+                                timeframe="1Day"
+                                [days]="90"></app-chart-panel>
+                            </div>
+                          } @else {
+                            <p class="text-sm text-muted-foreground italic">No symbol available for this run.</p>
+                          }
                         </div>
                       </hlm-tabs>
                     }
@@ -595,6 +609,13 @@
                       <div class="rounded-lg bg-muted/30 border border-border p-3">
                         <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Reasoning</span>
                         <div class="prose text-sm max-h-64 overflow-y-auto" [innerHTML]="renderMarkdown(r.reasoning)"></div>
+                      </div>
+                    } @else {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Reasoning</span>
+                        <span class="text-sm italic text-muted-foreground">
+                          RiskNode returned a {{ r.verdict ?? 'verdict' }} verdict without supplying any reasoning text. Check the trading-pack logs for the raw LLM response.
+                        </span>
                       </div>
                     }
 

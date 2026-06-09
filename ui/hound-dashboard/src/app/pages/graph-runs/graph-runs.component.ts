@@ -9,6 +9,7 @@ import { ApiService } from '../../services/api.service';
 import { SignalrService } from '../../services/signalr.service';
 import { GraphRun, NodeSnapshot, NodeStatus, NodeStreamChunk, RunRequest } from '../../models';
 import { HlmTabsImports } from '@spartan-ng/helm/tabs';
+import { ChartPanelComponent } from '../../components/chart-panel/chart-panel.component';
 
 interface AnalystsOutput {
   symbol?: string;
@@ -72,7 +73,7 @@ interface MonitorOutput {
 @Component({
   selector: 'app-graph-runs',
   standalone: true,
-  imports: [CommonModule, FormsModule, ...HlmTabsImports],
+  imports: [CommonModule, FormsModule, ChartPanelComponent, ...HlmTabsImports],
   templateUrl: './graph-runs.component.html',
   styles: []
 })

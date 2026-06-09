@@ -101,6 +101,16 @@ public class GraphRunPublisher
             run.StrategyDebate = [.. debate];
         }
 
+        // Persist the chart snapshot captured by AnalystsTeamNode so the
+        // dashboard's Chart tab can replay the exact OHLCV bars the analysts
+        // saw. Same overwrite-only-when-fresh rule as the debate above:
+        // downstream nodes that don't touch ChartSnapshot keep the existing
+        // value.
+        if (state.ChartSnapshot is { Bars.Count: > 0 } snapshot)
+        {
+            run.ChartSnapshot = snapshot;
+        }
+
         await session.StoreAsync(run, docId, cancellationToken);
         await session.SaveChangesAsync(cancellationToken);
 

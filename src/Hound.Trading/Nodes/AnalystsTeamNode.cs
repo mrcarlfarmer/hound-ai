@@ -110,6 +110,11 @@ public class AnalystsTeamNode : INode
             return state with { DataOutput = noData };
         }
 
+        // Capture the preflight bars on the run state so the dashboard's
+        // Chart tab can replay exactly what the analysts saw — even weeks
+        // after the run completes and live broker data has moved on.
+        var chartSnapshot = BuildChartSnapshot(state.Symbol, preflight);
+
         var priceLine = preflight.LastPrice is decimal lp
             ? $"Current price: ${lp:F2} (authoritative — anchor all price levels to this)."
             : "Current price: unavailable.";
@@ -207,6 +212,28 @@ public class AnalystsTeamNode : INode
             Severity = ActivitySeverity.Success,
         }, cancellationToken);
 
-        return state with { DataOutput = analysis };
+        return state with { DataOutput = analysis, ChartSnapshot = chartSnapshot };
+    }
+
+    /// <summary>
+    /// Builds a <see cref="ChartSnapshot"/> from the preflight bars so the
+    /// dashboard can render the analysts' chart without re-querying Alpaca.
+    /// Returns <c>null</c> when the broker call returned no bars.
+    /// </summary>
+    private static ChartSnapshot? BuildChartSnapshot(
+        string symbol, PreflightMetricsCalculator.PreflightMetrics preflight)
+    {
+        if (preflight.Bars is not { Count: > 0 } bars
+            || preflight.BarsFrom is not DateTime from
+            || preflight.BarsTo is not DateTime to)
+            return null;
+
+        return new ChartSnapshot(
+            Symbol: symbol,
+            Timeframe: "1Day",
+            From: DateTime.SpecifyKind(from, DateTimeKind.Utc),
+            To: DateTime.SpecifyKind(to, DateTimeKind.Utc),
+            CapturedAt: DateTime.UtcNow,
+            Bars: bars);
     }
 }

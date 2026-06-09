@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest, AccountSummary, PositionInfo, AlpacaSyncResult } from '../models';
+import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest, AccountSummary, PositionInfo, AlpacaSyncResult, BarsResponse, ChartTimeframe } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -95,5 +95,17 @@ export class ApiService {
 
   closePosition(symbol: string): Observable<unknown> {
     return this.http.post(`${this.baseUrl}/api/portfolio/positions/${encodeURIComponent(symbol)}/close`, {});
+  }
+
+  /**
+   * Fetches OHLCV bars for `symbol` over the requested rolling window. The
+   * API proxies this through the trading pack so no Alpaca credentials live
+   * in the API container itself.
+   */
+  getBars(symbol: string, timeframe: ChartTimeframe = '1Day', days = 90): Observable<BarsResponse> {
+    const params = new HttpParams()
+      .set('timeframe', timeframe)
+      .set('days', days.toString());
+    return this.http.get<BarsResponse>(`${this.baseUrl}/api/charts/${encodeURIComponent(symbol)}`, { params });
   }
 }

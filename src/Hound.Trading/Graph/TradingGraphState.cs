@@ -23,6 +23,13 @@ public record TradingGraphState
     public ExecutionResult? ExecutionOutput { get; init; }
     public MonitorResult? MonitorOutput { get; init; }
 
+    /// <summary>
+    /// OHLCV bars captured during the analysts-team pre-flight step. Carried
+    /// through the graph and persisted on the <c>GraphRun</c> snapshot so the
+    /// dashboard's Chart tab can replay the exact data the analysts saw.
+    /// </summary>
+    public ChartSnapshot? ChartSnapshot { get; init; }
+
     // ── Loop counters ────────────────────────────────────────────────────────
     public int RefinementCount { get; init; }
     public int MonitorCycleCount { get; init; }

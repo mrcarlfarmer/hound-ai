@@ -1,0 +1,62 @@
+<div class="flex h-full flex-col gap-3 rounded-lg border border-border bg-card p-4">
+  <header class="flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-baseline gap-3">
+      <h3 class="text-lg font-semibold text-foreground">{{ symbol }}</h3>
+      @if (isSnapshot) {
+        <span class="inline-block rounded border border-blue-600 bg-blue-900/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-blue-300">
+          Snapshot
+        </span>
+      }
+      <span class="text-xs text-muted-foreground">
+        @if (loading) {
+          Loading…
+        } @else if (errorMessage) {
+          <span class="text-red-500">{{ errorMessage }}</span>
+        } @else if (isSnapshot) {
+          {{ lastBarCount }} bars · captured {{ lastUpdated | date:'yyyy-MM-dd HH:mm' }}
+        } @else {
+          {{ lastBarCount }} bars · updated {{ lastUpdated | date:'HH:mm:ss' }}
+        }
+      </span>
+    </div>
+
+    @if (!hideControls && !isSnapshot) {
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="flex overflow-hidden rounded border border-border">
+          @for (tf of availableTimeframes; track tf) {
+            <button
+              type="button"
+              class="px-2 py-1 text-xs"
+              [class.bg-muted]="tf === timeframe"
+              [class.text-foreground]="tf === timeframe"
+              [class.text-muted-foreground]="tf !== timeframe"
+              (click)="setTimeframe(tf)">
+              {{ tf }}
+            </button>
+          }
+        </div>
+        <div class="flex overflow-hidden rounded border border-border">
+          @for (win of availableWindows; track win.label) {
+            <button
+              type="button"
+              class="px-2 py-1 text-xs"
+              [class.bg-muted]="win.days === days"
+              [class.text-foreground]="win.days === days"
+              [class.text-muted-foreground]="win.days !== days"
+              (click)="setWindow(win.days)">
+              {{ win.label }}
+            </button>
+          }
+        </div>
+        <button
+          type="button"
+          class="rounded border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+          (click)="refresh()">
+          Refresh
+        </button>
+      </div>
+    }
+  </header>
+
+  <div #chartContainer class="min-h-[320px] flex-1"></div>
+</div>

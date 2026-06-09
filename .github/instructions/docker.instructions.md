@@ -26,3 +26,10 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up
 - Environment variables in compose override `appsettings.json` (double-underscore syntax: `Ollama__BaseUrl`)
 - New packs get their own container + Dockerfile in `src/Hound.{PackName}/Dockerfile`
 - Ollama model pulls handled by one-shot `ollama-init` container via `infra/ollama/pull-models.sh`
+
+## Dev Container Gotchas
+- **`hound-ui` keeps `node_modules` in an anonymous volume** (`- /app/node_modules` in `docker-compose.dev.yml`). The volume is created once at first start and ignores subsequent `package.json` changes on the host. Symptom: Angular compiles silently without the new dep (`TS2307: Cannot find module …`) and ships a stale bundle.
+  - After any `package.json` edit, run `docker compose -f docker-compose.yml -f docker-compose.dev.yml restart hound-ui` so its entrypoint re-runs `npm install`.
+  - To force a clean reinstall, `docker compose … down hound-ui -v` then bring it back up — the `-v` flag drops the anonymous volume.
+- **`trading-pack` and `hound-api` shadow `bin/` and `obj/`** the same way so host-side `dotnet build` can't clobber container artifacts. Restart those containers (no `-v` needed) after large `.csproj` changes if `dotnet watch` doesn't pick them up.
+- Browsers cache the SPA aggressively — hard-reload (`Ctrl + Shift + R`) after rebuilding `hound-ui`.
