@@ -25,6 +25,22 @@ public interface IAlpacaService
         TimeInForce timeInForce,
         CancellationToken cancellationToken = default);
     Task<IReadOnlyList<IBar>> GetBarsAsync(string symbol, DateTime from, DateTime to, BarTimeFrame timeFrame, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Fetches the latest trade (last print) for a symbol via the Alpaca Data
+    /// API. Used by the <c>SoftwareStopPoller</c> to evaluate software-emulated
+    /// trailing stops without any LLM involvement. Returns <c>null</c> when the
+    /// broker errors or has no recent trade so callers can degrade gracefully.
+    /// </summary>
+    Task<ITrade?> GetLatestTradeAsync(string symbol, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the broker's market clock (open/close state and next session
+    /// boundaries). Used to gate the software-stop poller so it only runs
+    /// while the market is open.
+    /// </summary>
+    Task<IClock> GetClockAsync(CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Resolves a ticker symbol to the broker's canonical asset record
     /// (legal company name, exchange, tradability). Returns <c>null</c> when
@@ -98,6 +114,17 @@ public class AlpacaService : IAlpacaService, IDisposable
         if (trailPercent <= 0m)
             throw new ArgumentOutOfRangeException(nameof(trailPercent), trailPercent, "Trail percent must be greater than 0.");
 
+        // Alpaca only accepts trailing-stop (and any stop variant) orders for
+        // whole-share quantities. Fractional positions are categorically
+        // unsupported, so fail fast with a clear message instead of letting
+        // the broker reject us with the generic "fractional orders must be
+        // DAY orders" error \u2014 which is doubly misleading because changing TIF
+        // doesn't help either.
+        if (quantity.IsInDollars || quantity.Value != Math.Truncate(quantity.Value))
+            throw new InvalidOperationException(
+                $"Alpaca does not support trailing-stop orders on fractional quantities (requested {quantity.Value} {symbol}). " +
+                "Round the position to whole shares before attaching a protective stop.");
+
         var request = new NewOrderRequest(symbol, quantity, side, OrderType.TrailingStop, timeInForce)
         {
             TrailOffsetInPercent = trailPercent,
@@ -117,6 +144,25 @@ public class AlpacaService : IAlpacaService, IDisposable
         var page = await _dataClient.GetHistoricalBarsAsync(request, cancellationToken);
         return page.Items.TryGetValue(symbol, out var bars) ? bars : [];
     }
+
+    public async Task<ITrade?> GetLatestTradeAsync(string symbol, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var request = new LatestMarketDataRequest(symbol);
+            return await _dataClient.GetLatestTradeAsync(request, cancellationToken);
+        }
+        catch
+        {
+            // Latest-trade lookups feed the software-stop poller, which must
+            // degrade gracefully — a transient data-API failure should skip
+            // this symbol for the current cycle, not crash the poller.
+            return null;
+        }
+    }
+
+    public Task<IClock> GetClockAsync(CancellationToken cancellationToken = default)
+        => _tradingClient.GetClockAsync(cancellationToken);
 
     public async Task<IAsset?> GetAssetAsync(string symbol, CancellationToken cancellationToken = default)
     {

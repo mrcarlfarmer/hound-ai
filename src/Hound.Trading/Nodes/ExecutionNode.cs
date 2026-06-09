@@ -70,15 +70,62 @@ public class ExecutionNode : INode
             return state with { ExecutionOutput = failResult, IsComplete = true };
         }
 
-        var effectiveQuantity = assessment.AdjustedQuantity ?? assessment.Decision.Quantity;
+        var requestedQuantity = assessment.AdjustedQuantity ?? assessment.Decision.Quantity;
         var symbol = assessment.Decision.Symbol;
         var action = assessment.Decision.Action;
+        var trailPercent = assessment.Decision.TrailPercent ?? StrategyNode.DefaultBuyTrailPercent;
 
-        // Fractional-share guard: if the requested quantity is non-integer we
-        // must confirm the symbol is fractionable on Alpaca. Whole-share orders
-        // pass through unchanged. Failures are logged loudly so Tuner can learn
-        // to avoid non-fractionable symbols when the account can only afford a
-        // partial share.
+        // ── Protective-stop tiering ───────────────────────────────────────────
+        // Every Buy must end up with a protective stop. Alpaca only accepts
+        // broker-side stop orders on WHOLE-share positions, so we split Buys
+        // into two tiers up front:
+        //   • quantity >= 1 share → round DOWN to whole shares, attach a
+        //     broker-side trailing-stop Sell (GTC).
+        //   • quantity  < 1 share → keep the fractional quantity and protect
+        //     it with a software-emulated trailing stop (SoftwareStopPoller).
+        // Sells carry no protective stop of their own.
+        var protectionMode = StopMode.None;
+        var effectiveQuantity = requestedQuantity;
+
+        if (action == TradeAction.Buy)
+        {
+            if (requestedQuantity >= 1m)
+            {
+                protectionMode = StopMode.BrokerTrailing;
+                effectiveQuantity = Math.Floor(requestedQuantity);
+
+                if (effectiveQuantity != requestedQuantity)
+                {
+                    await _activityLogger.LogActivityAsync(new ActivityLog
+                    {
+                        PackId = PackId,
+                        HoundId = NodeId,
+                        HoundName = "ExecutionNode",
+                        Message = $"Rounded {symbol} Buy down from {requestedQuantity} to {effectiveQuantity} whole share(s) so a broker-side trailing stop can be attached.",
+                        Severity = ActivitySeverity.Info,
+                        Metadata = new Dictionary<string, object>
+                        {
+                            ["requestedQuantity"] = requestedQuantity,
+                            ["effectiveQuantity"] = effectiveQuantity,
+                        },
+                    }, cancellationToken);
+                }
+            }
+            else
+            {
+                // Sub-one-share Buy: keep it fractional and protect it in
+                // software. Alpaca rejects every stop variant on fractional
+                // positions, so the broker-side stop is impossible here.
+                protectionMode = StopMode.SoftwareTrailing;
+                effectiveQuantity = requestedQuantity;
+            }
+        }
+
+        // Fractional-share guard: if the (post-tiering) quantity is non-integer
+        // we must confirm the symbol is fractionable on Alpaca. Whole-share
+        // orders pass through unchanged. Failures are logged loudly so Tuner
+        // can learn to avoid non-fractionable symbols when the account can only
+        // afford a partial share.
         var isFractional = effectiveQuantity != Math.Truncate(effectiveQuantity);
         if (isFractional)
         {
@@ -133,6 +180,8 @@ public class ExecutionNode : INode
             RiskAssessmentSummary = assessment.Reasoning,
             PackId = PackId,
             HoundId = NodeId,
+            StopMode = protectionMode,
+            TrailPercent = action == TradeAction.Buy ? trailPercent : null,
         };
 
         using (var session = _documentStore.OpenAsyncSession(Database))
@@ -157,11 +206,16 @@ public class ExecutionNode : INode
         // Deterministic order placement. The broker response is the only thing
         // that can set Success = true — no LLM, no self-reported success.
         //
-        // Buys are placed as a market entry plus a follow-up trailing-stop
-        // Sell (GTC) using the strategy-chosen TrailPercent so the position
-        // has a protective exit that ratchets up with price (and never down).
+        // Buys are placed as a market entry plus a protective exit:
+        //   • whole-share Buys get a broker-side trailing-stop Sell (GTC);
+        //   • fractional Buys are tracked for a software-emulated stop and
+        //     protected by the SoftwareStopPoller background service.
         // Sells go out as plain market Day orders.
         ExecutionResult result;
+        string? stopOrderId = null;
+        decimal? entryPrice = null;
+        decimal? highWaterMark = null;
+        decimal? stopPrice = null;
         try
         {
             var orderSide = action == TradeAction.Sell ? OrderSide.Sell : OrderSide.Buy;
@@ -189,61 +243,90 @@ public class ExecutionNode : INode
                     : $"Alpaca returned non-actionable order status: {order.OrderStatus}",
                 tradeDoc.Id);
 
-            // Attach a trailing-stop Sell as the protective exit for any
-            // accepted Buy. Submitted as a separate GTC order because Alpaca's
-            // OTO/Bracket order classes don't support a trailing-stop child
-            // leg; the broker parks the stop until the buy fills and the
-            // position exists. Failures here are logged but do NOT mark the
-            // Buy as failed — the position is open and MonitorNode can place
-            // a stop on the next cycle if needed.
+            // Attach the protective exit for any accepted Buy. Whole-share
+            // Buys get a broker-side trailing-stop Sell (GTC); fractional Buys
+            // record software-stop state so the SoftwareStopPoller can emulate
+            // a trailing stop with direct market-data polling. Either way a
+            // stop-submission failure is logged but does NOT mark the Buy as
+            // failed — the position is already open.
             if (success && action == TradeAction.Buy)
             {
-                var trailPercent = assessment.Decision.TrailPercent
-                    ?? StrategyNode.DefaultBuyTrailPercent;
+                // The market entry may still be PendingNew with no fill price
+                // yet; capture whatever the broker reported. The poller lazily
+                // initialises HighWaterMark from the first observed trade when
+                // EntryPrice is still unknown.
+                entryPrice = order.AverageFillPrice;
+                highWaterMark = order.AverageFillPrice;
+                stopPrice = order.AverageFillPrice is decimal ep
+                    ? ep * (1m - trailPercent / 100m)
+                    : null;
 
-                try
+                if (protectionMode == StopMode.SoftwareTrailing)
                 {
-                    var stopOrder = await _alpacaService.SubmitTrailingStopOrderAsync(
-                        symbol,
-                        OrderQuantity.Fractional(effectiveQuantity),
-                        OrderSide.Sell,
-                        trailPercent,
-                        TimeInForce.Gtc,
-                        cancellationToken: cancellationToken);
-
                     await _activityLogger.LogActivityAsync(new ActivityLog
                     {
                         PackId = PackId,
                         HoundId = NodeId,
                         HoundName = "ExecutionNode",
-                        Message = $"Attached trailing-stop SELL exit for {symbol} @ {trailPercent}% — order {stopOrder.OrderId} status: {stopOrder.OrderStatus}",
+                        Message = $"Tracking software trailing stop for fractional {symbol} position ({effectiveQuantity} shares) @ {trailPercent}%. SoftwareStopPoller will monitor price and close on a {trailPercent}% pullback.",
                         Severity = ActivitySeverity.Info,
                         Metadata = new Dictionary<string, object>
                         {
                             ["tradeDocumentId"] = tradeDoc.Id,
                             ["entryOrderId"] = orderIdString,
-                            ["stopOrderId"] = stopOrder.OrderId.ToString(),
                             ["trailPercent"] = trailPercent,
+                            ["stopMode"] = nameof(StopMode.SoftwareTrailing),
                         },
                     }, cancellationToken);
                 }
-                catch (Exception stopEx)
+                else
                 {
-                    _logger?.LogWarning(stopEx, "ExecutionNode failed to attach trailing-stop exit for {Symbol}", symbol);
-
-                    await _activityLogger.LogActivityAsync(new ActivityLog
+                    try
                     {
-                        PackId = PackId,
-                        HoundId = NodeId,
-                        HoundName = "ExecutionNode",
-                        Message = $"Buy entry for {symbol} succeeded but trailing-stop exit submission failed: {stopEx.Message}. Position is open without a protective stop.",
-                        Severity = ActivitySeverity.Warning,
-                        Metadata = new Dictionary<string, object>
+                        var stopOrder = await _alpacaService.SubmitTrailingStopOrderAsync(
+                            symbol,
+                            OrderQuantity.Fractional(effectiveQuantity),
+                            OrderSide.Sell,
+                            trailPercent,
+                            TimeInForce.Gtc,
+                            cancellationToken: cancellationToken);
+
+                        stopOrderId = stopOrder.OrderId.ToString();
+
+                        await _activityLogger.LogActivityAsync(new ActivityLog
                         {
-                            ["tradeDocumentId"] = tradeDoc.Id,
-                            ["entryOrderId"] = orderIdString,
-                        },
-                    }, cancellationToken);
+                            PackId = PackId,
+                            HoundId = NodeId,
+                            HoundName = "ExecutionNode",
+                            Message = $"Attached trailing-stop SELL exit for {symbol} @ {trailPercent}% — order {stopOrder.OrderId} status: {stopOrder.OrderStatus}",
+                            Severity = ActivitySeverity.Info,
+                            Metadata = new Dictionary<string, object>
+                            {
+                                ["tradeDocumentId"] = tradeDoc.Id,
+                                ["entryOrderId"] = orderIdString,
+                                ["stopOrderId"] = stopOrder.OrderId.ToString(),
+                                ["trailPercent"] = trailPercent,
+                            },
+                        }, cancellationToken);
+                    }
+                    catch (Exception stopEx)
+                    {
+                        _logger?.LogWarning(stopEx, "ExecutionNode failed to attach trailing-stop exit for {Symbol}", symbol);
+
+                        await _activityLogger.LogActivityAsync(new ActivityLog
+                        {
+                            PackId = PackId,
+                            HoundId = NodeId,
+                            HoundName = "ExecutionNode",
+                            Message = $"Buy entry for {symbol} succeeded but trailing-stop exit submission failed: {stopEx.Message}. Position is open without a protective stop.",
+                            Severity = ActivitySeverity.Warning,
+                            Metadata = new Dictionary<string, object>
+                            {
+                                ["tradeDocumentId"] = tradeDoc.Id,
+                                ["entryOrderId"] = orderIdString,
+                            },
+                        }, cancellationToken);
+                    }
                 }
             }
         }
@@ -270,7 +353,18 @@ public class ExecutionNode : INode
                 doc.OrderId = result.OrderId ?? string.Empty;
                 doc.UpdatedAt = DateTime.UtcNow;
                 if (!result.Success)
+                {
                     doc.FillStatus = FillStatus.Rejected;
+                    // A rejected order has no position to protect.
+                    doc.StopMode = StopMode.None;
+                }
+                else
+                {
+                    doc.StopOrderId = stopOrderId;
+                    doc.EntryPrice = entryPrice;
+                    doc.HighWaterMark = highWaterMark;
+                    doc.StopPrice = stopPrice;
+                }
                 await session.SaveChangesAsync(cancellationToken);
             }
         }

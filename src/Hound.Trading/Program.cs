@@ -39,6 +39,8 @@ builder.Services.Configure<SentimentSettings>(
     builder.Configuration.GetSection(SentimentSettings.SectionName));
 builder.Services.Configure<StrategyHoundConfig>(
     builder.Configuration.GetSection("Strategy"));
+builder.Services.Configure<SoftwareStopSettings>(
+    builder.Configuration.GetSection(SoftwareStopSettings.SectionName));
 // ── RavenDB ──────────────────────────────────────────────────────────────────
 var ravenUrl = builder.Configuration["RavenDb:Url"] ?? "http://ravendb:8080";
 builder.Services.AddSingleton<IDocumentStore>(_ =>
@@ -231,6 +233,11 @@ builder.Services.AddSingleton<GraphRunPublisher>(sp =>
         sp.GetService<INodeStreamPublisher>()));
 builder.Services.AddSingleton<TradingGraph>();
 builder.Services.AddHostedService<TradingWorker>();
+
+// Software-emulated trailing stop for fractional positions (Alpaca rejects
+// broker-side stops on fractional shares). Runs independently of the graph
+// lifecycle with direct broker API calls — no LLM overhead.
+builder.Services.AddHostedService<SoftwareStopPoller>();
 
 var app = builder.Build();
 app.MapControllers();

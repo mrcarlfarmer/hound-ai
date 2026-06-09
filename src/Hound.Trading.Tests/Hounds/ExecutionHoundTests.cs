@@ -18,6 +18,8 @@ public sealed class ExecutionNodeTests
     private Mock<IDocumentStore> _mockDocumentStore = null!;
     private Mock<IAsyncDocumentSession> _mockSession = null!;
     private ExecutionNode _node = null!;
+    /// <summary>The TradeDocument captured at StoreAsync, returned by LoadAsync so tests can assert persisted stop state.</summary>
+    private TradeDocument? _storedTrade;
 
     [TestInitialize]
     public void Setup()
@@ -26,6 +28,7 @@ public sealed class ExecutionNodeTests
         _mockActivityLogger = new Mock<IActivityLogger>();
         _mockDocumentStore = new Mock<IDocumentStore>();
         _mockSession = new Mock<IAsyncDocumentSession>();
+        _storedTrade = null;
 
         _mockDocumentStore
             .Setup(s => s.OpenAsyncSession(It.IsAny<string>()))
@@ -35,14 +38,20 @@ public sealed class ExecutionNodeTests
             .Setup(s => s.StoreAsync(It.IsAny<TradeDocument>(), It.IsAny<CancellationToken>()))
             .Callback<object, CancellationToken>((entity, _) =>
             {
-                if (entity is TradeDocument doc && string.IsNullOrEmpty(doc.Id))
-                    doc.Id = $"TradeDocuments/{Guid.NewGuid():N}";
+                if (entity is TradeDocument doc)
+                {
+                    if (string.IsNullOrEmpty(doc.Id))
+                        doc.Id = $"TradeDocuments/{Guid.NewGuid():N}";
+                    _storedTrade = doc;
+                }
             })
             .Returns(Task.CompletedTask);
 
+        // Return the captured document (post-creation, with StopMode etc.) so
+        // the node's final update mutates the same instance the test inspects.
         _mockSession
             .Setup(s => s.LoadAsync<TradeDocument>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new TradeDocument { Id = "TradeDocuments/1" });
+            .ReturnsAsync(() => _storedTrade ?? new TradeDocument { Id = "TradeDocuments/1" });
 
         _node = new ExecutionNode(
             _mockAlpacaService.Object,
@@ -421,5 +430,181 @@ public sealed class ExecutionNodeTests
                     a.Message.Contains("trailing-stop exit submission failed")),
                 default),
             Times.Once);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Fractional positions: Alpaca categorically rejects stop / trailing-stop
+    // orders on fractional quantities (fractional orders are Day-only
+    // market/limit-only, no stops). ExecutionNode keeps the fractional Buy,
+    // skips the broker stop, and records SoftwareTrailing state so the
+    // SoftwareStopPoller can emulate a trailing stop instead.
+    // ─────────────────────────────────────────────────────────────────────
+
+    [TestMethod]
+    public async Task ExecuteAsync_BuyFractionalQuantity_DoesNotSubmitTrailingStop()
+    {
+        var assessment = new RiskAssessment(
+            RiskVerdict.Approved,
+            new TradingDecision("GOOG", TradeAction.Buy, 0.3315m, "Bullish", 0.75, TrailPercent: 5m),
+            "Approved");
+
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync("GOOG", It.IsAny<OrderQuantity>(), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted).Object);
+
+        var state = TradingGraphState.Initial("GOOG") with { RiskOutput = assessment };
+        var result = await _node.ExecuteAsync(state, default);
+
+        // Buy itself succeeded.
+        Assert.IsTrue(result.ExecutionOutput!.Success);
+
+        // Broker-side trailing-stop submission must be skipped — the broker
+        // would reject it because the position is fractional.
+        _mockAlpacaService.Verify(
+            s => s.SubmitTrailingStopOrderAsync(It.IsAny<string>(), It.IsAny<OrderQuantity>(),
+                It.IsAny<OrderSide>(), It.IsAny<decimal>(), It.IsAny<TimeInForce>(),
+                It.IsAny<CancellationToken>()),
+            Times.Never);
+
+        // Instead we emit an Info activity announcing the software-stop fallback
+        // so reviewers know the position is still protected.
+        _mockActivityLogger.Verify(
+            l => l.LogActivityAsync(
+                It.Is<ActivityLog>(a =>
+                    a.Severity == ActivitySeverity.Info &&
+                    a.Message.Contains("software trailing stop")),
+                default),
+            Times.Once);
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_BuyWholeShareQuantity_SubmitsTrailingStop()
+    {
+        var assessment = new RiskAssessment(
+            RiskVerdict.Approved,
+            new TradingDecision("AAPL", TradeAction.Buy, 7m, "Bullish", 0.9, TrailPercent: 4m),
+            "Approved");
+
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync("AAPL", It.IsAny<OrderQuantity>(), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted).Object);
+
+        _mockAlpacaService
+            .Setup(s => s.SubmitTrailingStopOrderAsync(
+                "AAPL", It.IsAny<OrderQuantity>(), OrderSide.Sell, 4m, TimeInForce.Gtc, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted).Object);
+
+        var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+        await _node.ExecuteAsync(state, default);
+
+        // Whole-share quantity (7) is broker-eligible for a trailing stop.
+        _mockAlpacaService.Verify(
+            s => s.SubmitTrailingStopOrderAsync(
+                "AAPL", It.IsAny<OrderQuantity>(), OrderSide.Sell, 4m, TimeInForce.Gtc, It.IsAny<CancellationToken>()),
+            Times.Once);
+    }
+
+    // ---------------------------------------------------------------------
+    // Tiered quantity normalisation + stop-mode persistence.
+    // ---------------------------------------------------------------------
+
+    [TestMethod]
+    public async Task ExecuteAsync_Buy_QuantityWithFraction_RoundsDownAndAttachesTrailingStop()
+    {
+        var assessment = new RiskAssessment(
+            RiskVerdict.Approved,
+            new TradingDecision("GOOG", TradeAction.Buy, 3.5m, "Bullish", 0.85, TrailPercent: 4m),
+            "Approved");
+
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync("GOOG", It.IsAny<OrderQuantity>(), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted, avgFill: 100m).Object);
+
+        _mockAlpacaService
+            .Setup(s => s.SubmitTrailingStopOrderAsync(
+                "GOOG", It.IsAny<OrderQuantity>(), OrderSide.Sell, 4m, TimeInForce.Gtc, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted).Object);
+
+        var state = TradingGraphState.Initial("GOOG") with { RiskOutput = assessment };
+        await _node.ExecuteAsync(state, default);
+
+        // Entry order placed for the rounded-down whole-share quantity (3).
+        _mockAlpacaService.Verify(
+            s => s.SubmitOrderAsync("GOOG", It.Is<OrderQuantity>(q => q.Value == 3m), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // Broker-side trailing stop attached for the same whole-share quantity.
+        _mockAlpacaService.Verify(
+            s => s.SubmitTrailingStopOrderAsync(
+                "GOOG", It.Is<OrderQuantity>(q => q.Value == 3m), OrderSide.Sell, 4m, TimeInForce.Gtc, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        Assert.IsNotNull(_storedTrade);
+        Assert.AreEqual(StopMode.BrokerTrailing, _storedTrade!.StopMode);
+        Assert.AreEqual(3m, _storedTrade.RequestedQuantity);
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_Buy_QuantityExactlyOne_AttachesBrokerTrailingStop()
+    {
+        var assessment = new RiskAssessment(
+            RiskVerdict.Approved,
+            new TradingDecision("AAPL", TradeAction.Buy, 1m, "Bullish", 0.9, TrailPercent: 5m),
+            "Approved");
+
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync("AAPL", It.IsAny<OrderQuantity>(), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted, avgFill: 200m).Object);
+
+        _mockAlpacaService
+            .Setup(s => s.SubmitTrailingStopOrderAsync(
+                "AAPL", It.IsAny<OrderQuantity>(), OrderSide.Sell, 5m, TimeInForce.Gtc, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted).Object);
+
+        var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+        await _node.ExecuteAsync(state, default);
+
+        _mockAlpacaService.Verify(
+            s => s.SubmitTrailingStopOrderAsync(
+                "AAPL", It.IsAny<OrderQuantity>(), OrderSide.Sell, 5m, TimeInForce.Gtc, It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        Assert.IsNotNull(_storedTrade);
+        Assert.AreEqual(StopMode.BrokerTrailing, _storedTrade!.StopMode);
+    }
+
+    [TestMethod]
+    public async Task ExecuteAsync_Buy_FractionalQuantity_PersistsSoftwareStopState()
+    {
+        var assessment = new RiskAssessment(
+            RiskVerdict.Approved,
+            new TradingDecision("GOOG", TradeAction.Buy, 0.3315m, "Bullish", 0.75, TrailPercent: 5m),
+            "Approved");
+
+        _mockAlpacaService
+            .Setup(s => s.SubmitOrderAsync("GOOG", It.IsAny<OrderQuantity>(), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MockOrder(OrderStatus.Accepted, avgFill: 100m).Object);
+
+        var state = TradingGraphState.Initial("GOOG") with { RiskOutput = assessment };
+        await _node.ExecuteAsync(state, default);
+
+        // Fractional Buy submitted as-is (no rounding).
+        _mockAlpacaService.Verify(
+            s => s.SubmitOrderAsync("GOOG", It.Is<OrderQuantity>(q => q.Value == 0.3315m), OrderSide.Buy,
+                OrderType.Market, TimeInForce.Day, It.IsAny<decimal?>(), It.IsAny<CancellationToken>()),
+            Times.Once);
+
+        // Software-stop state persisted for the poller to act on.
+        Assert.IsNotNull(_storedTrade);
+        Assert.AreEqual(StopMode.SoftwareTrailing, _storedTrade!.StopMode);
+        Assert.AreEqual(5m, _storedTrade.TrailPercent);
+        Assert.AreEqual(100m, _storedTrade.EntryPrice);
+        Assert.AreEqual(95m, _storedTrade.StopPrice); // 100 * (1 - 5/100)
     }
 }

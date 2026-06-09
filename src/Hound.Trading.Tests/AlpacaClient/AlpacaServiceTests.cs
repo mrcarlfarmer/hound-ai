@@ -139,4 +139,41 @@ public sealed class AlpacaServiceTests
     {
         await _service.CancelOrderAsync(Guid.NewGuid());
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Defensive guards on SubmitTrailingStopOrderAsync — these are pure
+    // input-validation paths that fail BEFORE we touch the broker, so they
+    // can run without live credentials and don't need the Ignore attribute.
+    // ─────────────────────────────────────────────────────────────────────
+
+    [TestMethod]
+    public async Task SubmitTrailingStopOrderAsync_FractionalQuantity_Throws()
+    {
+        // Alpaca categorically rejects stop / trailing-stop orders on
+        // fractional positions; the SDK only finds out at broker round-trip
+        // time and the error message ("fractional orders must be DAY
+        // orders") is misleading. The service must short-circuit and tell
+        // the caller exactly why.
+        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+            () => _service.SubmitTrailingStopOrderAsync(
+                symbol: "GOOG",
+                quantity: OrderQuantity.Fractional(0.3315m),
+                side: OrderSide.Sell,
+                trailPercent: 5m,
+                timeInForce: TimeInForce.Gtc));
+
+        StringAssert.Contains(ex.Message, "fractional");
+    }
+
+    [TestMethod]
+    public async Task SubmitTrailingStopOrderAsync_NonPositiveTrailPercent_Throws()
+    {
+        await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(
+            () => _service.SubmitTrailingStopOrderAsync(
+                symbol: "AAPL",
+                quantity: OrderQuantity.Fractional(5m),
+                side: OrderSide.Sell,
+                trailPercent: 0m,
+                timeInForce: TimeInForce.Gtc));
+    }
 }
