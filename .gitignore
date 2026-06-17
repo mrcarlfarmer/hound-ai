@@ -80,3 +80,5 @@ coverage/
 *.tmp
 *.bak
 *.cache
+
+activity-dump.json
