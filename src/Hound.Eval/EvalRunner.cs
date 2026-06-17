@@ -44,7 +44,7 @@ public class EvalRunner
 
         _modelName = modelName
             ?? Environment.GetEnvironmentVariable("OLLAMA_MODEL")
-            ?? "gemma3";
+            ?? "qwen3.5:9b";
     }
 
     /// <summary>

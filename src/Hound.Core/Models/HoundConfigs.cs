@@ -5,7 +5,7 @@ namespace Hound.Core.Models;
 /// </summary>
 public class BaseHoundConfig
 {
-    public string Model { get; set; } = "gemma3";
+    public string Model { get; set; } = "qwen3.5:9b";
     public string Instructions { get; set; } = string.Empty;
     public int MaxTokens { get; set; } = 512;
     public double Temperature { get; set; } = 0.1;

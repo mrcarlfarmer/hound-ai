@@ -10,7 +10,7 @@ public sealed class HoundConfigsTests
     {
         var config = new BaseHoundConfig();
 
-        Assert.AreEqual("gemma3", config.Model);
+        Assert.AreEqual("qwen3.5:9b", config.Model);
         Assert.AreEqual(string.Empty, config.Instructions);
         Assert.AreEqual(512, config.MaxTokens);
         Assert.AreEqual(0.1, config.Temperature);
