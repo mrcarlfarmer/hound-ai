@@ -482,6 +482,11 @@ public class StrategyNode : INode
     /// Wraps the original analysis prompt with the captured debate transcript
     /// so the coordinator can weigh both sides before emitting the final JSON.
     /// </summary>
+    /// <summary>
+    /// Builds the opening debate seed from the shared analysis prompt and, on
+    /// refinement loops, appends the previous risk rejection so both debaters
+    /// can address the rejected sizing or rationale directly.
+    /// </summary>
     private static string BuildDebateSeed(TradingGraphState state, string analysisPrompt)
     {
         var sb = new StringBuilder();
@@ -532,6 +537,14 @@ public class StrategyNode : INode
         return sb.ToString();
     }
 
+    /// <summary>
+    /// Appends the previous <see cref="RiskAssessment"/> rejection context to
+    /// a prompt when the strategy node is revisiting a refined decision.
+    /// </summary>
+    /// <param name="sb">Prompt builder receiving the refinement context.</param>
+    /// <param name="state">Current graph state, including refinement metadata.</param>
+    /// <param name="headingPrefix">Prompt heading text preceding the attempt number.</param>
+    /// <param name="instruction">Follow-up instruction describing how to use the rejection.</param>
     private static void AppendRiskRejectionContext(
         StringBuilder sb,
         TradingGraphState state,

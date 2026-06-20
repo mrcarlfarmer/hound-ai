@@ -274,6 +274,12 @@ public class EvalRunner
         if (context is null || !context.TryGetValue(key, out var value) || value is null)
             return default;
 
+        if (value is JsonElement element)
+            return element.Deserialize<T>(JsonOptions);
+
+        if (value is T typedValue)
+            return typedValue;
+
         var json = JsonSerializer.Serialize(value, JsonOptions);
         return JsonSerializer.Deserialize<T>(json, JsonOptions);
     }
