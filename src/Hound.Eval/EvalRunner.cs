@@ -184,9 +184,15 @@ public class EvalRunner
             case "StrategyHound":
             {
                 var node = new StrategyNode(chatClient, alpacaService, activityLogger);
+                var symbol = GetContextString(scenario.Input.Context, "symbol") ?? "AAPL";
                 var analysis = DeserializeContext<MarketAnalysis>(scenario.Input.Context)
-                    ?? new MarketAnalysis("AAPL", 0, 0, "Unknown", 0, scenario.Input.UserMessage);
-                var state = TradingGraphState.Initial("AAPL") with { DataOutput = analysis };
+                    ?? new MarketAnalysis(symbol, 0, 0, "Unknown", 0, scenario.Input.UserMessage);
+                var state = TradingGraphState.Initial(analysis.Symbol) with
+                {
+                    DataOutput = analysis,
+                    RefinementCount = DeserializeContextValue<int?>(scenario.Input.Context, "refinementCount") ?? 0,
+                    RiskOutput = DeserializeContextValue<RiskAssessment>(scenario.Input.Context, "riskOutput"),
+                };
                 var result = await node.ExecuteAsync(state, ct);
                 return JsonSerializer.Serialize(result.StrategyOutput, JsonOptions);
             }
@@ -263,6 +269,15 @@ public class EvalRunner
         return JsonSerializer.Deserialize<T>(json, JsonOptions);
     }
 
+    private static T? DeserializeContextValue<T>(Dictionary<string, object>? context, string key)
+    {
+        if (context is null || !context.TryGetValue(key, out var value) || value is null)
+            return default;
+
+        var json = JsonSerializer.Serialize(value, JsonOptions);
+        return JsonSerializer.Deserialize<T>(json, JsonOptions);
+    }
+
     private static string? GetContextString(Dictionary<string, object>? context, string key)
     {
         if (context is null || !context.TryGetValue(key, out var value)) return null;
@@ -296,4 +311,3 @@ public class EvalRunner
         return (true, "All criteria met");
     }
 }
-

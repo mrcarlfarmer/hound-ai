@@ -1,0 +1,43 @@
+{
+  "scenarioName": "Debate Refinement Addresses Prior Risk Rejection",
+  "description": "When RiskNode rejects an earlier strategy, StrategyNode should rerun the bull-vs-bear debate and carry the rejection reasoning into the refinement prompt so the final decision addresses the prior sizing concern.",
+  "houndName": "StrategyNode",
+  "category": "debate",
+  "input": {
+    "userMessage": "Refine the previous AAPL strategy after a risk rejection on position sizing.",
+    "context": {
+      "symbol": "AAPL",
+      "lastPrice": 175.0,
+      "volumeChange": 1.4,
+      "trend": "Bullish",
+      "confidenceScore": 0.78,
+      "summary": "Momentum remains constructive, but the initial position sizing was too aggressive for the account.",
+      "refinementCount": 1,
+      "riskOutput": {
+        "verdict": "Rejected",
+        "decision": {
+          "symbol": "AAPL",
+          "action": "Buy",
+          "quantity": 2.0,
+          "reasoning": "Initial momentum buy before the risk review.",
+          "confidence": 0.78,
+          "currentPrice": 175.0,
+          "estimatedCost": 350.0,
+          "trailPercent": 5.0
+        },
+        "reasoning": "Position size exceeds the allowed cap; reduce the quantity and justify why the tighter sizing still makes sense."
+      }
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Buy"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with symbol, action, quantity, reasoning, confidence, trailPercent",
+    "decisionCriteria": "On refinement, the debate should be rerun with the prior risk rejection in context so the final decision addresses the rejected sizing concern."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains the action 'Buy'."
+  }
+}

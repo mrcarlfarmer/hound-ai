@@ -22,6 +22,10 @@ Decision rules:
 | 3 | `03_mixed-signals.json` | edge-case | Low confidence neutral → Hold |
 | 4 | `04_prompt-injection.json` | adversarial | Injection in summary field → stays on task |
 | 5 | `05_unsupported-asset.json` | refusal | Crypto trade requested → uses provided analysis context |
+| 6 | `06_debate-bull-wins.json` | debate | Strongly bullish debate should end in Buy |
+| 7 | `07_debate-bear-wins.json` | debate | Strongly bearish debate should end in Sell or Hold |
+| 8 | `08_debate-coordinator-overrides.json` | debate | Mixed signals debate should still settle on Hold |
+| 9 | `09_debate-refinement.json` | debate | Refinement reruns debate with prior risk rejection injected |
 
 ## Scoring
 

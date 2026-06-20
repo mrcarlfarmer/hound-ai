@@ -207,12 +207,12 @@ public class StrategyNode : INode
 
         // Optional bull-vs-bear debate before the coordinator decides.
         IReadOnlyList<DebateTurn> debateTurns = Array.Empty<DebateTurn>();
-        string coordinatorPrompt = prompt;
+        string coordinatorPrompt = BuildCoordinatorPrompt(state, prompt, debateTurns);
 
         if (_debateConfig.DebateEnabled && _debateConfig.DebateTurnsPerSide > 0)
         {
             debateTurns = await RunDebateAsync(state, prompt, cancellationToken);
-            coordinatorPrompt = BuildCoordinatorPrompt(prompt, debateTurns);
+            coordinatorPrompt = BuildCoordinatorPrompt(state, prompt, debateTurns);
         }
 
         var session = await _coordinatorAgent.CreateSessionAsync(cancellationToken);
@@ -360,15 +360,7 @@ public class StrategyNode : INode
             },
         }, cancellationToken);
 
-        var seed = $"""
-            Symbol: {state.Symbol}
-
-            The following analysis snapshot is the basis for the debate. Argue your
-            side in 2–4 sentences, citing concrete signals. Do not propose a final
-            action.
-
-            {analysisPrompt}
-            """;
+        var seed = BuildDebateSeed(state, analysisPrompt);
 
         try
         {
@@ -490,23 +482,69 @@ public class StrategyNode : INode
     /// Wraps the original analysis prompt with the captured debate transcript
     /// so the coordinator can weigh both sides before emitting the final JSON.
     /// </summary>
-    private static string BuildCoordinatorPrompt(string analysisPrompt, IReadOnlyList<DebateTurn> transcript)
+    private static string BuildDebateSeed(TradingGraphState state, string analysisPrompt)
     {
-        if (transcript.Count == 0) return analysisPrompt;
+        var sb = new StringBuilder();
+        sb.Append("Symbol: ").AppendLine(state.Symbol);
+        sb.AppendLine();
+        sb.AppendLine("The following analysis snapshot is the basis for the debate. Argue your");
+        sb.AppendLine("side in 2–4 sentences, citing concrete signals. Do not propose a final");
+        sb.AppendLine("action.");
+        sb.AppendLine();
+        sb.AppendLine(analysisPrompt);
 
+        AppendRiskRejectionContext(
+            sb,
+            state,
+            headingPrefix: "## Risk rejection to address (attempt #",
+            instruction: "You must directly address these rejected-risk concerns in your argument.");
+
+        return sb.ToString();
+    }
+
+    private static string BuildCoordinatorPrompt(
+        TradingGraphState state,
+        string analysisPrompt,
+        IReadOnlyList<DebateTurn> transcript)
+    {
         var sb = new StringBuilder(analysisPrompt);
-        sb.AppendLine();
-        sb.AppendLine();
-        sb.AppendLine("## Debate transcript");
-        sb.AppendLine("Two debaters reviewed the analysis above. Weigh both sides, then output the JSON decision.");
-        sb.AppendLine();
-        foreach (var turn in transcript)
+
+        AppendRiskRejectionContext(
+            sb,
+            state,
+            headingPrefix: "## Previous risk rejection (attempt #",
+            instruction: "Please address these risk concerns and adjust your strategy.");
+
+        if (transcript.Count > 0)
         {
-            sb.Append('[').Append(turn.Role.ToUpperInvariant()).Append("] ").AppendLine(turn.Message);
+            sb.AppendLine();
+            sb.AppendLine("## Debate transcript");
+            sb.AppendLine("Two debaters reviewed the analysis above. Weigh both sides, then output the JSON decision.");
+            sb.AppendLine();
+            foreach (var turn in transcript)
+            {
+                sb.Append('[').Append(turn.Role.ToUpperInvariant()).Append("] ").AppendLine(turn.Message);
+            }
         }
+
         sb.AppendLine();
         sb.AppendLine("Now output ONLY the final JSON decision object.");
         return sb.ToString();
+    }
+
+    private static void AppendRiskRejectionContext(
+        StringBuilder sb,
+        TradingGraphState state,
+        string headingPrefix,
+        string instruction)
+    {
+        if (state.RefinementCount <= 0 || state.RiskOutput is null)
+            return;
+
+        sb.AppendLine();
+        sb.Append(headingPrefix).Append(state.RefinementCount).AppendLine("):");
+        sb.AppendLine(state.RiskOutput.Reasoning);
+        sb.AppendLine(instruction);
     }
 
     private static string Truncate(string value, int maxLength)
@@ -601,18 +639,6 @@ public class StrategyNode : INode
             indicators = analysis?.Indicators,
         };
         sb.AppendLine(JsonSerializer.Serialize(slim, new JsonSerializerOptions { WriteIndented = false }));
-
-        sb.AppendLine();
-        sb.AppendLine("What is your trading decision? Output the JSON object now.");
-
-        // On refinement loops, inject the risk rejection reasoning
-        if (state.RefinementCount > 0 && state.RiskOutput is not null)
-        {
-            sb.AppendLine();
-            sb.Append("## Previous risk rejection (attempt #").Append(state.RefinementCount).AppendLine("):");
-            sb.AppendLine(state.RiskOutput.Reasoning);
-            sb.AppendLine("Please address these risk concerns and adjust your strategy.");
-        }
 
         return sb.ToString();
     }
