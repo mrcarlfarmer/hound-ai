@@ -72,6 +72,20 @@ internal sealed class StubAlpacaService : IAlpacaService
         int maxItems,
         CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyList<INewsArticle>>(Array.Empty<INewsArticle>());
+
+    public Task<ITrade?> GetLatestTradeAsync(string symbol, CancellationToken cancellationToken = default)
+        => Task.FromResult<ITrade?>(null);
+
+    public Task<IClock> GetClockAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<IClock>(new StubClock());
+}
+
+internal sealed class StubClock : IClock
+{
+    public DateTime TimestampUtc => DateTime.UtcNow;
+    public bool IsOpen => true;
+    public DateTime NextOpenUtc => DateTime.UtcNow.AddHours(1);
+    public DateTime NextCloseUtc => DateTime.UtcNow.AddHours(7);
 }
 
 internal sealed class StubAccount : IAccount
