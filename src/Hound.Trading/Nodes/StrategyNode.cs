@@ -343,22 +343,47 @@ public class StrategyNode : INode
     {
         var transcript = new List<DebateTurn>();
         int turnsPerSide = _debateConfig.DebateTurnsPerSide;
+        bool isRefinement = state.RefinementCount > 0 && state.RiskOutput is not null;
+
+        var startMetadata = new Dictionary<string, object>
+        {
+            ["type"] = "debate-start",
+            ["symbol"] = state.Symbol,
+            ["runId"] = state.RunId,
+            ["turnsPerSide"] = turnsPerSide,
+            ["refinementCount"] = state.RefinementCount,
+        };
+        if (isRefinement)
+        {
+            startMetadata["riskRejection"] = state.RiskOutput!.Reasoning;
+        }
 
         await _activityLogger.LogActivityAsync(new ActivityLog
         {
             PackId = PackId,
             HoundId = NodeId,
             HoundName = "StrategyNode",
-            Message = $"Debate starting for {state.Symbol} ({turnsPerSide} turn(s) per side)",
+            Message = $"Debate starting for {state.Symbol} ({turnsPerSide} turn(s) per side)" +
+                      (isRefinement ? $" — refinement #{state.RefinementCount}" : string.Empty),
             Severity = ActivitySeverity.Info,
-            Metadata = new Dictionary<string, object>
-            {
-                ["type"] = "debate-start",
-                ["symbol"] = state.Symbol,
-                ["runId"] = state.RunId,
-                ["turnsPerSide"] = turnsPerSide,
-            },
+            Metadata = startMetadata,
         }, cancellationToken);
+
+        // On a refinement loop the previous decision was rejected by RiskNode.
+        // Inject that rejection into the debate seed — framed for the debaters,
+        // not the coordinator — so both sides argue in light of the concern that
+        // caused the rejection (issue #45, Option A).
+        var refinementBanner = isRefinement
+            ? $"""
+
+                ## Refinement #{state.RefinementCount} — previous decision REJECTED by risk management
+                The reason the prior trading decision was rejected:
+                "{state.RiskOutput!.Reasoning}"
+                Argue your side specifically in light of this rejection: explain why your
+                case still holds, or how the trade should change, given this risk concern.
+
+                """
+            : string.Empty;
 
         var seed = $"""
             Symbol: {state.Symbol}
@@ -366,7 +391,7 @@ public class StrategyNode : INode
             The following analysis snapshot is the basis for the debate. Argue your
             side in 2–4 sentences, citing concrete signals. Do not propose a final
             action.
-
+            {refinementBanner}
             {analysisPrompt}
             """;
 
