@@ -116,3 +116,32 @@ public class BrowserWorkerSettings
     /// </summary>
     public bool DryRun { get; set; } = true;
 }
+
+/// <summary>
+/// Tunables for LearnerHound's preference learning (spec §10). All learning is
+/// deterministic; these thresholds govern how quickly confidence accrues and when
+/// an item is promoted to favourite/staple.
+/// </summary>
+public class LearnerSettings
+{
+    public const string SectionName = "Learner";
+
+    /// <summary>Confidence gained per consistent observation (clamped to <see cref="MaxConfidence"/>).</summary>
+    public double ConfidenceStep { get; set; } = 0.2;
+
+    /// <summary>Upper bound on a learned confidence score.</summary>
+    public double MaxConfidence { get; set; } = 1.0;
+
+    /// <summary>
+    /// Below this confidence an existing mapping may be re-learned (its preferred
+    /// product replaced) by new evidence. At/above it the existing product is kept
+    /// so confident or human-curated entries are never silently overwritten.
+    /// </summary>
+    public double RelearnBelowConfidence { get; set; } = 0.5;
+
+    /// <summary>Total observations of an item before it is promoted to a favourite.</summary>
+    public int FavouriteThreshold { get; set; } = 3;
+
+    /// <summary>Distinct purchase dates for an item before it is promoted to a staple.</summary>
+    public int StapleThreshold { get; set; } = 4;
+}

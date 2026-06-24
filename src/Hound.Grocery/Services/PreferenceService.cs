@@ -1,14 +1,11 @@
-using System.Globalization;
-using System.Text;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
 namespace Hound.Grocery.Services;
 
 /// <summary>
 /// A single learned mapping from a loose list item to a preferred Sainsbury's
-/// product (spec §8, §10). Populated over time by LearnerHound (Phase 6); during
-/// cold start the file is usually empty and these are absent.
+/// product (spec §8, §10). Populated over time by LearnerHound; during cold start
+/// the file is usually empty and these are absent.
 /// </summary>
 public record ProductPreference(
     string Item,
@@ -29,31 +26,18 @@ public record PreferencesDocument(
 /// <summary>
 /// Domain wrapper over <c>preferences.md</c> (spec §8, §10). Reads (and creates a
 /// template if missing) the learned product mappings, typical quantities,
-/// favourite/staple flags and dislikes, preserving the human-readable sketch
-/// <c>milk → "Sainsbury's British Semi Skimmed Milk 2.27L" · usual qty 2 · confidence 0.8</c>.
+/// favourite/staple flags and dislikes. All parsing/serialisation is delegated to
+/// the shared <see cref="PreferencesSerializer"/> so the reader here and the
+/// writer (LearnerHound, via <see cref="UpdateAsync"/>) can never drift.
 /// <para>
-/// <b>Cold start:</b> LearnerHound (Phase 6) has not run yet, so the file is
-/// usually empty. Every method degrades gracefully — a missing or empty file
-/// yields <see cref="PreferencesDocument.Empty"/> and <see cref="ResolveAsync"/>
-/// returns <c>null</c>.
+/// <b>Cold start:</b> LearnerHound may not have run yet, so the file is often
+/// empty. Every method degrades gracefully — a missing or empty file yields
+/// <see cref="PreferencesDocument.Empty"/> and <see cref="ResolveAsync"/> returns
+/// <c>null</c>.
 /// </para>
 /// </summary>
 public class PreferenceService
 {
-    private const string Heading = "# Preferences";
-    private const string MappingsHeading = "## Product mappings";
-    private const string DislikesHeading = "## Dislikes";
-
-    private static readonly Regex MappingLineRegex = new(
-        @"^-\s*(?<item>.+?)\s*(?:→|->)\s*(?:""(?<product>.*?)""|\((?<none>none|any)\))(?<tags>.*)$",
-        RegexOptions.Compiled);
-
-    private static readonly Regex QtyRegex = new(
-        @"usual\s+qty\s+(?<qty>\d+(?:\.\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
-    private static readonly Regex ConfidenceRegex = new(
-        @"confidence\s+(?<c>\d+(?:\.\d+)?)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
     private readonly StateFileService _stateFiles;
     private readonly ILogger<PreferenceService>? _logger;
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -77,12 +61,12 @@ public class PreferenceService
             var raw = await _stateFiles.ReadAsync(GroceryStateFile.Preferences, cancellationToken);
             if (string.IsNullOrWhiteSpace(raw))
             {
-                await _stateFiles.WriteAsync(GroceryStateFile.Preferences, Template(), cancellationToken);
+                await _stateFiles.WriteAsync(GroceryStateFile.Preferences, PreferencesSerializer.Template(), cancellationToken);
                 _logger?.LogInformation("preferences.md was empty/missing; wrote a template scaffold.");
                 return PreferencesDocument.Empty;
             }
 
-            return ParseDocument(raw);
+            return PreferencesSerializer.Parse(raw);
         }
         finally
         {
@@ -100,180 +84,55 @@ public class PreferenceService
         return doc.Mappings.FirstOrDefault(m => NameEquals(m.Item, item));
     }
 
-    // ── Internals ─────────────────────────────────────────────────────────────
-
-    internal static PreferencesDocument ParseDocument(string markdown)
+    /// <summary>Serialises and writes <paramref name="document"/> to <c>preferences.md</c>.</summary>
+    public async Task SaveAsync(PreferencesDocument document, CancellationToken cancellationToken = default)
     {
-        var mappings = new List<ProductPreference>();
-        var dislikes = new List<string>();
-        if (string.IsNullOrWhiteSpace(markdown))
+        await _gate.WaitAsync(cancellationToken);
+        try
         {
-            return PreferencesDocument.Empty;
+            await _stateFiles.WriteAsync(GroceryStateFile.Preferences, PreferencesSerializer.Render(document), cancellationToken);
         }
-
-        var section = Section.None;
-        foreach (var rawLine in markdown.Split('\n'))
+        finally
         {
-            var line = rawLine.Trim();
-            if (line.Length == 0)
-            {
-                continue;
-            }
-
-            if (line.StartsWith("##", StringComparison.Ordinal))
-            {
-                section = line.StartsWith(MappingsHeading, StringComparison.OrdinalIgnoreCase) ? Section.Mappings
-                    : line.StartsWith(DislikesHeading, StringComparison.OrdinalIgnoreCase) ? Section.Dislikes
-                    : Section.None;
-                continue;
-            }
-
-            if (line.StartsWith('#') || !line.StartsWith('-'))
-            {
-                continue;
-            }
-
-            switch (section)
-            {
-                case Section.Mappings:
-                    var pref = ParseMapping(line);
-                    if (pref is not null)
-                    {
-                        mappings.Add(pref);
-                    }
-
-                    break;
-
-                case Section.Dislikes:
-                    var dislike = line.TrimStart('-').Trim();
-                    if (dislike.Length > 0)
-                    {
-                        dislikes.Add(dislike);
-                    }
-
-                    break;
-            }
+            _gate.Release();
         }
-
-        return new PreferencesDocument(mappings, dislikes);
     }
 
-    internal static ProductPreference? ParseMapping(string line)
+    /// <summary>
+    /// Atomically read-merge-writes the preferences. Loads the current document
+    /// (parsing whatever is on disk — never the template scaffold, so nothing is
+    /// lost), passes it to <paramref name="mutate"/>, then writes the result back
+    /// under the same lock. This is how LearnerHound persists learning without
+    /// clobbering human-curated or previously-learned entries.
+    /// </summary>
+    public async Task<PreferencesDocument> UpdateAsync(
+        Func<PreferencesDocument, PreferencesDocument> mutate, CancellationToken cancellationToken = default)
     {
-        var match = MappingLineRegex.Match(line);
-        if (!match.Success)
+        await _gate.WaitAsync(cancellationToken);
+        try
         {
-            return null;
+            var raw = await _stateFiles.ReadAsync(GroceryStateFile.Preferences, cancellationToken);
+            var current = string.IsNullOrWhiteSpace(raw) ? PreferencesDocument.Empty : PreferencesSerializer.Parse(raw);
+            var updated = mutate(current);
+            await _stateFiles.WriteAsync(GroceryStateFile.Preferences, PreferencesSerializer.Render(updated), cancellationToken);
+            return updated;
         }
-
-        var item = match.Groups["item"].Value.Trim();
-        if (item.Length == 0)
+        finally
         {
-            return null;
+            _gate.Release();
         }
-
-        var product = match.Groups["none"].Success
-            ? null
-            : NullIfBlank(match.Groups["product"].Value.Trim());
-
-        var tags = match.Groups["tags"].Value;
-
-        double? qty = QtyRegex.Match(tags) is { Success: true } qm
-            ? double.Parse(qm.Groups["qty"].Value, CultureInfo.InvariantCulture)
-            : null;
-
-        var confidence = ConfidenceRegex.Match(tags) is { Success: true } cm
-            ? double.Parse(cm.Groups["c"].Value, CultureInfo.InvariantCulture)
-            : 0.0;
-
-        var isFavourite = tags.Contains("favourite", StringComparison.OrdinalIgnoreCase);
-        var isStaple = tags.Contains("staple", StringComparison.OrdinalIgnoreCase);
-
-        return new ProductPreference(item, product, qty, confidence, isFavourite, isStaple);
     }
 
-    internal static string RenderDocument(PreferencesDocument document)
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine(Heading);
-        builder.AppendLine();
-        builder.AppendLine("Learned product mappings, typical quantities, favourites and dislikes.");
-        builder.AppendLine("Both users can edit this file directly; LearnerHound refines it over time.");
-        builder.AppendLine();
-        builder.AppendLine(MappingsHeading);
-        builder.AppendLine();
-        foreach (var m in document.Mappings)
-        {
-            builder.AppendLine(RenderMapping(m));
-        }
+    // ── Back-compat helpers (delegate to the shared serializer) ─────────────────
 
-        builder.AppendLine();
-        builder.AppendLine(DislikesHeading);
-        builder.AppendLine();
-        foreach (var d in document.Dislikes)
-        {
-            builder.AppendLine(CultureInfo.InvariantCulture, $"- {d}");
-        }
+    internal static PreferencesDocument ParseDocument(string markdown) => PreferencesSerializer.Parse(markdown);
 
-        return builder.ToString();
-    }
+    internal static ProductPreference? ParseMapping(string line) => PreferencesSerializer.ParseMapping(line);
 
-    internal static string RenderMapping(ProductPreference pref)
-    {
-        var product = pref.PreferredProduct is null ? "(none)" : $"\"{pref.PreferredProduct}\"";
-        var builder = new StringBuilder();
-        builder.Append(CultureInfo.InvariantCulture, $"- {pref.Item} → {product}");
-        if (pref.UsualQuantity is { } qty)
-        {
-            builder.Append(CultureInfo.InvariantCulture, $" · usual qty {FormatNumber(qty)}");
-        }
+    internal static string RenderDocument(PreferencesDocument document) => PreferencesSerializer.Render(document);
 
-        builder.Append(CultureInfo.InvariantCulture, $" · confidence {FormatNumber(pref.Confidence)}");
-        if (pref.IsFavourite)
-        {
-            builder.Append(" · favourite");
-        }
-
-        if (pref.IsStaple)
-        {
-            builder.Append(" · staple");
-        }
-
-        return builder.ToString();
-    }
-
-    private static string Template()
-    {
-        var builder = new StringBuilder();
-        builder.AppendLine(Heading);
-        builder.AppendLine();
-        builder.AppendLine("Learned product mappings, typical quantities, favourites and dislikes.");
-        builder.AppendLine("Both users can edit this file directly; LearnerHound refines it over time.");
-        builder.AppendLine();
-        builder.AppendLine(MappingsHeading);
-        builder.AppendLine();
-        builder.AppendLine("<!-- e.g. - milk → \"Sainsbury's British Semi Skimmed Milk 2.27L\" · usual qty 2 · confidence 0.8 · favourite -->");
-        builder.AppendLine();
-        builder.AppendLine(DislikesHeading);
-        builder.AppendLine();
-        builder.AppendLine("<!-- e.g. - value-range ready meals -->");
-        return builder.ToString();
-    }
-
-    private static string FormatNumber(double value) =>
-        value == Math.Floor(value)
-            ? ((long)value).ToString(CultureInfo.InvariantCulture)
-            : value.ToString("0.##", CultureInfo.InvariantCulture);
-
-    private static string? NullIfBlank(string value) => value.Length == 0 ? null : value;
+    internal static string RenderMapping(ProductPreference pref) => PreferencesSerializer.RenderMapping(pref);
 
     private static bool NameEquals(string a, string b) =>
         string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
-
-    private enum Section
-    {
-        None,
-        Mappings,
-        Dislikes,
-    }
 }

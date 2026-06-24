@@ -139,4 +139,50 @@ public class PreferenceServiceTests
 
         Assert.IsNull(pref);
     }
+
+    [TestMethod]
+    public async Task Update_ReadMergeWrite_PreservesExistingEntries()
+    {
+        const string md = """
+            # Preferences
+
+            ## Product mappings
+
+            - milk → "Semi Skimmed 2.27L" · usual qty 2 · confidence 0.8 · favourite
+
+            ## Dislikes
+
+            - brand x crisps
+            """;
+        await _stateFiles.WriteAsync(GroceryStateFile.Preferences, md);
+
+        var updated = await _service.UpdateAsync(doc => doc with
+        {
+            Mappings = doc.Mappings
+                .Append(new ProductPreference("eggs", "Free Range Eggs", 1, 0.4, false, false))
+                .ToList(),
+        });
+
+        Assert.AreEqual(2, updated.Mappings.Count);
+
+        // Reload from disk to confirm the human entry survived the round-trip.
+        var reloaded = await _service.LoadAsync();
+        Assert.IsTrue(reloaded.Mappings.Any(m => m.Item == "milk" && m.IsFavourite));
+        Assert.IsTrue(reloaded.Mappings.Any(m => m.Item == "eggs"));
+        CollectionAssert.Contains(reloaded.Dislikes.ToList(), "brand x crisps");
+    }
+
+    [TestMethod]
+    public async Task Update_OnEmptyFile_StartsFromEmptyDocument()
+    {
+        PreferencesDocument? seen = null;
+        await _service.UpdateAsync(doc =>
+        {
+            seen = doc;
+            return doc;
+        });
+
+        Assert.IsNotNull(seen);
+        Assert.AreEqual(0, seen!.Mappings.Count);
+    }
 }

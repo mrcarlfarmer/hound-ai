@@ -34,6 +34,8 @@ builder.Services.Configure<StateFileSettings>(
     builder.Configuration.GetSection(StateFileSettings.SectionName));
 builder.Services.Configure<BrowserWorkerSettings>(
     builder.Configuration.GetSection(BrowserWorkerSettings.SectionName));
+builder.Services.Configure<LearnerSettings>(
+    builder.Configuration.GetSection(LearnerSettings.SectionName));
 
 // ── RavenDB ──────────────────────────────────────────────────────────────────
 var ravenUrl = builder.Configuration["RavenDb:Url"] ?? "http://ravendb:8080";
@@ -87,6 +89,8 @@ builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ =
 builder.Services.AddSingleton<StateFileService>();
 builder.Services.AddSingleton<ShoppingListService>();
 builder.Services.AddSingleton<PreferenceService>();
+builder.Services.AddSingleton<PurchaseHistoryService>();
+builder.Services.AddSingleton<PreferenceLearner>();
 builder.Services.AddSingleton<BudgetLedgerService>();
 builder.Services.AddSingleton<IBrowserWorkerClient, BrowserWorkerClient>();
 
@@ -136,7 +140,9 @@ builder.Services.AddSingleton<BudgetHound>(sp => new BudgetHound(
 
 builder.Services.AddSingleton<LearnerHound>(sp => new LearnerHound(
     sp.GetRequiredService<IActivityLogger>(),
-    sp.GetRequiredService<StateFileService>(),
+    sp.GetRequiredService<PreferenceService>(),
+    sp.GetRequiredService<PurchaseHistoryService>(),
+    sp.GetRequiredService<PreferenceLearner>(),
     sp.GetService<ILoggerFactory>()));
 
 // ── Node dictionary for the (future) graph executor ───────────────────────────

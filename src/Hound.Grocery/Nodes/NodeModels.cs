@@ -69,6 +69,18 @@ public record BasketResult(
     decimal Subtotal);
 
 /// <summary>
+/// A single observed purchase of a loose list item — the ground-truth signal
+/// LearnerHound learns from (spec §10). Sourced from <c>purchase-history.md</c>
+/// (appended by ShopperHound once it exists, or the Sainsbury's order-history
+/// page); built and tested against synthetic observations until then.
+/// </summary>
+public record PurchaseObservation(
+    string Item,
+    string ChosenProduct,
+    double Quantity,
+    DateOnly Date);
+
+/// <summary>
 /// How a basket reconciles against the budget (spec §9). Enforcement is soft —
 /// the human checks out — so anything other than <see cref="Ok"/> drives a
 /// flag-and-ask over Telegram rather than a hard block.
