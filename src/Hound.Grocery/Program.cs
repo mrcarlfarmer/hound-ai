@@ -86,8 +86,16 @@ builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ =
 // ── Services ──────────────────────────────────────────────────────────────────
 builder.Services.AddSingleton<StateFileService>();
 builder.Services.AddSingleton<ShoppingListService>();
+builder.Services.AddSingleton<PreferenceService>();
 builder.Services.AddSingleton<BudgetLedgerService>();
 builder.Services.AddSingleton<IBrowserWorkerClient, BrowserWorkerClient>();
+
+// Planning (spec §6, §10): fuzzy item→preference matching via embeddinggemma and
+// the cold-start product/quantity assistant via the keyed `default` chat client.
+builder.Services.AddSingleton<IItemMatcher, EmbeddingItemMatcher>();
+builder.Services.AddSingleton<IPlannerAssistant>(sp => new LlmPlannerAssistant(
+    sp.GetRequiredKeyedService<IChatClient>("default"),
+    sp.GetService<ILoggerFactory>()));
 
 // Telegram intake (spec §7.1, §13): natural-language parser behind the keyed
 // `default` IChatClient, the bot transport behind ITelegramClient, both fully
@@ -109,6 +117,11 @@ builder.Services.AddSingleton<IConciergeMessageHandler>(sp => sp.GetRequiredServ
 
 builder.Services.AddSingleton<PlannerHound>(sp => new PlannerHound(
     sp.GetRequiredService<IActivityLogger>(),
+    sp.GetRequiredService<ShoppingListService>(),
+    sp.GetRequiredService<PreferenceService>(),
+    sp.GetRequiredService<IItemMatcher>(),
+    sp.GetRequiredService<IPlannerAssistant>(),
+    sp.GetRequiredService<IOptions<BudgetSettings>>(),
     sp.GetService<ILoggerFactory>()));
 
 builder.Services.AddSingleton<ShopperHound>(sp => new ShopperHound(

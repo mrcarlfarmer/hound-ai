@@ -13,18 +13,42 @@ public record ShoppingListItem(
     DateTime AddedAt);
 
 /// <summary>
+/// Relative importance of a planned item, used downstream to decide trim order
+/// when the basket is over budget (BudgetHound, Phase 5). Staples and explicit
+/// favourites plan at <see cref="High"/>; everything else at <see cref="Normal"/>.
+/// </summary>
+public enum PlanPriority
+{
+    Low,
+    Normal,
+    High,
+}
+
+/// <summary>
 /// A concrete, actionable item produced by <c>PlannerHound</c> from a loose
-/// list entry: a search term, the learned preferred product (if any) and a
-/// target quantity.
+/// list entry (spec §6, §10): the original list text, the search term to run on
+/// the Sainsbury's site, the learned preferred product (if any), a target
+/// quantity, a planning priority and the favourite/staple flags that influence
+/// ranking and trim order.
 /// </summary>
 public record PlannedItem(
+    string RawListText,
     string SearchTerm,
     string? PreferredProduct,
-    double TargetQuantity);
+    double TargetQuantity,
+    PlanPriority Priority = PlanPriority.Normal,
+    bool IsFavourite = false,
+    bool IsStaple = false);
 
-/// <summary>The full plan emitted by <c>PlannerHound</c>.</summary>
+/// <summary>
+/// The full plan emitted by <c>PlannerHound</c>. <see cref="WeeklyBudgetTarget"/>
+/// carries loose budget context (the configured weekly target) so the plan can be
+/// budget-aware; full reconciliation remains BudgetHound's job (Phase 5).
+/// </summary>
 public record ShoppingPlan(
-    IReadOnlyList<PlannedItem> Items);
+    IReadOnlyList<PlannedItem> Items,
+    decimal? WeeklyBudgetTarget = null,
+    DateTime GeneratedAt = default);
 
 /// <summary>
 /// One line added to the live Sainsbury's basket by <c>ShopperHound</c>, with
