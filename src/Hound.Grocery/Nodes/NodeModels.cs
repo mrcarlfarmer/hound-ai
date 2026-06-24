@@ -69,13 +69,46 @@ public record BasketResult(
     decimal Subtotal);
 
 /// <summary>
-/// Outcome of <c>BudgetHound</c>'s pay-cycle reconciliation. When
+/// How a basket reconciles against the budget (spec §9). Enforcement is soft —
+/// the human checks out — so anything other than <see cref="Ok"/> drives a
+/// flag-and-ask over Telegram rather than a hard block.
+/// </summary>
+public enum BudgetOutcome
+{
+    /// <summary>Within the weekly flex band and under the pay-cycle cap.</summary>
+    Ok,
+
+    /// <summary>Projected weekly total exceeds the target + flex.</summary>
+    WeeklyOver,
+
+    /// <summary>Projected pay-cycle total exceeds the monthly cap.</summary>
+    CycleOver,
+
+    /// <summary>Both the weekly band and the pay-cycle cap are exceeded.</summary>
+    Both,
+}
+
+/// <summary>
+/// Outcome of <c>BudgetHound</c>'s pay-cycle reconciliation (spec §9). Carries
+/// the figures the Concierge needs to relay a clear approve/trim question. When
 /// <see cref="RequiresApproval"/> is set the pack flags the overage and asks the
-/// user to approve or trim via Telegram (spec §9).
+/// user — it never refuses, because the human completes checkout.
 /// </summary>
 public record BudgetVerdict(
-    bool WithinBudget,
+    BudgetOutcome Outcome,
+    decimal BasketSubtotal,
+    decimal WeeklyTarget,
+    decimal WeeklyThreshold,
     decimal ProjectedWeeklyTotal,
-    decimal ProjectedMonthlyTotal,
+    decimal WeeklyOverage,
+    double WeeklyPercentOver,
+    decimal MonthlyCap,
+    decimal ProjectedCycleTotal,
+    decimal CycleOverage,
+    double CyclePercentOver,
     bool RequiresApproval,
-    string Reasoning);
+    string Summary)
+{
+    /// <summary>Convenience flag: <c>true</c> only when the outcome is <see cref="BudgetOutcome.Ok"/>.</summary>
+    public bool WithinBudget => Outcome == BudgetOutcome.Ok;
+}
