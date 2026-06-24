@@ -15,6 +15,18 @@ launchSettings.json
 
 # User secrets
 secrets.json
+secrets.grocery.json
+src/Hound.Grocery/Config/secrets.grocery.json
+
+# Grocery pack durable state (markdown files on a git-ignored volume)
+data/grocery/
+
+# Python (grocery-browser sidecar)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
 
 # NuGet
 *.nupkg
