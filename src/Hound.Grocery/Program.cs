@@ -7,6 +7,7 @@ using Hound.Grocery.Graph;
 using Hound.Grocery.Nodes;
 using Hound.Grocery.Services;
 using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using OpenAI;
 using OpenAI.Embeddings;
 using Raven.Client.Documents;
@@ -84,13 +85,27 @@ builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(_ =
 
 // ── Services ──────────────────────────────────────────────────────────────────
 builder.Services.AddSingleton<StateFileService>();
+builder.Services.AddSingleton<ShoppingListService>();
 builder.Services.AddSingleton<BudgetLedgerService>();
 builder.Services.AddSingleton<IBrowserWorkerClient, BrowserWorkerClient>();
 
-// ── Hounds (graph nodes) — Phase 1 placeholder singletons ─────────────────────
+// Telegram intake (spec §7.1, §13): natural-language parser behind the keyed
+// `default` IChatClient, the bot transport behind ITelegramClient, both fully
+// mockable.
+builder.Services.AddSingleton<IShoppingListParser>(sp => new LlmShoppingListParser(
+    sp.GetRequiredKeyedService<IChatClient>("default"),
+    sp.GetRequiredService<IOptions<TelegramSettings>>(),
+    sp.GetService<ILoggerFactory>()));
+builder.Services.AddSingleton<ITelegramClient, TelegramBotClientAdapter>();
+
+// ── Hounds (graph nodes) ──────────────────────────────────────────────────────
 builder.Services.AddSingleton<ConciergeHound>(sp => new ConciergeHound(
     sp.GetRequiredService<IActivityLogger>(),
+    sp.GetRequiredService<IShoppingListParser>(),
+    sp.GetRequiredService<ShoppingListService>(),
+    sp.GetRequiredService<IOptions<TelegramSettings>>(),
     sp.GetService<ILoggerFactory>()));
+builder.Services.AddSingleton<IConciergeMessageHandler>(sp => sp.GetRequiredService<ConciergeHound>());
 
 builder.Services.AddSingleton<PlannerHound>(sp => new PlannerHound(
     sp.GetRequiredService<IActivityLogger>(),
@@ -122,8 +137,9 @@ builder.Services.AddSingleton<IReadOnlyDictionary<string, INode>>(sp =>
         ["learner-hound"] = sp.GetRequiredService<LearnerHound>(),
     });
 
-// ── Hosted worker ──────────────────────────────────────────────────────────────
+// ── Hosted workers ────────────────────────────────────────────────────────────
 builder.Services.AddHostedService<GroceryWorker>();
+builder.Services.AddHostedService<TelegramIntakeService>();
 
 var app = builder.Build();
 
