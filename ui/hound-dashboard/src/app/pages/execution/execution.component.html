@@ -98,11 +98,11 @@
                   }
                   Close
                 </button>
-              } @else if (trade.fillStatus === 'Filled' && trade.action?.toUpperCase() === 'BUY' && hasOpenPosition(trade.symbol) && hasPendingSell(trade.symbol)) {
+              } @else if (trade.fillStatus === 'Filled' && trade.action.toUpperCase() === 'BUY' && hasOpenPosition(trade.symbol) && hasPendingSell(trade.symbol)) {
                 <span class="text-xs text-muted-foreground italic" title="A sell order for this symbol is pending on Alpaca">
                   Closing…
                 </span>
-              } @else if (trade.fillStatus === 'Filled' && trade.action?.toUpperCase() === 'BUY') {
+              } @else if (trade.fillStatus === 'Filled' && trade.action.toUpperCase() === 'BUY') {
                 <span class="text-xs text-muted-foreground italic" title="No open Alpaca position for this symbol">
                   Position closed
                 </span>

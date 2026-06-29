@@ -498,7 +498,7 @@
                     }
 
                     <!-- ── Bull-vs-Bear debate transcript ──────── -->
-                    @if (selectedRun?.strategyDebate?.length) {
+                    @if (selectedRun.strategyDebate?.length) {
                       <div class="mt-4 rounded-lg bg-muted/20 border border-border p-3">
                         <div class="mb-3 flex items-center justify-between">
                           <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
@@ -717,7 +717,7 @@
                     }
 
                     <!-- Close Position action -->
-                    @if (m.tradeOpen && selectedRun?.symbol) {
+                    @if (m.tradeOpen && selectedRun.symbol) {
                       <div class="mt-4">
                         <button
                           class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium bg-red-900/40 text-red-400 border border-red-600 hover:bg-red-900/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
