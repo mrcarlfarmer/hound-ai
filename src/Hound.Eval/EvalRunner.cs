@@ -184,26 +184,16 @@ public class EvalRunner
             case "StrategyHound":
             {
                 var node = new StrategyNode(chatClient, alpacaService, activityLogger);
+                var symbol = GetContextString(scenario.Input.Context, "symbol") ?? "AAPL";
                 var analysis = DeserializeContext<MarketAnalysis>(scenario.Input.Context)
-                    ?? new MarketAnalysis("AAPL", 0, 0, "Unknown", 0, scenario.Input.UserMessage);
-                var state = TradingGraphState.Initial("AAPL") with { DataOutput = analysis };
-
-                // Optional refinement context (issue #45): when a scenario supplies a
-                // refinementCount and riskRejection, replay the post-rejection loop so
-                // the debate seed carries the previous RiskNode rejection.
-                var refinementCount = GetContextInt(scenario.Input.Context, "refinementCount");
-                var riskRejection = GetContextString(scenario.Input.Context, "riskRejection");
-                if (refinementCount is > 0 && !string.IsNullOrWhiteSpace(riskRejection))
+                    ?? new MarketAnalysis(symbol, 0, 0, "Unknown", 0, scenario.Input.UserMessage);
+                var state = TradingGraphState.Initial(analysis.Symbol) with
                 {
-                    var rejectedDecision = new TradingDecision(
-                        analysis.Symbol, TradeAction.Buy, 0, "Previously rejected decision.", 0);
-                    state = state with
-                    {
-                        RefinementCount = refinementCount.Value,
-                        RiskOutput = new RiskAssessment(RiskVerdict.Rejected, rejectedDecision, riskRejection!),
-                    };
-                }
-
+                    DataOutput = analysis,
+                    RefinementCount = DeserializeContextValue<int?>(scenario.Input.Context, "refinementCount") ?? 0,
+                    RiskOutput = DeserializeContextValue<RiskAssessment>(scenario.Input.Context, "riskOutput")
+                        ?? BuildRiskOutputFromContext(scenario.Input.Context, analysis),
+                };
                 var result = await node.ExecuteAsync(state, ct);
                 return JsonSerializer.Serialize(result.StrategyOutput, JsonOptions);
             }
@@ -280,6 +270,35 @@ public class EvalRunner
         return JsonSerializer.Deserialize<T>(json, JsonOptions);
     }
 
+    private static T? DeserializeContextValue<T>(Dictionary<string, object>? context, string key)
+    {
+        if (context is null || !context.TryGetValue(key, out var value) || value is null)
+            return default;
+
+        if (value is JsonElement element)
+            return element.Deserialize<T>(JsonOptions);
+
+        if (value is T typedValue)
+            return typedValue;
+
+        var json = JsonSerializer.Serialize(value, JsonOptions);
+        return JsonSerializer.Deserialize<T>(json, JsonOptions);
+    }
+
+    private static RiskAssessment? BuildRiskOutputFromContext(
+        Dictionary<string, object>? context,
+        MarketAnalysis analysis)
+    {
+        var refinementCount = GetContextInt(context, "refinementCount");
+        var riskRejection = GetContextString(context, "riskRejection");
+        if (refinementCount is not > 0 || string.IsNullOrWhiteSpace(riskRejection))
+            return null;
+
+        var rejectedDecision = new TradingDecision(
+            analysis.Symbol, TradeAction.Buy, 0, "Previously rejected decision.", 0);
+        return new RiskAssessment(RiskVerdict.Rejected, rejectedDecision, riskRejection);
+    }
+
     private static string? GetContextString(Dictionary<string, object>? context, string key)
     {
         if (context is null || !context.TryGetValue(key, out var value)) return null;
@@ -323,4 +342,3 @@ public class EvalRunner
         return (true, "All criteria met");
     }
 }
-

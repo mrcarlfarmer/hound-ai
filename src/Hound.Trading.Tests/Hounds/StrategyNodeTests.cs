@@ -161,6 +161,58 @@ public sealed class StrategyNodeTests
     }
 
     [TestMethod]
+    public async Task Debate_OnRefinement_InjectsPreviousRiskRejectionIntoSeed()
+    {
+        var responses = new Queue<string>(
+        [
+            "BULL: Reduce size and keep momentum thesis.",
+            "BEAR: Confidence is still too weak for a full-size position.",
+            "{\"symbol\":\"AAPL\",\"action\":\"Buy\",\"quantity\":0.5,\"reasoning\":\"Reduced size addresses the rejected risk concern.\",\"confidence\":0.72,\"trailPercent\":5}",
+        ]);
+        var capturedPrompts = new List<string>();
+        var node = BuildNodeWithChatResponses(
+            responses,
+            debateEnabled: true,
+            turnsPerSide: 1,
+            capturedPrompts: capturedPrompts);
+
+        var rejectedDecision = new TradingDecision(
+            "AAPL",
+            TradeAction.Buy,
+            2m,
+            "Initial momentum buy.",
+            0.78,
+            CurrentPrice: 175m,
+            EstimatedCost: 350m,
+            TrailPercent: 5m);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            DataOutput = new MarketAnalysis(
+                Symbol: "AAPL",
+                LastPrice: 175m,
+                VolumeChange: 1.4m,
+                Trend: "Bullish",
+                ConfidenceScore: 0.78,
+                Summary: "Uptrend intact, but sizing may be aggressive."),
+            RefinementCount = 1,
+            RiskOutput = new RiskAssessment(
+                RiskVerdict.Rejected,
+                rejectedDecision,
+                "Position size exceeds the allowed cap; reduce the quantity and explain why the tighter sizing is still justified."),
+        };
+
+        var result = await node.ExecuteAsync(state, CancellationToken.None);
+
+        Assert.IsNotNull(result.StrategyDebate, "Refinement loops should still run a fresh debate.");
+        Assert.AreEqual(2, result.StrategyDebate!.Count, "One turn per side should yield a fresh two-turn transcript on refinement.");
+        Assert.AreEqual(3, capturedPrompts.Count);
+        StringAssert.Contains(capturedPrompts[0], "## Risk rejection to address (attempt #1):");
+        StringAssert.Contains(capturedPrompts[0], "Position size exceeds the allowed cap; reduce the quantity and explain why the tighter sizing is still justified.");
+        StringAssert.Contains(capturedPrompts[0], "You must directly address these rejected-risk concerns in your argument.");
+        Assert.IsFalse(capturedPrompts[0].Contains("Now output ONLY the final JSON decision object.", StringComparison.Ordinal));
+    }
+
+    [TestMethod]
     public async Task Debate_LogsPerTurnActivityWithDebateTurnMetadata()
     {
         var responses = new Queue<string>(
@@ -312,6 +364,11 @@ public sealed class StrategyNodeTests
                 capturedPrompts?.Add(string.Join("\n", messages.Select(m => m.Text)));
                 if (responses.Count == 0)
                     throw new InvalidOperationException("No more canned chat responses available.");
+
+                capturedPrompts?.Add(string.Join(
+                    Environment.NewLine,
+                    messages.Select(m => m.Text ?? string.Empty)));
+
                 var text = responses.Dequeue();
                 return Task.FromResult(new ChatResponse([new ChatMessage(ChatRole.Assistant, text)]));
             });

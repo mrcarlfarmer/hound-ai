@@ -13,13 +13,26 @@
       "confidenceScore": 0.75,
       "summary": "Bullish trend intact, but the previous decision was rejected by risk management for an oversized position.",
       "refinementCount": 1,
-      "riskRejection": "Proposed position size exceeds the per-trade risk budget; reduce exposure before resubmitting."
+      "riskOutput": {
+        "verdict": "Rejected",
+        "decision": {
+          "symbol": "AAPL",
+          "action": "Buy",
+          "quantity": 2.0,
+          "reasoning": "Initial momentum buy before the risk review.",
+          "confidence": 0.78,
+          "currentPrice": 175.0,
+          "estimatedCost": 350.0,
+          "trailPercent": 5.0
+        },
+        "reasoning": "Proposed position size exceeds the per-trade risk budget; reduce exposure before resubmitting."
+      }
     }
   },
   "expectedBehavior": {
     "shouldCallTools": [],
     "outputMustContain": [],
-    "outputMustNotContain": [],
+    "outputMustNotContain": ["\"Quantity\":2"],
     "outputFormat": "JSON with symbol, action, quantity, reasoning, confidence",
     "decisionCriteria": "After a fresh debate seeded with the prior risk rejection, the coordinator must emit a decision that respects the risk concern — either Hold or a Buy sized within the risk budget, never the original oversized trade."
   },
