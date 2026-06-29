@@ -41,10 +41,33 @@ DTOs are records in `Nodes/NodeModels.cs`. Hounds are registered as singletons i
 ## grocery-browser Sidecar Contract
 - The .NET side talks to the sidecar via `IBrowserWorkerClient` (`Services/`); wire
   DTOs mirror the Python pydantic models in `infra/grocery-browser/app/models.py`.
-- RPC surface (spec 11.3): `/login`, `/search`, `/add`, `/basket`, `/order-history`,
-  `/screenshot`, plus `/health`. Internal-only on `hound-net` at
-  `http://grocery-browser:8090` (no host ports).
+- RPC surface (spec 11.3): `/login`, `/search`, `/add`, `/set-quantity`, `/basket`,
+  `/favourites`, `/order-history`, `/screenshot`, plus `/health`. Internal-only on
+  `hound-net` at `http://grocery-browser:8090` (no host ports).
 - Keep the .NET DTOs and the Python models in sync whenever the contract changes.
+- **Selectors are externalised** to `infra/grocery-browser/app/selectors.json` — never
+  hardcode Sainsbury's selectors in driver code. Bind to `data-testid` only (CSS classes
+  are hashed; `data-pkgid` churns). The site spans two stacks: NEW `/groceries/` (React
+  "fable", `gw-*` testids: search, product, favourites) and OLD `/gol-ui/` (Angular
+  "Luna", `pt-*`/`trolley-item-*`/`order-summary-*`: trolley/basket, read-only).
+- Navigation **waits on a selector, never network idle** (the new stack streams ads and
+  never settles); cookie consent is `#onetrust-accept-btn-handler`; gol-ui needs ~9s to
+  hydrate. `zendriver` is imported lazily in `app/browser.py` so parsing/safety logic is
+  testable without Chrome.
+
+## Hard Safety Rule R1 (never slot / never checkout)
+- Enforced in `infra/grocery-browser/app/safety.py` by three guards: a **URL denylist**
+  (checkout/payment/slot/book-delivery/…), a **testid denylist** (`gw-book-slot`,
+  `order-summary-book-slot-button`, `book-delivery-button`, `book-delivery`), and an
+  **action allowlist** (search/open_product/set_quantity/add_to_basket/read_basket/
+  read_favourites/read_order_history/screenshot/login). Danger lists are sourced from
+  `selectors.json` (`danger.denyTestIds`/`danger.denyUrlPatterns`) with a hardcoded
+  fallback so the guard can never be silently disabled. Any breach → HTTP 403.
+- `ShopperHound` HARD-STOPS once the basket is built; there is no `IBrowserWorkerClient`
+  method that can reach a slot or checkout. The `DRY_RUN` kill switch (env `GROCERY_DRY_RUN`)
+  makes `/add` + `/set-quantity` read-only.
+- Always extend the pytest safety suite (assert denylisted testids/URLs return 403) when
+  touching browser/selectors code.
 
 ## Durable State
 - Stored as **local markdown files** on the git-ignored `grocery-data` volume

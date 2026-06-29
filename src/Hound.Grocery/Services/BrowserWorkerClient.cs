@@ -58,6 +58,16 @@ public class BrowserWorkerClient : IBrowserWorkerClient
             ?? new BasketSnapshot(Array.Empty<Nodes.BasketLine>(), 0m);
     }
 
+    public async Task<BasketSnapshot> SetQuantityAsync(string productId, double quantity, CancellationToken cancellationToken = default)
+    {
+        var client = _httpClientFactory.CreateClient();
+        var response = await client.PostAsJsonAsync(
+            $"{_baseUrl}/set-quantity", new SetQuantityRequest(productId, quantity), cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<BasketSnapshot>(cancellationToken)
+            ?? new BasketSnapshot(Array.Empty<Nodes.BasketLine>(), 0m);
+    }
+
     public async Task<BasketSnapshot> GetBasketAsync(CancellationToken cancellationToken = default)
     {
         var client = _httpClientFactory.CreateClient();
@@ -65,6 +75,15 @@ public class BrowserWorkerClient : IBrowserWorkerClient
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<BasketSnapshot>(cancellationToken)
             ?? new BasketSnapshot(Array.Empty<Nodes.BasketLine>(), 0m);
+    }
+
+    public async Task<FavouritesResult> GetFavouritesAsync(CancellationToken cancellationToken = default)
+    {
+        var client = _httpClientFactory.CreateClient();
+        var response = await client.GetAsync($"{_baseUrl}/favourites", cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<FavouritesResult>(cancellationToken)
+            ?? new FavouritesResult(Array.Empty<ProductCandidate>());
     }
 
     public async Task<OrderHistoryResult> GetOrderHistoryAsync(CancellationToken cancellationToken = default)

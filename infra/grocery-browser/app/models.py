@@ -1,7 +1,8 @@
 """Typed request/response models for the grocery-browser RPC surface (spec 11.3).
 
-Phase 1 scaffold: these mirror the .NET ``IBrowserWorkerClient`` DTOs so the two
-sides agree on the wire shape. Endpoints return typed placeholder data.
+These mirror the .NET ``IBrowserWorkerClient`` DTOs so the two sides agree on
+the wire shape. Keep this file and ``src/Hound.Grocery/Services/IBrowserWorkerClient.cs``
+in lockstep whenever the contract changes.
 """
 
 from __future__ import annotations
@@ -23,8 +24,10 @@ class ProductCandidate(BaseModel):
     name: str
     price: float
     nectarPrice: float | None = None
+    isNectarPrice: bool = False
     isFavourite: bool = False
     inStock: bool = True
+    perUnitPrice: str | None = None
     url: str
     imgRef: str | None = None
 
@@ -35,6 +38,11 @@ class SearchResult(BaseModel):
 
 
 class AddToBasketRequest(BaseModel):
+    productId: str
+    quantity: float
+
+
+class SetQuantityRequest(BaseModel):
     productId: str
     quantity: float
 
@@ -54,6 +62,10 @@ class BasketSnapshot(BaseModel):
     subtotal: float = 0.0
 
 
+class FavouritesResult(BaseModel):
+    candidates: list[ProductCandidate] = []
+
+
 class OrderHistoryEntry(BaseModel):
     orderId: str
     placedAt: str
@@ -65,7 +77,7 @@ class OrderHistoryResult(BaseModel):
 
 
 class ScreenshotResult(BaseModel):
-    """Placeholder: a reference to a captured PNG (path or id), not the bytes."""
+    """A reference to a captured PNG (path or id), not the bytes."""
 
     region: str | None = None
     imgRef: str

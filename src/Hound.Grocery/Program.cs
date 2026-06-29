@@ -92,6 +92,8 @@ builder.Services.AddSingleton<PreferenceService>();
 builder.Services.AddSingleton<PurchaseHistoryService>();
 builder.Services.AddSingleton<PreferenceLearner>();
 builder.Services.AddSingleton<BudgetLedgerService>();
+builder.Services.AddSingleton<BasketTraceService>();
+builder.Services.AddSingleton<ProductRanker>();
 builder.Services.AddSingleton<IBrowserWorkerClient, BrowserWorkerClient>();
 
 // Planning (spec §6, §10): fuzzy item→preference matching via embeddinggemma and
@@ -131,6 +133,9 @@ builder.Services.AddSingleton<PlannerHound>(sp => new PlannerHound(
 builder.Services.AddSingleton<ShopperHound>(sp => new ShopperHound(
     sp.GetRequiredService<IActivityLogger>(),
     sp.GetRequiredService<IBrowserWorkerClient>(),
+    sp.GetRequiredService<ProductRanker>(),
+    sp.GetRequiredService<BasketTraceService>(),
+    sp.GetRequiredService<PurchaseHistoryService>(),
     sp.GetService<ILoggerFactory>()));
 
 builder.Services.AddSingleton<BudgetHound>(sp => new BudgetHound(
