@@ -1,17 +1,17 @@
 {
   "scenarioName": "Debate Refinement Addresses Prior Risk Rejection",
-  "description": "When RiskNode rejects an earlier strategy, StrategyNode should rerun the bull-vs-bear debate and carry the rejection reasoning into the refinement prompt so the final decision addresses the prior sizing concern.",
+  "description": "On a refinement loop (RefinementCount > 0) the StrategyNode runs a fresh bull-vs-bear debate with the previous RiskNode rejection injected into the seed. The debaters must address the sizing rejection and the coordinator should produce a more conservative decision (Hold, or a smaller Buy) rather than re-proposing the rejected oversized trade.",
   "houndName": "StrategyNode",
   "category": "debate",
   "input": {
-    "userMessage": "Refine the previous AAPL strategy after a risk rejection on position sizing.",
+    "userMessage": "Re-run strategy for AAPL after risk rejected the previous decision for excessive position size.",
     "context": {
       "symbol": "AAPL",
-      "lastPrice": 175.0,
-      "volumeChange": 1.4,
+      "lastPrice": 175.00,
+      "volumeChange": 1.50,
       "trend": "Bullish",
-      "confidenceScore": 0.78,
-      "summary": "Momentum remains constructive, but the initial position sizing was too aggressive for the account.",
+      "confidenceScore": 0.75,
+      "summary": "Bullish trend intact, but the previous decision was rejected by risk management for an oversized position.",
       "refinementCount": 1,
       "riskOutput": {
         "verdict": "Rejected",
@@ -25,19 +25,19 @@
           "estimatedCost": 350.0,
           "trailPercent": 5.0
         },
-        "reasoning": "Position size exceeds the allowed cap; reduce the quantity and justify why the tighter sizing still makes sense."
+        "reasoning": "Proposed position size exceeds the per-trade risk budget; reduce exposure before resubmitting."
       }
     }
   },
   "expectedBehavior": {
     "shouldCallTools": [],
-    "outputMustContain": ["Buy"],
+    "outputMustContain": [],
     "outputMustNotContain": [],
-    "outputFormat": "JSON with symbol, action, quantity, reasoning, confidence, trailPercent",
-    "decisionCriteria": "On refinement, the debate should be rerun with the prior risk rejection in context so the final decision addresses the rejected sizing concern."
+    "outputFormat": "JSON with symbol, action, quantity, reasoning, confidence",
+    "decisionCriteria": "After a fresh debate seeded with the prior risk rejection, the coordinator must emit a decision that respects the risk concern — either Hold or a Buy sized within the risk budget, never the original oversized trade."
   },
   "scoring": {
     "type": "binary",
-    "passCriteria": "Output contains the action 'Buy'."
+    "passCriteria": "Output is valid JSON for a TradingDecision and does not re-propose an oversized position that ignores the prior risk rejection."
   }
 }

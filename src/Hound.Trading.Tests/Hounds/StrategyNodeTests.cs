@@ -259,6 +259,54 @@ public sealed class StrategyNodeTests
         Assert.IsTrue(debateTurnLogs.All(l => l.Metadata!["symbol"] as string == "AAPL"));
     }
 
+    /// <summary>
+    /// Option A (issue #45): on a refinement loop the previous RiskNode rejection
+    /// must be injected into the debate seed so both debaters argue in light of it.
+    /// Every debater turn is built from the seed, so capturing the first debater
+    /// prompt is sufficient to prove the rejection reasoning reached the debate.
+    /// </summary>
+    [TestMethod]
+    public async Task Debate_OnRefinement_InjectsPreviousRiskRejectionIntoSeed()
+    {
+        const string rejectionReasoning =
+            "Proposed position size exceeds the per-trade risk budget; reduce exposure before resubmitting.";
+
+        var responses = new Queue<string>(
+        [
+            "BULL: momentum remains intact despite the sizing concern.",
+            "BEAR: the rejection confirms the trade is too aggressive here.",
+            "{\"symbol\":\"AAPL\",\"action\":\"Hold\",\"quantity\":0,\"reasoning\":\"Respecting the risk rejection.\",\"confidence\":0.4}",
+        ]);
+        var capturedPrompts = new List<string>();
+        var node = BuildNodeWithChatResponses(
+            responses, debateEnabled: true, turnsPerSide: 1, capturedPrompts: capturedPrompts);
+
+        var rejectedDecision = new TradingDecision(
+            "AAPL", TradeAction.Buy, 100, "Buy 100 shares on momentum.", 0.8);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            DataOutput = new MarketAnalysis(
+                Symbol: "AAPL",
+                LastPrice: 175m,
+                VolumeChange: 1.5m,
+                Trend: "Bullish",
+                ConfidenceScore: 0.75,
+                Summary: "Bullish but flagged for sizing."),
+            RefinementCount = 1,
+            RiskOutput = new RiskAssessment(RiskVerdict.Rejected, rejectedDecision, rejectionReasoning),
+        };
+
+        await node.ExecuteAsync(state, CancellationToken.None);
+
+        // The first chat call is the opening (Bull) debater turn, built from the seed.
+        Assert.IsTrue(capturedPrompts.Count > 0, "Expected at least one debater prompt to be captured.");
+        var firstDebaterPrompt = capturedPrompts[0];
+        StringAssert.Contains(firstDebaterPrompt, rejectionReasoning,
+            "Debate seed must carry the previous risk rejection reasoning on a refinement loop.");
+        StringAssert.Contains(firstDebaterPrompt, "Refinement #1",
+            "Debate seed must mark the refinement attempt so debaters know to address the rejection.");
+    }
+
     [TestMethod]
     public async Task Debate_CancellationTokenCancelsBeforeCoordinator()
     {
@@ -313,6 +361,7 @@ public sealed class StrategyNodeTests
             .Returns<IEnumerable<ChatMessage>, ChatOptions?, CancellationToken>((messages, _, ct) =>
             {
                 ct.ThrowIfCancellationRequested();
+                capturedPrompts?.Add(string.Join("\n", messages.Select(m => m.Text)));
                 if (responses.Count == 0)
                     throw new InvalidOperationException("No more canned chat responses available.");
 

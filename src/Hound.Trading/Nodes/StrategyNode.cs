@@ -343,21 +343,30 @@ public class StrategyNode : INode
     {
         var transcript = new List<DebateTurn>();
         int turnsPerSide = _debateConfig.DebateTurnsPerSide;
+        bool isRefinement = state.RefinementCount > 0 && state.RiskOutput is not null;
+
+        var startMetadata = new Dictionary<string, object>
+        {
+            ["type"] = "debate-start",
+            ["symbol"] = state.Symbol,
+            ["runId"] = state.RunId,
+            ["turnsPerSide"] = turnsPerSide,
+            ["refinementCount"] = state.RefinementCount,
+        };
+        if (isRefinement)
+        {
+            startMetadata["riskRejection"] = state.RiskOutput!.Reasoning;
+        }
 
         await _activityLogger.LogActivityAsync(new ActivityLog
         {
             PackId = PackId,
             HoundId = NodeId,
             HoundName = "StrategyNode",
-            Message = $"Debate starting for {state.Symbol} ({turnsPerSide} turn(s) per side)",
+            Message = $"Debate starting for {state.Symbol} ({turnsPerSide} turn(s) per side)" +
+                      (isRefinement ? $" — refinement #{state.RefinementCount}" : string.Empty),
             Severity = ActivitySeverity.Info,
-            Metadata = new Dictionary<string, object>
-            {
-                ["type"] = "debate-start",
-                ["symbol"] = state.Symbol,
-                ["runId"] = state.RunId,
-                ["turnsPerSide"] = turnsPerSide,
-            },
+            Metadata = startMetadata,
         }, cancellationToken);
 
         var seed = BuildDebateSeed(state, analysisPrompt);

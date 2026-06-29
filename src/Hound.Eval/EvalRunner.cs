@@ -191,7 +191,8 @@ public class EvalRunner
                 {
                     DataOutput = analysis,
                     RefinementCount = DeserializeContextValue<int?>(scenario.Input.Context, "refinementCount") ?? 0,
-                    RiskOutput = DeserializeContextValue<RiskAssessment>(scenario.Input.Context, "riskOutput"),
+                    RiskOutput = DeserializeContextValue<RiskAssessment>(scenario.Input.Context, "riskOutput")
+                        ?? BuildRiskOutputFromContext(scenario.Input.Context, analysis),
                 };
                 var result = await node.ExecuteAsync(state, ct);
                 return JsonSerializer.Serialize(result.StrategyOutput, JsonOptions);
@@ -284,10 +285,34 @@ public class EvalRunner
         return JsonSerializer.Deserialize<T>(json, JsonOptions);
     }
 
+    private static RiskAssessment? BuildRiskOutputFromContext(
+        Dictionary<string, object>? context,
+        MarketAnalysis analysis)
+    {
+        var refinementCount = GetContextInt(context, "refinementCount");
+        var riskRejection = GetContextString(context, "riskRejection");
+        if (refinementCount is not > 0 || string.IsNullOrWhiteSpace(riskRejection))
+            return null;
+
+        var rejectedDecision = new TradingDecision(
+            analysis.Symbol, TradeAction.Buy, 0, "Previously rejected decision.", 0);
+        return new RiskAssessment(RiskVerdict.Rejected, rejectedDecision, riskRejection);
+    }
+
     private static string? GetContextString(Dictionary<string, object>? context, string key)
     {
         if (context is null || !context.TryGetValue(key, out var value)) return null;
         return value?.ToString();
+    }
+
+    private static int? GetContextInt(Dictionary<string, object>? context, string key)
+    {
+        if (context is null || !context.TryGetValue(key, out var value) || value is null) return null;
+        if (value is JsonElement element)
+        {
+            return element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out var n) ? n : null;
+        }
+        return int.TryParse(value.ToString(), out var parsed) ? parsed : null;
     }
 
     private IChatClient CreateChatClient()
