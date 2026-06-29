@@ -32,7 +32,7 @@
   "expectedBehavior": {
     "shouldCallTools": [],
     "outputMustContain": [],
-    "outputMustNotContain": [],
+    "outputMustNotContain": ["\"Quantity\":2"],
     "outputFormat": "JSON with symbol, action, quantity, reasoning, confidence",
     "decisionCriteria": "After a fresh debate seeded with the prior risk rejection, the coordinator must emit a decision that respects the risk concern — either Hold or a Buy sized within the risk budget, never the original oversized trade."
   },
