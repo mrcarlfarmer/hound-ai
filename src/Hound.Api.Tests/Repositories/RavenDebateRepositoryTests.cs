@@ -17,13 +17,15 @@ public sealed class RavenDebateRepositoryTests
     private const string Database = "hound-trading-pack";
 
     private static IDocumentStore _store = null!;
+    private static string _dataDirectory = string.Empty;
 
     [ClassInitialize]
     public static void ClassInitialize(TestContext _)
     {
+        _dataDirectory = Path.Combine(Path.GetTempPath(), "hound-raven-tests", Guid.NewGuid().ToString("N"));
         EmbeddedServer.Instance.StartServer(new ServerOptions
         {
-            DataDirectory = Path.Combine(Path.GetTempPath(), "hound-raven-tests", Guid.NewGuid().ToString("N")),
+            DataDirectory = _dataDirectory,
         });
         _store = EmbeddedServer.Instance.GetDocumentStore(Database);
     }
@@ -33,6 +35,18 @@ public sealed class RavenDebateRepositoryTests
     {
         _store?.Dispose();
         EmbeddedServer.Instance.Dispose();
+
+        // The embedded server holds the data directory until it is disposed;
+        // remove it now so test runs don't leave RavenDB data behind in temp.
+        try
+        {
+            if (!string.IsNullOrEmpty(_dataDirectory) && Directory.Exists(_dataDirectory))
+                Directory.Delete(_dataDirectory, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup — a lingering file handle should not fail the run.
+        }
     }
 
     private static async Task SeedAsync(params DebateRecord[] records)

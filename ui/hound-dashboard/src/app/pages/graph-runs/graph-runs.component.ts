@@ -256,6 +256,9 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   get debateTurns(): DebateTurnSnapshot[] {
     if (this.debateRecords.length > 0) {
+      // Records arrive ordered by refinementCount ascending (see
+      // RavenDebateRepository), so the last element is the most recent
+      // refinement iteration's debate.
       return this.debateRecords[this.debateRecords.length - 1].turns;
     }
     return this.selectedRun?.strategyDebate ?? [];
