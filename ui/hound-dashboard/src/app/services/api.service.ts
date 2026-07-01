@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest, AccountSummary, PositionInfo, AlpacaSyncResult, BarsResponse, ChartTimeframe } from '../models';
+import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest, AccountSummary, PositionInfo, AlpacaSyncResult, BarsResponse, ChartTimeframe, DebateRecord } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
@@ -60,6 +60,16 @@ export class ApiService {
 
   getRun(runId: string): Observable<GraphRun> {
     return this.http.get<GraphRun>(`${this.baseUrl}/api/runs/${runId}`);
+  }
+
+  /**
+   * Fetches the persisted bull-vs-bear debate transcript(s) for a run from the
+   * dedicated DebateRecord store. One record per StrategyNode invocation,
+   * ordered by refinement iteration. Returns an empty array for runs with no
+   * debate (disabled, or predating the DebateRecord feature).
+   */
+  getDebates(runId: string): Observable<DebateRecord[]> {
+    return this.http.get<DebateRecord[]>(`${this.baseUrl}/api/debates/${encodeURIComponent(runId)}`);
   }
 
   queueRun(symbol: string): Observable<RunRequest> {

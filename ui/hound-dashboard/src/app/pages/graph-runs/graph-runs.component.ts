@@ -7,7 +7,7 @@ import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { ApiService } from '../../services/api.service';
 import { SignalrService } from '../../services/signalr.service';
-import { GraphRun, NodeSnapshot, NodeStatus, NodeStreamChunk, RunRequest } from '../../models';
+import { GraphRun, NodeSnapshot, NodeStatus, NodeStreamChunk, RunRequest, DebateRecord, DebateTurnSnapshot } from '../../models';
 import { HlmTabsImports } from '@spartan-ng/helm/tabs';
 import { ChartPanelComponent } from '../../components/chart-panel/chart-panel.component';
 
@@ -81,6 +81,11 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   runs: GraphRun[] = [];
   pendingRequests: RunRequest[] = [];
   selectedRun?: GraphRun;
+  /**
+   * Debate transcript(s) for the selected run, fetched from
+   * `/api/debates/{runId}`. One record per StrategyNode invocation.
+   */
+  debateRecords: DebateRecord[] = [];
   loading = false;
   expandedNodes = new Set<string>();
   /** Live-streamed reasoning text, keyed by `${runId}:${nodeId}`. */
@@ -143,6 +148,11 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       } else if (this.selectedRun?.runId === run.runId) {
         this.selectedRun = run;
         this.autoExpandActive(run);
+        // The debate is persisted while StrategyNode runs; if we selected the
+        // run before that completed, pick it up on the next update.
+        if (this.debateRecords.length === 0) {
+          this.loadDebates(run.runId);
+        }
       }
       this.maybeClearApprovalSubmitting(run);
       this.cdr.detectChanges();
@@ -233,7 +243,44 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       }
     });
     this.autoExpandActive(run);
+    this.loadDebates(run.runId);
     this.cdr.detectChanges();
+  }
+
+  /**
+   * Debate turns to render in the Strategy panel for the selected run. Prefers
+   * the dedicated DebateRecord documents fetched from `/api/debates/{runId}`
+   * (using the most recent refinement iteration); falls back to the transcript
+   * persisted on the GraphRun for older runs that predate the DebateRecord
+   * feature.
+   */
+  get debateTurns(): DebateTurnSnapshot[] {
+    if (this.debateRecords.length > 0) {
+      // Records arrive ordered by refinementCount ascending (see
+      // RavenDebateRepository), so the last element is the most recent
+      // refinement iteration's debate.
+      return this.debateRecords[this.debateRecords.length - 1].turns;
+    }
+    return this.selectedRun?.strategyDebate ?? [];
+  }
+
+  /**
+   * Fetches persisted debate transcripts for a run. Best-effort — on error the
+   * panel simply falls back to the transcript on the GraphRun snapshot.
+   */
+  private loadDebates(runId: string): void {
+    this.debateRecords = [];
+    this.api.getDebates(runId).subscribe({
+      next: records => {
+        // Guard against a stale response arriving after the user selected a
+        // different run.
+        if (this.selectedRun?.runId === runId) {
+          this.debateRecords = records;
+          this.cdr.detectChanges();
+        }
+      },
+      error: () => { /* fall back to GraphRun.strategyDebate */ },
+    });
   }
 
   /** Expand the active node and default it to the reasoning tab. */
