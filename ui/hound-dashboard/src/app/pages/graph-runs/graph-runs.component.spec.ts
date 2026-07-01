@@ -3,7 +3,7 @@ import { of } from 'rxjs';
 import { GraphRunsComponent } from './graph-runs.component';
 import { ApiService } from '../../services/api.service';
 import { SignalrService } from '../../services/signalr.service';
-import { GraphRun } from '../../models';
+import { GraphRun, DebateRecord } from '../../models';
 
 describe('GraphRunsComponent', () => {
   const mockRun: GraphRun = {
@@ -24,11 +24,12 @@ describe('GraphRunsComponent', () => {
     ],
   };
 
-  function createComponent(runs: GraphRun[] = []) {
+  function createComponent(runs: GraphRun[] = [], debates: DebateRecord[] = []) {
     const mockApi = {
       getRuns: vi.fn().mockReturnValue(of(runs)),
       getRun: vi.fn().mockReturnValue(of(runs[0])),
       getRunRequests: vi.fn().mockReturnValue(of([])),
+      getDebates: vi.fn().mockReturnValue(of(debates)),
       // ChartPanelComponent (embedded in the analysts tab) calls getBars
       // during AfterViewInit. Return an empty bar set so tests don't blow
       // up with "getBars is not a function".
@@ -273,5 +274,32 @@ describe('GraphRunsComponent', () => {
     expect(text).toContain('Resistance overhead');
     expect(text).toContain('Volume confirms breakout');
     expect(text).toMatch(/3 turn\(s\)/);
+  });
+
+  it('should render debate turns from the /api/debates endpoint when records exist', () => {
+    const debates: DebateRecord[] = [
+      {
+        id: 'DebateRecords/AAPL-20260510-abc12345/0',
+        runId: mockRun.runId,
+        symbol: 'AAPL',
+        refinementCount: 0,
+        turnsPerSide: 1,
+        createdAt: '2026-05-10T12:00:00Z',
+        turns: [
+          { role: 'Bull', index: 0, message: 'Record-backed bull point', timestamp: '2026-05-10T12:00:01Z' },
+          { role: 'Bear', index: 1, message: 'Record-backed bear point', timestamp: '2026-05-10T12:00:02Z' },
+        ],
+      },
+    ];
+    const { fixture, mockApi } = createComponent([mockRun], debates);
+    fixture.detectChanges();
+
+    expect(mockApi.getDebates).toHaveBeenCalledWith(mockRun.runId);
+    const turnEls = fixture.nativeElement.querySelectorAll('.debate-turn');
+    expect(turnEls.length).toBe(2);
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Record-backed bull point');
+    expect(text).toContain('Record-backed bear point');
+    expect(text).toMatch(/2 turn\(s\)/);
   });
 });

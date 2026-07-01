@@ -14,6 +14,7 @@ applyTo: "ui/hound-dashboard/src/app/{services,models}/**"
 | `getHounds(packId)` | GET | `/api/packs/{packId}/hounds` |
 | `getActivity(filters)` | GET | `/api/activity` — query: `pack`, `hound`, `from`, `to`, `page`, `pageSize` |
 | `getHealth()` | GET | `/api/health` |
+| `getDebates(runId)` | GET | `/api/debates/{runId}` — persisted StrategyNode debate transcripts for a run |
 
 ### `TunerService`
 | Method | HTTP | Endpoint |
@@ -42,6 +43,7 @@ TypeScript interfaces in `models/index.ts` must mirror the C# models in `Hound.C
 | `ActivityLog` | `ActivityLog` | `metadata` is `Record<string, unknown>` |
 | `TunerExperiment` | `TunerExperiment` | `status` uses kebab-case values (`pending-review`) |
 | `HealthReport` | `HealthReport` | nested `ServiceHealth[]` |
+| `DebateRecord` | `DebateRecord` | `turns` is `DebateTurnSnapshot[]`; served by `/api/debates/{runId}` |
 | `PagedResult<T>` | (server shape) | `items`, `totalCount`, `page`, `pageSize` |
 
 - All property names are **camelCase** (API serializes with camelCase)

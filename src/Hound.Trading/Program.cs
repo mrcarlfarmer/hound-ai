@@ -183,6 +183,7 @@ builder.Services.AddSingleton<StrategyNode>(sp => new StrategyNode(
     sp.GetRequiredService<IAlpacaService>(),
     sp.GetRequiredService<IActivityLogger>(),
     sp.GetService<Microsoft.Extensions.Options.IOptions<StrategyHoundConfig>>(),
+    sp.GetRequiredService<IDocumentStore>(),
     sp.GetService<ILoggerFactory>()));
 
 builder.Services.AddSingleton<RiskNode>(sp => new RiskNode(
