@@ -6,6 +6,7 @@ using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Raven.Client.Documents;
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
@@ -40,19 +41,30 @@ public class StrategyNode : INode
     private readonly ChatClientAgent _bearAgent;
     private readonly IAlpacaService _alpacaService;
     private readonly IActivityLogger _activityLogger;
+    private readonly IDocumentStore? _documentStore;
     private readonly ILoggerFactory? _loggerFactory;
     private readonly ILogger<StrategyNode>? _logger;
     private readonly StrategyHoundConfig _debateConfig;
+
+    /// <summary>
+    /// RavenDB database that holds the trading pack's documents (GraphRuns,
+    /// DebateRecords, checkpoints). Sessions are opened against this database
+    /// explicitly because the trading pack's <see cref="IDocumentStore"/> is
+    /// configured without a default database.
+    /// </summary>
+    private const string TradingDatabase = "hound-trading-pack";
 
     public StrategyNode(
         IChatClient chatClient,
         IAlpacaService alpacaService,
         IActivityLogger activityLogger,
         IOptions<StrategyHoundConfig>? debateConfig = null,
+        IDocumentStore? documentStore = null,
         ILoggerFactory? loggerFactory = null)
     {
         _alpacaService = alpacaService;
         _activityLogger = activityLogger;
+        _documentStore = documentStore;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory?.CreateLogger<StrategyNode>();
         _debateConfig = debateConfig?.Value ?? new StrategyHoundConfig();
@@ -415,7 +427,50 @@ public class StrategyNode : INode
             },
         }, cancellationToken);
 
+        await PersistDebateRecordAsync(state, turnsPerSide, transcript, cancellationToken);
+
         return transcript;
+    }
+
+    /// <summary>
+    /// Persists the completed debate transcript as a single <see cref="DebateRecord"/>
+    /// document (one per StrategyNode invocation) so the dashboard can load it
+    /// directly by run id instead of reconstructing it from per-turn activity
+    /// rows. Best-effort: a persistence failure is logged but never aborts the
+    /// trading decision, and is a no-op when no document store is configured
+    /// (e.g. the eval harness).
+    /// </summary>
+    private async Task PersistDebateRecordAsync(
+        TradingGraphState state,
+        int turnsPerSide,
+        IReadOnlyList<DebateTurn> transcript,
+        CancellationToken cancellationToken)
+    {
+        if (_documentStore is null || transcript.Count == 0) return;
+
+        try
+        {
+            var record = new DebateRecord
+            {
+                Id = $"DebateRecords/{state.RunId}/{state.RefinementCount}",
+                RunId = state.RunId,
+                Symbol = state.Symbol,
+                RefinementCount = state.RefinementCount,
+                TurnsPerSide = turnsPerSide,
+                CreatedAt = DateTime.UtcNow,
+                Turns = [.. transcript],
+            };
+
+            using var session = _documentStore.OpenAsyncSession(TradingDatabase);
+            await session.StoreAsync(record, record.Id, cancellationToken);
+            await session.SaveChangesAsync(cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger?.LogWarning(ex,
+                "Failed to persist DebateRecord for {Symbol} (run {RunId}); debate is still available on the GraphRun snapshot",
+                state.Symbol, state.RunId);
+        }
     }
 
     /// <summary>

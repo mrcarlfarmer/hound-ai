@@ -24,6 +24,11 @@ applyTo: "src/Hound.Api/**"
 | GET | `/api/packs/{id}` | `Pack` or `404` |
 | GET | `/api/packs/{packId}/hounds` | `IEnumerable<HoundInfo>` |
 
+### `/api/debates`
+| Verb | Route | Returns |
+|------|-------|---------|
+| GET | `/api/debates/{runId}` | `IEnumerable<DebateRecord>` — persisted StrategyNode debate transcripts for a run, ordered by `refinementCount` (empty when none). Backs the "Strategy Debate" panel instead of filtering `debate-turn` activity rows. |
+
 ### `/api/tuner`
 | Verb | Route | Returns |
 |------|-------|---------|
@@ -54,6 +59,7 @@ Valid hound names for apply: `StrategyHound`, `RiskHound`, `AnalysisHound`, `Exe
 | `Pack` | `Id`, `Name`, `Status` (Idle/Running/Error/Stopped), `HoundCount`, `LastActivity?`, `HoundIds` |
 | `HoundInfo` | `Id`, `Name`, `PackId`, `Status` (Idle/Processing/Error/Disabled), `LastActivity?` |
 | `TunerExperiment` | `Id`, `HoundName`, `ConfigBefore`, `ConfigAfter`, `BaselineScore`, `CandidateScore`, `Delta`, `Status`, `Rationale` |
+| `DebateRecord` | `Id` (`DebateRecords/{runId}/{refinementCount}`), `RunId`, `Symbol`, `RefinementCount`, `TurnsPerSide`, `CreatedAt`, `Turns` (`DebateTurn[]`) |
 
 ## Conventions
 

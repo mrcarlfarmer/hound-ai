@@ -196,6 +196,22 @@ export interface DebateTurnSnapshot {
   timestamp: string;
 }
 
+/**
+ * Full transcript of one bull-vs-bear debate, persisted once per StrategyNode
+ * invocation as a dedicated document and served by `GET /api/debates/{runId}`.
+ * Preferred over reconstructing the transcript from `debate-turn` activity
+ * rows. A run may have several records — one per refinement iteration.
+ */
+export interface DebateRecord {
+  id: string;
+  runId: string;
+  symbol: string;
+  refinementCount: number;
+  turnsPerSide: number;
+  createdAt: string;
+  turns: DebateTurnSnapshot[];
+}
+
 export interface RefinementSnapshot {
   attempt: number;
   symbol?: string;

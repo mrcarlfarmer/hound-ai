@@ -56,6 +56,13 @@ describe('ApiService', () => {
     req.flush([]);
   });
 
+  it('getDebates(runId) should GET /api/debates/{runId}', () => {
+    service.getDebates('AAPL-20260510-abc').subscribe();
+    const req = httpMock.expectOne('/api/debates/AAPL-20260510-abc');
+    expect(req.request.method).toBe('GET');
+    req.flush([]);
+  });
+
   it('getActivity() should GET /api/activity without params when filter is empty', () => {
     service.getActivity({}).subscribe();
     const req = httpMock.expectOne(r => r.url === '/api/activity');

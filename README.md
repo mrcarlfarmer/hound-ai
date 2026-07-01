@@ -202,6 +202,7 @@ The `hound-api` service exposes a REST API plus a SignalR hub at `/hubs/activity
 | Packs          | `GET /api/packs`, `/api/packs/{id}`, `/api/packs/{packId}/hounds`, `POST /api/packs/register` |
 | Activity       | `GET /api/activity`, `POST /api/activity`                                                    |
 | Graph runs     | `GET /api/runs`, `/api/runs/{runId}`, `/api/runs/requests`, `POST /api/runs`                 |
+| Debates        | `GET /api/debates/{runId}`                                                                   |
 | Run events     | `POST /api/runs/events/node-completed`, `/api/runs/events/node-stream`                       |
 | Trades         | `GET /api/trades`, `/api/trades/{id}`, `POST /api/trades/order-update`                       |
 | Portfolio      | `GET /api/portfolio/account`, `/api/portfolio/positions`, `POST /api/portfolio/positions/{symbol}/close` |
@@ -209,6 +210,25 @@ The `hound-api` service exposes a REST API plus a SignalR hub at `/hubs/activity
 | Tuner          | `GET /api/tuner/experiments`, `/api/tuner/experiments/{id}`, `POST .../apply`, `POST .../reject` |
 
 SignalR clients call `SubscribeToPack` / `UnsubscribeFromPack` and receive `OnActivity`, `OnOrderUpdate`, `OnGraphRunUpdate`, and `OnNodeStream` events.
+
+### Strategy debate persistence
+
+Each `StrategyNode` invocation that runs a bull-vs-bear debate writes a single
+`DebateRecord` document to the `hound-trading-pack` database (id
+`DebateRecords/{runId}/{refinementCount}` — one per invocation, so refinement
+re-runs are retained rather than overwritten). The dashboard "Strategy Debate"
+panel loads the transcript directly via `GET /api/debates/{runId}` instead of
+reconstructing it from per-turn `debate-turn` activity rows. Per-turn
+`ActivityLog` rows are still emitted for the live SignalR feed.
+
+### Data retention
+
+`DebateRecord` documents share the retention policy of the `ActivityLog` feed
+they summarise: both live in RavenDB and are pruned on the same schedule (no
+automatic expiry is configured today; documents persist until pruned via a
+RavenDB expiration/retention job or manual cleanup). When an activity-log
+retention window is introduced, apply the identical window to `DebateRecords`
+so the two stores stay in sync.
 
 ---
 
