@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Ranking prefers a favourite product",
+  "description": "When a favourite and a cheaper non-favourite both match, ShopperHound picks the favourite.",
+  "houndName": "ShopperHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Shop 'milk' where a cheaper Whole Milk and a favourite Semi Skimmed both match.",
+    "context": {
+      "items": [{ "rawListText": "milk", "searchTerm": "milk", "targetQuantity": 1 }],
+      "candidates": {
+        "milk": [
+          { "productId": "whole", "name": "Whole Milk 2.27L", "price": 1.40 },
+          { "productId": "semi", "name": "Semi Skimmed 2.27L", "price": 1.45, "isFavourite": true }
+        ]
+      }
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["search", "add-to-basket"],
+    "outputMustContain": ["Semi Skimmed 2.27L"],
+    "outputMustNotContain": ["Whole Milk"],
+    "outputFormat": "JSON BasketResult whose single line is the favourite product.",
+    "decisionCriteria": "A favourite outranks a cheaper non-favourite candidate."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Basket line is the favourite Semi Skimmed, not the cheaper Whole Milk."
+  }
+}

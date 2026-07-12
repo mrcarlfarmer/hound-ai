@@ -1,0 +1,30 @@
+{
+  "scenarioName": "Pay-cycle window boundary the day before payday",
+  "description": "The day before the CycleStartDay still resolves into the previous cycle's final week (payday-anchored 7-day windows).",
+  "houndName": "BudgetHound",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Reconcile a small 100.00 basket on 2026-06-24 with a pay cycle that starts on day 25.",
+    "context": {
+      "basketSubtotal": 100.00,
+      "priorWeekSpend": 0,
+      "priorCycleSpend": 0,
+      "weeklyTarget": 140,
+      "weeklyFlexPercent": 10,
+      "monthlyCap": 600,
+      "cycleStartDay": 25,
+      "asOf": "2026-06-24"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["2026-06-22", "All good"],
+    "outputMustNotContain": ["Approve or trim"],
+    "outputFormat": "JSON with the current week start and an Ok verdict.",
+    "decisionCriteria": "On the day before payday the current week must anchor to 2026-06-22 (previous cycle's last 7-day window)."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Current week start resolves to 2026-06-22 and the verdict is Ok."
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "scenarioName": "Reinforcement raises confidence",
+  "description": "Repeated consistent purchases on top of an existing low-confidence mapping raise its confidence.",
+  "houndName": "LearnerHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Reinforce the existing milk mapping with two more consistent purchases.",
+    "context": {
+      "existingPreferences": "# Preferences\n\n## Product mappings\n\n- milk \u2192 \"Semi Skimmed 2.27L\" \u00b7 usual qty 2 \u00b7 confidence 0.4\n\n## Dislikes\n",
+      "observations": [
+        { "item": "milk", "chosenProduct": "Semi Skimmed 2.27L", "quantity": 2, "date": "2026-06-15" },
+        { "item": "milk", "chosenProduct": "Semi Skimmed 2.27L", "quantity": 2, "date": "2026-06-22" }
+      ]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["raised confidence for milk", "confidence 0.8"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with Changes noting the raised confidence and rendered preferences.",
+    "decisionCriteria": "Consistent reinforcement increases the mapping's confidence toward the max."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Milk mapping confidence rises to 0.8."
+  }
+}

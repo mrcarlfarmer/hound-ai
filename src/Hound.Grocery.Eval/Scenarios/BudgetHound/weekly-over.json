@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Weekly overage flags and asks",
+  "description": "A basket that pushes the week past the flex band flags WeeklyOver and asks to approve or trim (soft cap, never refuses).",
+  "houndName": "BudgetHound",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Reconcile a 170.00 basket against a 140 weekly target (154 upper flex threshold) with nothing spent yet.",
+    "context": {
+      "basketSubtotal": 170.00,
+      "priorWeekSpend": 0,
+      "priorCycleSpend": 0,
+      "weeklyTarget": 140,
+      "weeklyFlexPercent": 10,
+      "monthlyCap": 600,
+      "cycleStartDay": 25
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["\"Outcome\":\"WeeklyOver\"", "Approve or trim"],
+    "outputMustNotContain": ["\"Outcome\":\"CycleOver\"", "\"Outcome\":\"Both\"", "All good"],
+    "outputFormat": "JSON BudgetVerdict with outcome WeeklyOver and RequiresApproval true.",
+    "decisionCriteria": "Projected weekly total above target + flex but under the cycle cap must produce WeeklyOver."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Verdict is WeeklyOver and the summary asks to approve or trim."
+  }
+}

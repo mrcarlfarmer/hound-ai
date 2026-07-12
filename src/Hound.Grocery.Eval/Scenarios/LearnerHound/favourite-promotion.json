@@ -1,0 +1,27 @@
+{
+  "scenarioName": "Favourite promotion at threshold",
+  "description": "An item bought enough times is promoted to favourite.",
+  "houndName": "LearnerHound",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Learn from three egg purchases across distinct dates.",
+    "context": {
+      "observations": [
+        { "item": "eggs", "chosenProduct": "Free Range Eggs x6", "quantity": 1, "date": "2026-06-01" },
+        { "item": "eggs", "chosenProduct": "Free Range Eggs x6", "quantity": 1, "date": "2026-06-08" },
+        { "item": "eggs", "chosenProduct": "Free Range Eggs x6", "quantity": 1, "date": "2026-06-15" }
+      ]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["promoted eggs to favourite", "favourite"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with Changes noting the favourite promotion and the mapping tagged favourite.",
+    "decisionCriteria": "Reaching the favourite threshold promotes the item to favourite."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Eggs are promoted to favourite."
+  }
+}

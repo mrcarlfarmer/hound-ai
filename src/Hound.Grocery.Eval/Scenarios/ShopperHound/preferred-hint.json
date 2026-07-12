@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Preferred product hint is honoured",
+  "description": "When the plan carries a preferred-product hint and it is in stock, ShopperHound selects it over a cheaper generic.",
+  "houndName": "ShopperHound",
+  "category": "tool-usage",
+  "input": {
+    "userMessage": "Shop 'yoghurt' with a preferred product hint of 'Yeo Valley Natural'.",
+    "context": {
+      "items": [{ "rawListText": "yoghurt", "searchTerm": "yoghurt", "preferredProduct": "Yeo Valley Natural", "targetQuantity": 2 }],
+      "candidates": {
+        "yoghurt": [
+          { "productId": "gen", "name": "Generic Yoghurt 500g", "price": 0.80 },
+          { "productId": "yeo", "name": "Yeo Valley Natural 500g", "price": 1.50 }
+        ]
+      }
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["search", "add-to-basket"],
+    "outputMustContain": ["Yeo Valley Natural 500g"],
+    "outputMustNotContain": ["Generic Yoghurt"],
+    "outputFormat": "JSON BasketResult whose line matches the preferred product hint.",
+    "decisionCriteria": "A preferred-product hint outranks a cheaper generic when in stock, and is not a substitution."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Basket line is the preferred Yeo Valley Natural, not the cheaper generic."
+  }
+}

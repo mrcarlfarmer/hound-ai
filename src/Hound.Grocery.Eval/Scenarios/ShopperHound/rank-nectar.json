@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Ranking prefers a Nectar/loyalty price",
+  "description": "With no favourite, a product carrying a Nectar price outranks a cheaper product with no loyalty price.",
+  "houndName": "ShopperHound",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Shop 'coffee' where a basic coffee is cheaper but a Nectar-priced coffee exists.",
+    "context": {
+      "items": [{ "rawListText": "coffee", "searchTerm": "coffee", "targetQuantity": 1 }],
+      "candidates": {
+        "coffee": [
+          { "productId": "basic", "name": "Basic Coffee 100g", "price": 2.00 },
+          { "productId": "nescafe", "name": "Nescafe Gold 200g", "price": 5.00, "nectarPrice": 3.50, "isNectarPrice": true }
+        ]
+      }
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["search", "add-to-basket"],
+    "outputMustContain": ["Nescafe Gold 200g"],
+    "outputMustNotContain": ["Basic Coffee"],
+    "outputFormat": "JSON BasketResult whose line is the Nectar-priced product.",
+    "decisionCriteria": "A Nectar/loyalty price outranks a cheaper non-loyalty candidate when neither is a favourite."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Basket line is the Nectar-priced Nescafe Gold, not the cheaper basic coffee."
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "scenarioName": "Fuzzy embedding match to a learned key",
+  "description": "A loose synonym that has no exact mapping is matched by the embedding matcher to an existing preference key and resolves to its product.",
+  "houndName": "PlannerHound",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Plan 'semi skimmed' which should fuzzy-match the learned 'milk' key.",
+    "context": {
+      "listItems": [{ "name": "semi skimmed", "quantity": 1 }],
+      "preferences": "# Preferences\n\n## Product mappings\n\n- milk \u2192 \"Semi Skimmed 2.27L\" \u00b7 usual qty 2 \u00b7 confidence 0.7\n",
+      "match": { "candidate": "milk", "score": 0.82 },
+      "weeklyTarget": 140
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Semi Skimmed 2.27L"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON ShoppingPlan resolving the fuzzy item to the matched key's preferred product.",
+    "decisionCriteria": "When no exact mapping exists, the embedding matcher's best key above threshold drives resolution."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Plan resolves 'semi skimmed' to the 'milk' key's preferred product."
+  }
+}

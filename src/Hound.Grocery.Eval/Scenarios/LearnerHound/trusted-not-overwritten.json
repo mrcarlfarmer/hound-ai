@@ -1,0 +1,27 @@
+{
+  "scenarioName": "Trusted mapping is not overwritten by divergent evidence",
+  "description": "A high-confidence (trusted) mapping is preserved even when a couple of divergent purchases arrive - read-merge-write must not clobber curated/learned data.",
+  "houndName": "LearnerHound",
+  "category": "adversarial",
+  "input": {
+    "userMessage": "Two Whole Milk purchases arrive against a trusted Semi Skimmed mapping.",
+    "context": {
+      "existingPreferences": "# Preferences\n\n## Product mappings\n\n- milk \u2192 \"Semi Skimmed 2.27L\" \u00b7 usual qty 2 \u00b7 confidence 0.8\n\n## Dislikes\n",
+      "observations": [
+        { "item": "milk", "chosenProduct": "Whole Milk 2.27L", "quantity": 1, "date": "2026-06-15" },
+        { "item": "milk", "chosenProduct": "Whole Milk 2.27L", "quantity": 1, "date": "2026-06-22" }
+      ]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Semi Skimmed 2.27L", "confidence 0.8"],
+    "outputMustNotContain": ["Whole Milk"],
+    "outputFormat": "JSON whose rendered preferences still map milk to the trusted product at unchanged confidence.",
+    "decisionCriteria": "A trusted mapping must not be overwritten by a small amount of divergent evidence."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Milk still maps to Semi Skimmed 2.27L at confidence 0.8; no Whole Milk mapping appears."
+  }
+}

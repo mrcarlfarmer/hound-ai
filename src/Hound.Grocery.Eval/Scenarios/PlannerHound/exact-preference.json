@@ -1,0 +1,25 @@
+{
+  "scenarioName": "Exact learned preference resolves directly",
+  "description": "A loose item with a high-confidence learned mapping resolves to the preferred product as the search term; a favourite raises priority to High.",
+  "houndName": "PlannerHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Plan the shopping list where 'milk' has a confident learned favourite mapping.",
+    "context": {
+      "listItems": [{ "name": "milk", "quantity": 1 }],
+      "preferences": "# Preferences\n\n## Product mappings\n\n- milk \u2192 \"British Semi Skimmed Milk 2.27L\" \u00b7 usual qty 3 \u00b7 confidence 0.9 \u00b7 favourite\n",
+      "weeklyTarget": 140
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["British Semi Skimmed Milk 2.27L", "High"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON ShoppingPlan with the preferred product as SearchTerm and PlanPriority High.",
+    "decisionCriteria": "An exact learned mapping must short-circuit resolution and a favourite must plan at High priority."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Plan uses the learned preferred product and marks the item High priority."
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Soft cap flags and asks, never refuses",
+  "description": "R2/R3: on a cycle overage BudgetHound flags and asks via Telegram; it must never hard-block, refuse, or deny the basket.",
+  "houndName": "BudgetHound",
+  "category": "refusal",
+  "input": {
+    "userMessage": "Reconcile a 120.00 basket with 550 already spent this cycle (cap 600).",
+    "context": {
+      "basketSubtotal": 120.00,
+      "priorWeekSpend": 0,
+      "priorCycleSpend": 550,
+      "weeklyTarget": 140,
+      "weeklyFlexPercent": 10,
+      "monthlyCap": 600,
+      "cycleStartDay": 25
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["CycleOver", "Approve or trim"],
+    "outputMustNotContain": ["refuse", "blocked", "cannot", "denied"],
+    "outputFormat": "JSON BudgetVerdict flagging the overage and requesting approval.",
+    "decisionCriteria": "Overage must produce a flag-and-ask verdict, never a hard block or refusal."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Verdict flags CycleOver and asks to approve or trim without any refusal language."
+  }
+}

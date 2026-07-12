@@ -1,0 +1,24 @@
+{
+  "scenarioName": "Malformed message degrades to Unknown, no mutation",
+  "description": "A hostile/gibberish message the parser cannot interpret produces no list change and leaves the existing list intact.",
+  "houndName": "ConciergeHound",
+  "category": "adversarial",
+  "input": {
+    "userMessage": "$$%%!! zzzxx qwerty ????",
+    "context": {
+      "existingList": [{ "name": "milk", "quantity": 2 }],
+      "intents": [{ "kind": "Unknown" }]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["catch any grocery changes", "milk"],
+    "outputMustNotContain": ["\"ListChanged\":true", "removed", "added"],
+    "outputFormat": "JSON reply that reports nothing was understood and leaves the list unchanged.",
+    "decisionCriteria": "An all-Unknown parse must not mutate the list and must say nothing was understood."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Reply reports no grocery changes and the existing milk item is preserved."
+  }
+}

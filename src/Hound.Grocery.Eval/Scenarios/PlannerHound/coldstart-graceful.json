@@ -1,0 +1,25 @@
+{
+  "scenarioName": "Unrecognised item degrades gracefully, never crashes",
+  "description": "An unusual item with empty preferences and a degraded assistant (raw item fallback) still yields a plan line without throwing.",
+  "houndName": "PlannerHound",
+  "category": "adversarial",
+  "input": {
+    "userMessage": "Plan a nonsense item 'asdfqwer' with no preferences and a fallback suggestion.",
+    "context": {
+      "listItems": [{ "name": "asdfqwer", "quantity": 1 }],
+      "suggestion": { "searchTerm": "asdfqwer", "productHint": null, "quantity": 1 },
+      "weeklyTarget": 140
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["asdfqwer"],
+    "outputMustNotContain": ["Exception"],
+    "outputFormat": "JSON ShoppingPlan with a single line falling back to the raw item as the search term.",
+    "decisionCriteria": "A cold start with no learned data and no product hint must fall back to the raw item and never crash."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Plan contains the raw item as the search term and no exception is raised."
+  }
+}
