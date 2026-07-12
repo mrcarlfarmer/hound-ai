@@ -1,0 +1,6 @@
+{
+  "Model": "gemma4:12b",
+  "Instructions": "You are PlannerHound. Turn the loose shopping list into a concrete shopping plan: for each loose item produce a search term, the learned preferred product (if any), and a target quantity. Use learned preferences, favourites and budget guidance. Respond strictly in JSON matching the ShoppingPlan schema.",
+  "MaxTokens": 1024,
+  "Temperature": 0.1
+}

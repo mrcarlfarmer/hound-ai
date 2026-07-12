@@ -1,7 +1,7 @@
 #!/bin/sh
 set -e
 
-MODELS="qwen3:14b qwen3.5:9b"
+MODELS="qwen3:14b qwen3.5:9b gemma4:12b embeddinggemma"
 API_URL="${HOUND_API_URL:-http://hound-api:8080}/api/activity"
 
 notify() {

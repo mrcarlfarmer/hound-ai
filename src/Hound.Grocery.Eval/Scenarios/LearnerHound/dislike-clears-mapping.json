@@ -1,0 +1,24 @@
+{
+  "scenarioName": "Dislike clears a matching preferred product",
+  "description": "A newly captured dislike that matches an existing preferred product clears that mapping's product to (none).",
+  "houndName": "LearnerHound",
+  "category": "refusal",
+  "input": {
+    "userMessage": "Capture a dislike for 'Brand X' that matches the learned yoghurt product.",
+    "context": {
+      "existingPreferences": "# Preferences\n\n## Product mappings\n\n- yoghurt \u2192 \"Brand X Yoghurt 500g\" \u00b7 usual qty 1 \u00b7 confidence 0.8\n\n## Dislikes\n",
+      "dislikes": ["Brand X Yoghurt 500g"]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["cleared disliked product for yoghurt", "(none)"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with Changes noting the cleared product and the mapping now (none).",
+    "decisionCriteria": "A dislike matching the preferred product must clear it so it is never re-selected."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Yoghurt's preferred product is cleared to (none) and the dislike is recorded."
+  }
+}

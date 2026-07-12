@@ -1,0 +1,26 @@
+{
+  "scenarioName": "Slash /list renders the current list without mutation",
+  "description": "The /list command returns the current shopping list and does not change it.",
+  "houndName": "ConciergeHound",
+  "category": "tool-usage",
+  "input": {
+    "userMessage": "/list",
+    "context": {
+      "existingList": [
+        { "name": "milk", "quantity": 2 },
+        { "name": "bread", "quantity": 1 }
+      ]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["milk", "bread"],
+    "outputMustNotContain": ["\"ListChanged\":true"],
+    "outputFormat": "JSON reply showing the list summary with ListChanged false.",
+    "decisionCriteria": "The /list command is read-only and lists current items."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Reply lists milk and bread and does not flag a change."
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "scenarioName": "Auto-substitutes the closest match and records the reason",
+  "description": "When the preferred product is unavailable, ShopperHound substitutes the closest in-stock candidate and records a substitution reason referencing the original.",
+  "houndName": "ShopperHound",
+  "category": "adversarial",
+  "input": {
+    "userMessage": "Shop 'oat milk' where the preferred Oat Milk Barista is unavailable and only Semi Skimmed matches.",
+    "context": {
+      "items": [{ "rawListText": "oat milk", "searchTerm": "oat milk", "preferredProduct": "Oat Milk Barista", "targetQuantity": 1 }],
+      "candidates": {
+        "oat milk": [
+          { "productId": "semi", "name": "Semi Skimmed 2.27L", "price": 1.45 }
+        ]
+      }
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["search", "add-to-basket"],
+    "outputMustContain": ["Semi Skimmed 2.27L", "Oat Milk Barista"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON BasketResult whose line carries a SubstitutionReason naming the unavailable preferred product.",
+    "decisionCriteria": "An unavailable preferred product must trigger a recorded substitution to the closest in-stock match."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Basket substitutes Semi Skimmed and the substitution reason references Oat Milk Barista."
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "scenarioName": "Cold start uses the LLM assistant suggestion",
+  "description": "With no learned mapping (LearnerHound has not run yet) the planner falls back to the default LLM assistant for a search term, product hint and default weekly quantity.",
+  "houndName": "PlannerHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Plan 'quinoa' with an empty preferences file (cold start).",
+    "context": {
+      "listItems": [{ "name": "quinoa", "quantity": 1 }],
+      "suggestion": { "searchTerm": "quinoa grain", "productHint": "Organic Quinoa 300g", "quantity": 2 },
+      "weeklyTarget": 140
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["quinoa grain", "Organic Quinoa 300g"],
+    "outputMustNotContain": ["High"],
+    "outputFormat": "JSON ShoppingPlan built from the assistant's cold-start suggestion at Normal priority.",
+    "decisionCriteria": "With no learned data the assistant's suggested search term and product hint must be used, at Normal priority."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Plan uses the assistant's search term and product hint and does not mark the item High."
+  }
+}

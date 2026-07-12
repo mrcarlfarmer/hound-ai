@@ -1,0 +1,23 @@
+{
+  "scenarioName": "Natural-language add mutates the list",
+  "description": "A plain 'add 2 milk' parses to an Add intent, adds the item and reports ListChanged.",
+  "houndName": "ConciergeHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "add 2 milk",
+    "context": {
+      "intents": [{ "kind": "Add", "itemName": "milk", "quantity": 2 }]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Added milk", "\"ListChanged\":true"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON reply with a confirmation and ListChanged true.",
+    "decisionCriteria": "An Add intent adds the item and flags the list changed."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Reply confirms the add and ListChanged is true."
+  }
+}

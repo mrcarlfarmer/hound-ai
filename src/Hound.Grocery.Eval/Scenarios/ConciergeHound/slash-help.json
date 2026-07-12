@@ -1,0 +1,21 @@
+{
+  "scenarioName": "Slash /help returns guidance",
+  "description": "The /help command returns the helper text describing available commands.",
+  "houndName": "ConciergeHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "/help",
+    "context": {}
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["grocery list helper"],
+    "outputMustNotContain": ["\"ListChanged\":true"],
+    "outputFormat": "JSON reply with help text and no list mutation.",
+    "decisionCriteria": "The /help command explains usage without mutating the list."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Reply contains the help guidance."
+  }
+}

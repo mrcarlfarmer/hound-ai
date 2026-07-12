@@ -1,0 +1,24 @@
+{
+  "scenarioName": "Natural-language remove drops an existing item",
+  "description": "A 'remove eggs' message removes an item that is on the list.",
+  "houndName": "ConciergeHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "remove eggs please",
+    "context": {
+      "existingList": [{ "name": "eggs", "quantity": 1 }],
+      "intents": [{ "kind": "Remove", "itemName": "eggs" }]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Removed eggs", "\"ListChanged\":true"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON reply confirming the removal with ListChanged true.",
+    "decisionCriteria": "A Remove intent for an item on the list removes it and flags the change."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Reply confirms the removal of eggs."
+  }
+}
