@@ -1,11 +1,11 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, WatchtowerEvent, HealthReport, TradeDocument, FillStatus } from '../models';
+import { Pack, HoundInfo, ActivityLog, ActivityFilter, PagedResult, HealthReport, TradeDocument, FillStatus, GraphRun, RunRequest, AccountSummary, PositionInfo, AlpacaSyncResult, BarsResponse, ChartTimeframe, DebateRecord } from '../models';
 
 @Injectable({ providedIn: 'root' })
 export class ApiService {
-  private readonly baseUrl = 'http://localhost:5000';
+  private readonly baseUrl = '';
 
   constructor(private http: HttpClient) {}
 
@@ -32,13 +32,6 @@ export class ApiService {
     return this.http.get<PagedResult<ActivityLog>>(`${this.baseUrl}/api/activity`, { params });
   }
 
-  getWatchtowerEvents(page = 1, pageSize = 50): Observable<WatchtowerEvent[]> {
-    const params = new HttpParams()
-      .set('page', page.toString())
-      .set('pageSize', pageSize.toString());
-    return this.http.get<WatchtowerEvent[]>(`${this.baseUrl}/api/watchtower`, { params });
-  }
-
   getHealth(): Observable<HealthReport> {
     return this.http.get<HealthReport>(`${this.baseUrl}/api/health`);
   }
@@ -54,5 +47,75 @@ export class ApiService {
 
   getTrade(id: string): Observable<TradeDocument> {
     return this.http.get<TradeDocument>(`${this.baseUrl}/api/trades/${id}`);
+  }
+
+  syncTradesFromAlpaca(): Observable<AlpacaSyncResult> {
+    return this.http.post<AlpacaSyncResult>(`${this.baseUrl}/api/trades/sync`, {});
+  }
+
+  getRuns(limit = 20): Observable<GraphRun[]> {
+    const params = new HttpParams().set('limit', limit.toString());
+    return this.http.get<GraphRun[]>(`${this.baseUrl}/api/runs`, { params });
+  }
+
+  getRun(runId: string): Observable<GraphRun> {
+    return this.http.get<GraphRun>(`${this.baseUrl}/api/runs/${runId}`);
+  }
+
+  /**
+   * Fetches the persisted bull-vs-bear debate transcript(s) for a run from the
+   * dedicated DebateRecord store. One record per StrategyNode invocation,
+   * ordered by refinement iteration. Returns an empty array for runs with no
+   * debate (disabled, or predating the DebateRecord feature).
+   */
+  getDebates(runId: string): Observable<DebateRecord[]> {
+    return this.http.get<DebateRecord[]>(`${this.baseUrl}/api/debates/${encodeURIComponent(runId)}`);
+  }
+
+  queueRun(symbol: string): Observable<RunRequest> {
+    return this.http.post<RunRequest>(`${this.baseUrl}/api/runs`, { symbol });
+  }
+
+  getRunRequests(limit = 10): Observable<RunRequest[]> {
+    const params = new HttpParams().set('limit', limit.toString());
+    return this.http.get<RunRequest[]>(`${this.baseUrl}/api/runs/requests`, { params });
+  }
+
+  approveRun(runId: string, decidedBy?: string, notes?: string): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/approve`, {
+      decidedBy: decidedBy ?? null,
+      notes: notes ?? null,
+    });
+  }
+
+  rejectRun(runId: string, decidedBy?: string, notes?: string): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/api/runs/${encodeURIComponent(runId)}/reject`, {
+      decidedBy: decidedBy ?? null,
+      notes: notes ?? null,
+    });
+  }
+
+  getAccount(): Observable<AccountSummary> {
+    return this.http.get<AccountSummary>(`${this.baseUrl}/api/portfolio/account`);
+  }
+
+  getPositions(): Observable<PositionInfo[]> {
+    return this.http.get<PositionInfo[]>(`${this.baseUrl}/api/portfolio/positions`);
+  }
+
+  closePosition(symbol: string): Observable<unknown> {
+    return this.http.post(`${this.baseUrl}/api/portfolio/positions/${encodeURIComponent(symbol)}/close`, {});
+  }
+
+  /**
+   * Fetches OHLCV bars for `symbol` over the requested rolling window. The
+   * API proxies this through the trading pack so no Alpaca credentials live
+   * in the API container itself.
+   */
+  getBars(symbol: string, timeframe: ChartTimeframe = '1Day', days = 90): Observable<BarsResponse> {
+    const params = new HttpParams()
+      .set('timeframe', timeframe)
+      .set('days', days.toString());
+    return this.http.get<BarsResponse>(`${this.baseUrl}/api/charts/${encodeURIComponent(symbol)}`, { params });
   }
 }

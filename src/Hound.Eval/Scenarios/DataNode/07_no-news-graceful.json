@@ -1,0 +1,23 @@
+{
+  "scenarioName": "No news available — graceful empty report",
+  "description": "When the stub news service returns zero articles (symbol contains 'NONEWS'), the analyst must state plainly that no articles were found rather than fabricating headlines.",
+  "houndName": "DataNode",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Analyse NONEWS and produce an analysis.",
+    "context": {
+      "symbol": "NONEWS"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_news"],
+    "outputMustContain": ["NONEWS"],
+    "outputMustNotContain": ["fabricated"],
+    "outputFormat": "JSON MarketAnalysis whose newsReport explicitly acknowledges the absence of news.",
+    "decisionCriteria": "Synthesised analysis must not invent headlines when the news tool reports zero articles."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'NONEWS' and does not contain the word 'fabricated'."
+  }
+}

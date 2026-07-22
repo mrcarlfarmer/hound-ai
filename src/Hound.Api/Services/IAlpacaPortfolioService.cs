@@ -1,0 +1,79 @@
+using Alpaca.Markets;
+using AlpacaEnvironments = Alpaca.Markets.Environments;
+
+namespace Hound.Api.Services;
+
+public interface IAlpacaPortfolioService
+{
+    Task<IAccount> GetAccountAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<IPosition>> ListPositionsAsync(CancellationToken cancellationToken = default);
+    Task<IOrder> ClosePositionAsync(string symbol, CancellationToken cancellationToken = default);
+    Task<IOrder?> GetOrderAsync(Guid orderId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<IOrder>> ListOrdersAsync(
+        OrderStatusFilter? statusFilter = null,
+        DateTime? afterUtc = null,
+        int? limit = null,
+        CancellationToken cancellationToken = default);
+}
+
+public class AlpacaPortfolioService : IAlpacaPortfolioService, IDisposable
+{
+    private readonly IAlpacaTradingClient _client;
+
+    public AlpacaPortfolioService(IConfiguration configuration)
+    {
+        var keyId = configuration["Alpaca:ApiKeyId"] ?? string.Empty;
+        var secret = configuration["Alpaca:SecretKey"] ?? string.Empty;
+        var env = configuration["Alpaca:Environment"] ?? "Paper";
+
+        var secretKey = new SecretKey(keyId, secret);
+        var environment = string.Equals(env, "Live", StringComparison.OrdinalIgnoreCase)
+            ? AlpacaEnvironments.Live
+            : AlpacaEnvironments.Paper;
+
+        _client = environment.GetAlpacaTradingClient(secretKey);
+    }
+
+    public Task<IAccount> GetAccountAsync(CancellationToken cancellationToken = default)
+        => _client.GetAccountAsync(cancellationToken);
+
+    public Task<IReadOnlyList<IPosition>> ListPositionsAsync(CancellationToken cancellationToken = default)
+        => _client.ListPositionsAsync(cancellationToken);
+
+    public async Task<IOrder> ClosePositionAsync(string symbol, CancellationToken cancellationToken = default)
+    {
+        var request = new DeletePositionRequest(symbol);
+        return await _client.DeletePositionAsync(request, cancellationToken);
+    }
+
+    public async Task<IOrder?> GetOrderAsync(Guid orderId, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _client.GetOrderAsync(orderId, cancellationToken);
+        }
+        catch (RestClientErrorException ex) when (ex.HttpStatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+    }
+
+    public async Task<IReadOnlyList<IOrder>> ListOrdersAsync(
+        OrderStatusFilter? statusFilter = null,
+        DateTime? afterUtc = null,
+        int? limit = null,
+        CancellationToken cancellationToken = default)
+    {
+        var request = new ListOrdersRequest();
+        if (statusFilter.HasValue)
+            request.OrderStatusFilter = statusFilter.Value;
+        if (afterUtc.HasValue)
+            request.WithInterval(
+                DateTime.SpecifyKind(afterUtc.Value, DateTimeKind.Utc).GetIntervalFromThat());
+        if (limit.HasValue)
+            request.LimitOrderNumber = limit.Value;
+        return await _client.ListOrdersAsync(request, cancellationToken);
+    }
+
+    public void Dispose() => _client.Dispose();
+}

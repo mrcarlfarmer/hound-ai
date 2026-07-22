@@ -1,0 +1,103 @@
+{
+  "_comment": "Externalised Sainsbury's selectors (spec 11, Phase 6 recon). Bind to data-testid ONLY — CSS classes are hashed and data-pkgid churns. The site spans two stacks mid-migration: NEW /groceries/ (React 'fable', gw-* testids) and OLD /gol-ui/ (Angular 'Luna', pt-*/trolley-item-*/order-summary-*). Values are raw data-testid names unless prefixed with 'css:' (then treated as a raw CSS selector).",
+  "urls": {
+    "base": "https://www.sainsburys.co.uk",
+    "search": "/groceries/search?searchTerm={term}",
+    "product": "/groceries/product/{slug}",
+    "trolley": "/gol-ui/trolley",
+    "favourites": "/groceries/favourites"
+  },
+  "consent": {
+    "acceptButton": "css:#onetrust-accept-btn-handler"
+  },
+  "waits": {
+    "newStackReadySelector": "gw-product-card",
+    "golUiHydrationSeconds": 9
+  },
+  "search": {
+    "productCard": "gw-product-card",
+    "name": "gw-product-name",
+    "image": "gw-product-image",
+    "link": "css:a[href^=\"/groceries/product/\"]",
+    "priceContainer": "gw-product-price-container",
+    "retailPrice": "gw-product-retail-price",
+    "perUnitPrice": "gw-product-contextual-price",
+    "nectarBadge": "gw-nectar-offer-badge",
+    "promotionBadges": "gw-product-promotion-badges",
+    "addToBasket": "gw-add-to-basket",
+    "favouriteFull": "gw-favourite-icon-full",
+    "favouriteEmpty": "gw-favourite-icon-empty",
+    "quantityStepper": "gw-product-card-item-quantity",
+    "quantityIncrement": "css:.ds-c-counter__increment-button",
+    "quantityDecrement": "css:.ds-c-counter__decrement-button",
+    "headerTrolley": "gw-trolley-button",
+    "headerTrolleyCount": "gw-trolley-button-notification",
+    "resultCount": "results-count",
+    "pagination": "gw-pagination",
+    "paginationNext": "pagination-button-next",
+    "paginationPrevious": "pagination-button-previous",
+    "offerFilter": "gw-spotlight-filter-Offers"
+  },
+  "product": {
+    "title": "product-title",
+    "image": "main-product-image",
+    "shortDescription": "product-short-description",
+    "detailsAccordion": "product-details-accordion-container",
+    "detailsBody": "product-details-details",
+    "frequentlyBoughtAddAll": "fbt-add-all-button",
+    "addToBasket": "gw-add-to-basket",
+    "nectarBadge": "gw-nectar-offer-badge",
+    "retailPrice": "gw-product-retail-price"
+  },
+  "trolley": {
+    "lineItem": "trolley-item",
+    "lineDescription": "trolley-item-description",
+    "lineImage": "trolley-item-image",
+    "lineQuantity": "pt-button-quantity",
+    "lineIncrement": "pt-button-inc",
+    "lineDecrement": "pt-button-dec",
+    "lineUnitPrice": "unit-price",
+    "lineSubtotal": "trolley-item-subtotal",
+    "linePromotions": "pt-mini-promotion-list",
+    "lineOfferFlag": "trolley-item-price-offer-colour",
+    "subtotal": "order-summary-trolley-subtotal",
+    "total": "order-summary-trolley-total",
+    "headerTotal": "header-trolley-total",
+    "empty": "empty-trolley",
+    "emptyModalPrimary": "modal-primary-button",
+    "emptyModalSecondary": "modal-secondary-button"
+  },
+  "favourites": {
+    "productCard": "gw-product-card",
+    "name": "gw-product-name",
+    "link": "css:a[href^=\"/groceries/product/\"]",
+    "retailPrice": "gw-product-retail-price",
+    "perUnitPrice": "gw-product-contextual-price",
+    "nectarBadge": "gw-nectar-offer-badge",
+    "addToBasket": "gw-add-to-basket",
+    "favouriteFull": "gw-favourite-icon-full"
+  },
+  "danger": {
+    "_comment": "R1 HARD RULE — never click these testids, never navigate these URL patterns.",
+    "denyTestIds": [
+      "gw-book-slot",
+      "order-summary-book-slot-button",
+      "book-delivery-button",
+      "book-delivery"
+    ],
+    "denyUrlPatterns": [
+      "/gol-ui/checkout",
+      "/gol-ui/payment",
+      "checkout",
+      "payment",
+      "pay",
+      "slot",
+      "book-slot",
+      "slot-booking",
+      "book-delivery",
+      "place-order",
+      "order-confirmation",
+      "complete-order"
+    ]
+  }
+}

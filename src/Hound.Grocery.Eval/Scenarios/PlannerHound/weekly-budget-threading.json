@@ -1,0 +1,25 @@
+{
+  "scenarioName": "Weekly budget target threaded into the plan",
+  "description": "The plan carries the configured weekly budget target so downstream reconciliation can be budget-aware.",
+  "houndName": "PlannerHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Plan the list with a weekly budget target of 155.",
+    "context": {
+      "listItems": [{ "name": "milk", "quantity": 1 }],
+      "preferences": "# Preferences\n\n## Product mappings\n\n- milk \u2192 \"Semi Skimmed 2.27L\" \u00b7 usual qty 2 \u00b7 confidence 0.8\n",
+      "weeklyTarget": 155
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["155", "Semi Skimmed 2.27L"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON ShoppingPlan whose WeeklyBudgetTarget equals the configured target.",
+    "decisionCriteria": "The configured weekly target must be threaded onto the plan as loose budget context."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Plan's WeeklyBudgetTarget is 155."
+  }
+}

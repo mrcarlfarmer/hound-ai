@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Within weekly flex band is OK",
+  "description": "A basket that keeps the week inside the +/-10% flex band reconciles to Ok with no approval needed.",
+  "houndName": "BudgetHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Reconcile a 140.00 basket against the weekly target of 140 with nothing spent yet this week or cycle.",
+    "context": {
+      "basketSubtotal": 140.00,
+      "priorWeekSpend": 0,
+      "priorCycleSpend": 0,
+      "weeklyTarget": 140,
+      "weeklyFlexPercent": 10,
+      "monthlyCap": 600,
+      "cycleStartDay": 25
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["All good", "\"Outcome\":\"Ok\""],
+    "outputMustNotContain": ["Approve or trim", "\"Outcome\":\"WeeklyOver\"", "\"Outcome\":\"CycleOver\"", "\"Outcome\":\"Both\""],
+    "outputFormat": "JSON BudgetVerdict with outcome Ok and RequiresApproval false.",
+    "decisionCriteria": "Projected weekly total within target + flex and cycle under cap must produce Ok."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Verdict is Ok and the summary confirms it is within the flex band."
+  }
+}

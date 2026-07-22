@@ -16,13 +16,15 @@ import { HlmToaster } from '@spartan-ng/helm/sonner';
            class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Activity</a>
         <a routerLink="/execution" routerLinkActive="text-primary"
            class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Execution</a>
-        <a routerLink="/tuner" routerLinkActive="text-primary"
-           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Tuner</a>
-        <a routerLink="/watchtower" routerLinkActive="text-primary"
-           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Watchtower</a>
+        <a routerLink="/graph" routerLinkActive="text-primary"
+           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Graph</a>
+        <a routerLink="/portfolio" routerLinkActive="text-primary"
+           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Portfolio</a>
+        <a routerLink="/charts" routerLinkActive="text-primary"
+           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Charts</a>
       </div>
     </nav>
-    <main class="mx-auto max-w-7xl p-4 sm:p-6">
+    <main class="px-4 py-4 sm:px-6 sm:py-6">
       <router-outlet />
     </main>
     <hlm-toaster />

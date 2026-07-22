@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-Hound.Grocery-8f2a1c4d-6b9e-4d2a-9f3c-1e7b5a0c2d48</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hound.Grocery.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="9.0.13" />
+    <PackageReference Include="Telegram.Bot" Version="22.10.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Hound.Core\Hound.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Update="Config/**" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

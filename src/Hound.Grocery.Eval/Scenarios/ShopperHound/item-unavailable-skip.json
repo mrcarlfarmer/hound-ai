@@ -1,0 +1,28 @@
+{
+  "scenarioName": "Unavailable item is skipped",
+  "description": "When the only candidate is out of stock, the item is skipped and no basket line is added.",
+  "houndName": "ShopperHound",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Shop 'truffle' where the only candidate is out of stock.",
+    "context": {
+      "items": [{ "rawListText": "truffle", "searchTerm": "truffle", "targetQuantity": 1 }],
+      "candidates": {
+        "truffle": [
+          { "productId": "oos", "name": "Fresh Truffle", "price": 25.00, "inStock": false }
+        ]
+      }
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["search"],
+    "outputMustContain": ["\"Lines\":[]"],
+    "outputMustNotContain": ["Fresh Truffle"],
+    "outputFormat": "JSON BasketResult with an empty Lines array.",
+    "decisionCriteria": "An out-of-stock-only search must add nothing and leave the basket empty for that item."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "No basket line is produced for the unavailable item."
+  }
+}

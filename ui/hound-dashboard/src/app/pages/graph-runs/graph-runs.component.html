@@ -1,0 +1,787 @@
+<div>
+  <h1 class="text-2xl font-bold mb-6">Graph Runs</h1>
+
+  <!-- Ticker Input -->
+  <div class="rounded-lg border border-border bg-card p-4 mb-6">
+    <form (ngSubmit)="submitSymbol()" class="flex flex-col sm:flex-row items-stretch sm:items-end gap-3">
+      <div class="flex-1">
+        <label for="symbol-input" class="block text-sm font-medium text-muted-foreground mb-1">
+          Analyse a ticker symbol
+        </label>
+        <input
+          id="symbol-input"
+          type="text"
+          [(ngModel)]="symbolInput"
+          name="symbol"
+          placeholder="e.g. AAPL, MSFT, TSLA"
+          class="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary"
+          style="text-transform: uppercase"
+          [disabled]="submitting"
+          autocomplete="off"
+          (input)="onSymbolInput()"
+          (keydown.enter)="$event.preventDefault(); submitSymbol()" />
+      </div>
+      <button
+        type="submit"
+        [disabled]="submitting || !symbolInput.trim()"
+        class="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:pointer-events-none">
+        @if (submitting) {
+          <svg class="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+          </svg>
+          Queuing...
+        } @else {
+          Run Analysis
+        }
+      </button>
+    </form>
+    @if (submitError) {
+      <p class="mt-2 text-sm text-red-400">{{ submitError }}</p>
+    }
+  </div>
+
+  <div class="flex flex-col lg:flex-row gap-6">
+    <!-- Run List Sidebar -->
+    <div class="lg:w-72 shrink-0">
+      <div class="rounded-lg border border-border bg-card p-4">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Recent Runs</h2>
+          <button
+            (click)="loadRuns()"
+            class="text-xs text-muted-foreground hover:text-foreground transition-colors">
+            Refresh
+          </button>
+        </div>
+
+        @if (loading && runs.length === 0) {
+          <div class="space-y-2">
+            @for (_ of [1,2,3]; track $index) {
+              <div class="h-16 rounded bg-muted animate-pulse"></div>
+            }
+          </div>
+        }
+
+        @if (!loading && runs.length === 0) {
+          <p class="text-sm text-muted-foreground py-4 text-center">No runs yet. Waiting for the trading graph to execute.</p>
+        }
+
+        <div class="space-y-1.5 max-h-[calc(100vh-16rem)] overflow-y-auto">
+          @for (req of pendingRequests; track req.id) {
+            <div class="w-full text-left p-3 rounded-md border border-yellow-600/40 bg-yellow-900/10">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-mono text-sm font-semibold">{{ req.symbol }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded bg-yellow-900/50 text-yellow-400">
+                  {{ req.status === 'Running' ? 'Running' : 'Queued' }}
+                </span>
+              </div>
+              <div class="flex items-center gap-1.5 text-xs text-muted-foreground">
+                <svg class="animate-spin h-3 w-3 text-yellow-400" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                </svg>
+                Waiting for worker...
+              </div>
+            </div>
+          }
+          @for (run of runs; track run.runId) {
+            <button
+              (click)="selectRun(run)"
+              class="w-full text-left p-3 rounded-md border transition-colors"
+              [class]="selectedRun?.runId === run.runId
+                ? 'border-primary bg-primary/10'
+                : 'border-transparent hover:bg-muted/50'">
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-mono text-sm font-semibold">{{ run.symbol }}</span>
+                <span class="text-xs px-1.5 py-0.5 rounded" [ngClass]="statusBadgeClass(run)">
+                  {{ statusLabel(run) }}
+                </span>
+              </div>
+              <div class="text-xs text-muted-foreground">{{ formatDate(run.startedAt) }}</div>
+              @if (run.refinementCount > 0) {
+                <div class="text-xs text-yellow-400 mt-0.5">↻ {{ run.refinementCount }} refinement(s)</div>
+              }
+            </button>
+          }
+        </div>
+      </div>
+    </div>
+
+    <!-- Graph Detail Panel -->
+    <div class="flex-1 min-w-0">
+      @if (!selectedRun) {
+        <div class="rounded-lg border border-border bg-card p-12 text-center">
+          <p class="text-muted-foreground">Select a run to view its graph execution.</p>
+        </div>
+      } @else {
+        <!-- Run Header -->
+        <div class="rounded-lg border border-border bg-card p-4 mb-4">
+          <div class="flex flex-wrap items-center gap-4">
+            <div>
+              <div class="flex items-baseline gap-2 flex-wrap">
+                <h2 class="text-lg font-semibold">{{ selectedRun.symbol }}</h2>
+                @if (companyNameFor(selectedRun); as company) {
+                  <span class="text-sm text-muted-foreground">{{ company }}</span>
+                }
+              </div>
+              <p class="text-xs text-muted-foreground font-mono">{{ selectedRun.runId }}</p>
+            </div>
+            <span class="text-xs px-2 py-1 rounded" [ngClass]="statusBadgeClass(selectedRun)">
+              {{ statusLabel(selectedRun) }}
+            </span>
+            <span class="text-xs px-2 py-1 rounded bg-muted text-muted-foreground">
+              Phase: {{ selectedRun.phase }}
+            </span>
+            @if (selectedRun.refinementCount > 0) {
+              <span class="text-xs px-2 py-1 rounded bg-yellow-900/40 text-yellow-400">
+                ↻ {{ selectedRun.refinementCount }} refinement(s)
+              </span>
+            }
+            @if (selectedRun.monitorCycleCount > 0) {
+              <span class="text-xs px-2 py-1 rounded bg-purple-900/40 text-purple-400">
+                ⟳ {{ selectedRun.monitorCycleCount }} monitor cycle(s)
+              </span>
+            }
+            <div class="ml-auto text-xs text-muted-foreground">
+              Started: {{ formatDate(selectedRun.startedAt) }}
+              @if (selectedRun.completedAt) {
+                <br>Finished: {{ formatDate(selectedRun.completedAt) }}
+              }
+            </div>
+          </div>
+          @if (selectedRun.errorMessage) {
+            <div class="mt-3 p-2 rounded bg-red-900/20 border border-red-800 text-red-400 text-sm">
+              {{ selectedRun.errorMessage }}
+            </div>
+          }
+          @if (selectedRun.refinements && selectedRun.refinements.length > 0) {
+            <div class="mt-3 space-y-2">
+              <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Refinement History</span>
+              @for (ref of selectedRun.refinements; track ref.attempt) {
+                <div class="p-3 rounded-lg border border-yellow-800 bg-yellow-900/10">
+                  <div class="flex items-center gap-3 mb-2">
+                    <span class="text-xs font-semibold text-yellow-400">Attempt #{{ ref.attempt }}</span>
+                    <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border bg-red-900/40 text-red-400 border-red-600">Rejected</span>
+                    <span class="text-xs text-muted-foreground">{{ ref.action }} {{ ref.quantity }} {{ ref.symbol }}</span>
+                    <span class="ml-auto text-xs text-muted-foreground">{{ formatTime(ref.occurredAt) }}</span>
+                  </div>
+                  <div class="text-sm text-muted-foreground" [innerHTML]="renderMarkdown(ref.riskReasoning)"></div>
+                </div>
+              }
+            </div>
+          }
+        </div>
+
+        <!-- Node Pipeline Visualization -->
+        <div class="space-y-0">
+          @for (node of selectedRun.nodes; track node.nodeId; let last = $last) {
+            <!-- Node Card -->
+            <div class="relative">
+              <button
+                (click)="toggleNode(node.nodeId)"
+                class="w-full text-left rounded-lg border p-4 transition-colors"
+                [ngClass]="nodeStatusClass(node.status)">
+                <div class="flex items-center gap-3">
+                  <!-- Status Indicator -->
+                  @if (node.status === 'Active') {
+                    <div class="w-3 h-3 rounded-full border-2 border-blue-400 border-t-transparent animate-spin shrink-0"
+                      aria-label="Running"></div>
+                  } @else {
+                    <div class="w-3 h-3 rounded-full shrink-0"
+                      [ngClass]="{
+                        'bg-green-400': node.status === 'Completed',
+                        'bg-red-400': node.status === 'Failed',
+                        'bg-gray-500': node.status === 'Pending' || node.status === 'Skipped' || isNoAction(node)
+                      }">
+                    </div>
+                  }
+
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <span class="font-semibold">{{ nodeLabels[node.nodeId] || node.nodeId }}</span>
+                      <span class="text-xs opacity-60 font-mono">{{ node.nodeId }}</span>
+                    </div>
+                    <p class="text-xs opacity-70 mt-0.5">{{ nodeDescriptions[node.nodeId] }}</p>
+                  </div>
+
+                  <span class="text-xs font-mono shrink-0">{{ displayStatus(node) }}</span>
+
+                  @if (node.outputJson || node.errorMessage || hasReasoning(node) || node.status === 'Active') {
+                    <svg class="w-4 h-4 transition-transform shrink-0" [class.rotate-180]="isExpanded(node.nodeId)"
+                      fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                  }
+                </div>
+              </button>
+
+              <!-- Expanded Node Output -->
+              @if (isExpanded(node.nodeId) && (node.outputJson || node.errorMessage || hasReasoning(node) || node.status === 'Active')) {
+                <div class="border border-t-0 rounded-b-lg p-0 bg-card/50 border-border">
+                  <!-- Tab strip -->
+                  <div class="flex border-b border-border">
+                    <button type="button" (click)="setTab(node, 'result')"
+                      class="px-4 py-2 text-xs font-medium transition-colors"
+                      [ngClass]="tabFor(node) === 'result'
+                        ? 'text-foreground border-b-2 border-primary -mb-px'
+                        : 'text-muted-foreground hover:text-foreground'"
+                      [disabled]="!node.outputJson && !node.errorMessage && node.nodeId !== 'approval-node'">
+                      Result
+                      @if (!node.outputJson && !node.errorMessage && node.nodeId !== 'approval-node') {
+                        <span class="ml-1 opacity-50">(pending)</span>
+                      }
+                    </button>
+                    <button type="button" (click)="setTab(node, 'reasoning')"
+                      class="px-4 py-2 text-xs font-medium transition-colors flex items-center gap-2"
+                      [ngClass]="tabFor(node) === 'reasoning'
+                        ? 'text-foreground border-b-2 border-primary -mb-px'
+                        : 'text-muted-foreground hover:text-foreground'"
+                      [class.hidden]="node.nodeId === 'monitor-node' || node.nodeId === 'approval-node'">
+                      Reasoning
+                      @if (node.status === 'Active') {
+                        <span class="w-2 h-2 rounded-full border border-blue-400 border-t-transparent animate-spin"></span>
+                      }
+                    </button>
+                  </div>
+
+                  <!-- Reasoning tab content -->
+                  @if (tabFor(node) === 'reasoning') {
+                    <div class="p-4">
+                      @if (hasReasoning(node)) {
+                        <pre #reasoningBox class="text-xs whitespace-pre-wrap break-words font-mono bg-muted/30 rounded p-3 max-h-96 overflow-y-auto leading-relaxed">{{ streamFor(node) }}</pre>
+                      } @else if (node.status === 'Active') {
+                        <p class="text-sm text-muted-foreground italic">Waiting for the model to start streaming…</p>
+                      } @else {
+                        <p class="text-sm text-muted-foreground italic">No reasoning captured for this node.</p>
+                      }
+                    </div>
+                  }
+
+                  <!-- Result tab content -->
+                  @if (tabFor(node) === 'result') {
+                    <div class="p-4">
+                  @if (node.errorMessage) {
+                    <div class="text-red-400 text-sm">{{ node.errorMessage }}</div>
+                  }
+
+                  <!-- ── Approval: human-in-the-loop CTAs ────────────── -->
+                  @if (node.nodeId === 'approval-node') {
+                    @if (isAwaitingApproval(selectedRun)) {
+                      <div class="rounded-lg border border-amber-600 bg-amber-900/20 p-4">
+                        <div class="flex items-start gap-3 mb-3">
+                          <div class="text-2xl leading-none">⏸</div>
+                          <div class="flex-1 min-w-0">
+                            <h3 class="text-sm font-semibold text-amber-300">Awaiting your decision</h3>
+                            <p class="text-xs text-amber-200/80 mt-1">
+                              Review the strategy and risk outputs above, then approve
+                              to place the trade or reject to terminate the run.
+                            </p>
+                          </div>
+                        </div>
+                        <label class="block text-xs font-medium text-amber-200 mb-1">Notes (optional)</label>
+                        <textarea
+                          class="w-full rounded border border-amber-700 bg-amber-950/30 px-2 py-1 text-sm text-amber-100 placeholder:text-amber-200/40 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          rows="2"
+                          placeholder="Reasoning, conditions, or anything you want recorded with this decision…"
+                          [(ngModel)]="approvalNotes"
+                          [disabled]="!!approvalSubmitting"></textarea>
+                        @if (approvalError) {
+                          <div class="mt-2 text-xs text-red-400">{{ approvalError }}</div>
+                        }
+                        <div class="mt-3 flex items-center gap-2">
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-2 rounded bg-green-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                            [disabled]="!!approvalSubmitting"
+                            (click)="submitApproval('approve')">
+                            @if (approvalSubmitting === 'approve') {
+                              <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                              Approving…
+                            } @else {
+                              Approve
+                            }
+                          </button>
+                          <button
+                            type="button"
+                            class="inline-flex items-center gap-2 rounded bg-red-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                            [disabled]="!!approvalSubmitting"
+                            (click)="submitApproval('reject')">
+                            @if (approvalSubmitting === 'reject') {
+                              <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                              Rejecting…
+                            } @else {
+                              Reject
+                            }
+                          </button>
+                          @if (approvalSubmitting) {
+                            <span class="text-xs text-amber-200/80 italic">
+                              Waiting for the trading worker to resume the graph…
+                            </span>
+                          }
+                        </div>
+                      </div>
+                    } @else if (selectedRun.approvalStatus === 'Approved' || selectedRun.approvalStatus === 'Rejected') {
+                      <div class="rounded-lg border p-3 text-sm"
+                           [ngClass]="selectedRun.approvalStatus === 'Approved'
+                             ? 'border-green-700 bg-green-900/20 text-green-300'
+                             : 'border-red-700 bg-red-900/20 text-red-300'">
+                        <span class="font-semibold">{{ selectedRun.approvalStatus }}</span>
+                        @if (selectedRun.approvalDecidedBy) { by {{ selectedRun.approvalDecidedBy }} }
+                        @if (selectedRun.approvalDecidedAt) {
+                          <span class="text-xs opacity-80"> · {{ formatDate(selectedRun.approvalDecidedAt) }}</span>
+                        }
+                        @if (selectedRun.approvalNotes) {
+                          <div class="mt-1 text-xs opacity-90">{{ selectedRun.approvalNotes }}</div>
+                        }
+                      </div>
+                    } @else {
+                      <p class="text-sm text-muted-foreground italic">No approval was requested for this run.</p>
+                    }
+
+                  <!-- ── Analysts Team: custom layout ────────────────── -->
+                  } @else if (node.nodeId === 'analysts-team-node' && parseAnalystsOutput(node.outputJson); as a) {
+                    <!-- Company identification banner — makes it obvious which
+                         company the ticker resolved to (e.g. ROK = Rockwell
+                         Automation, not ROKU). -->
+                    @if (a.companyName) {
+                      <div class="rounded-lg bg-primary/5 border border-primary/30 px-3 py-2 mb-4 flex items-baseline gap-2 flex-wrap">
+                        <span class="text-xs uppercase tracking-wider text-muted-foreground">Company</span>
+                        <span class="font-mono text-sm font-semibold">{{ a.symbol ?? selectedRun.symbol }}</span>
+                        <span class="text-sm">— {{ a.companyName }}</span>
+                      </div>
+                    }
+                    <!-- Metrics row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Last Price</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ a.lastPrice != null ? ('$' + a.lastPrice.toFixed(2)) : '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Volume Change</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ a.volumeChange != null ? (a.volumeChange > 0 ? '+' : '') + a.volumeChange.toFixed(2) + 'x' : '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Trend</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="trendClass(a.trend)">
+                          {{ formatTrend(a.trend) }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Confidence</span>
+                        <div class="flex items-center gap-2">
+                          <div class="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                            <div class="h-full rounded-full transition-all"
+                              [ngClass]="confidenceColor(a.confidenceScore)"
+                              [style.width]="confidenceWidth(a.confidenceScore)">
+                            </div>
+                          </div>
+                          <span class="text-sm font-semibold font-mono">
+                            {{ confidencePercent(a.confidenceScore) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Summary -->
+                    @if (a.summary) {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3 mb-4">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Synthesis</span>
+                        <div class="prose text-sm max-h-64 overflow-y-auto" [innerHTML]="renderMarkdown(a.summary)"></div>
+                      </div>
+                    }
+
+                    <!-- Analyst report tabs -->
+                    @if (hasAnalystReports(a)) {
+                      <hlm-tabs tab="market" class="block">
+                        <div hlmTabsList class="w-full grid grid-cols-5">
+                          <button hlmTabsTrigger="market" class="text-xs sm:text-sm">Market</button>
+                          <button hlmTabsTrigger="fundamentals" class="text-xs sm:text-sm">Fundamentals</button>
+                          <button hlmTabsTrigger="news" class="text-xs sm:text-sm">News</button>
+                          <button hlmTabsTrigger="sentiment" class="text-xs sm:text-sm">Sentiment</button>
+                          <button hlmTabsTrigger="chart" class="text-xs sm:text-sm">Chart</button>
+                        </div>
+                        <div hlmTabsContent="market" class="pt-3">
+                          <div class="prose text-sm max-h-96 overflow-y-auto" [innerHTML]="renderMarkdown(a.marketReport ?? 'No market report available.')"></div>
+                        </div>
+                        <div hlmTabsContent="fundamentals" class="pt-3">
+                          <div class="prose text-sm max-h-96 overflow-y-auto" [innerHTML]="renderMarkdown(a.fundamentalsReport ?? 'No fundamentals report available.')"></div>
+                        </div>
+                        <div hlmTabsContent="news" class="pt-3">
+                          <div class="prose text-sm max-h-96 overflow-y-auto" [innerHTML]="renderMarkdown(a.newsReport ?? 'No news report available.')"></div>
+                        </div>
+                        <div hlmTabsContent="sentiment" class="pt-3">
+                          <div class="prose text-sm max-h-96 overflow-y-auto" [innerHTML]="renderMarkdown(a.sentimentReport ?? 'No sentiment report available.')"></div>
+                        </div>
+                        <div hlmTabsContent="chart" class="pt-3">
+                          @if (a.symbol ?? selectedRun.symbol; as chartSymbol) {
+                            <div class="h-[480px]">
+                              <app-chart-panel
+                                [symbol]="chartSymbol"
+                                [snapshot]="selectedRun.chartSnapshot ?? null"
+                                timeframe="1Day"
+                                [days]="90"></app-chart-panel>
+                            </div>
+                          } @else {
+                            <p class="text-sm text-muted-foreground italic">No symbol available for this run.</p>
+                          }
+                        </div>
+                      </hlm-tabs>
+                    }
+
+                  <!-- ── Strategy: custom layout ────────────────────── -->
+                  } @else if (node.nodeId === 'strategy-node' && parseStrategyOutput(node.outputJson); as s) {
+                    <!-- Metrics row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Action</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="actionClass(s.action)">
+                          {{ s.action ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Quantity</span>
+                        <span class="text-lg font-semibold font-mono">{{ s.quantity ?? 0 }}</span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Current Price</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ s.currentPrice != null ? ('$' + (s.currentPrice | number:'1.2-2')) : '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Order Value</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ s.estimatedCost != null ? ('$' + (s.estimatedCost | number:'1.2-2')) : '—' }}
+                        </span>
+                      </div>
+                      @if (s.action === 'Buy') {
+                        <div class="rounded-lg bg-muted/40 p-3" title="Trailing-stop SELL attached as the protective exit. Ratchets up with price, never down; fires when price pulls back by this percent from the high-water mark.">
+                          <span class="block text-xs text-muted-foreground mb-1">Trailing Stop</span>
+                          <span class="text-lg font-semibold font-mono">
+                            {{ s.trailPercent != null ? ((s.trailPercent | number:'1.0-2') + '%') : '—' }}
+                          </span>
+                          @if (trailingStopPrice(s); as stop) {
+                            <span class="block text-xs text-muted-foreground font-mono mt-0.5">
+                              {{ '$' + (stop | number:'1.2-2') }}
+                            </span>
+                          }
+                        </div>
+                      }
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Confidence</span>
+                        <div class="flex items-center gap-2">
+                          <div class="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                            <div class="h-full rounded-full transition-all"
+                              [ngClass]="confidenceColor(s.confidence)"
+                              [style.width]="confidenceWidth(s.confidence)">
+                            </div>
+                          </div>
+                          <span class="text-sm font-semibold font-mono">
+                            {{ confidencePercent(s.confidence) }}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Reasoning -->
+                    @if (s.reasoning) {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Reasoning</span>
+                        <div class="prose text-sm max-h-64 overflow-y-auto" [innerHTML]="renderMarkdown(s.reasoning)"></div>
+                      </div>
+                    }
+
+                    <!-- ── Bull-vs-Bear debate transcript ──────── -->
+                    @if (debateGroups.length) {
+                      <div class="mt-4 rounded-lg bg-muted/20 border border-border p-3">
+                        <div class="mb-3 flex items-center justify-between">
+                          <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                            Strategy Debate
+                          </span>
+                          <span class="text-xs text-muted-foreground">
+                            {{ debateGroups.length }} debate(s) · {{ debateTurnCount }} turn(s)
+                          </span>
+                        </div>
+                        <div class="debate-panel max-h-96 overflow-y-auto space-y-4">
+                          @for (debate of debateGroups; track debate.id) {
+                            <section class="debate-invocation space-y-3">
+                              <div class="flex items-center justify-between border-b border-border pb-1 text-xs">
+                                <span class="font-semibold">{{ debateLabel(debate) }}</span>
+                                <span class="text-muted-foreground">{{ debate.turns.length }} turn(s)</span>
+                              </div>
+                              @for (turn of debate.turns; track turn.index) {
+                                <div class="debate-turn flex"
+                                     [class.justify-start]="turn.role === 'Bull'"
+                                     [class.justify-end]="turn.role === 'Bear'">
+                                  <div class="max-w-[80%] rounded-lg px-3 py-2"
+                                       [ngClass]="{
+                                         'bg-green-900/30 border border-green-700 text-green-100': turn.role === 'Bull',
+                                         'bg-red-900/30 border border-red-700 text-red-100': turn.role === 'Bear'
+                                       }">
+                                    <div class="mb-1 flex items-center gap-2 text-xs">
+                                      <span class="font-semibold uppercase">{{ turn.role }}</span>
+                                      <span class="text-muted-foreground">turn {{ turn.index + 1 }} · {{ turn.timestamp | date:'shortTime' }}</span>
+                                    </div>
+                                    <div class="whitespace-pre-wrap text-sm">{{ turn.message }}</div>
+                                  </div>
+                                </div>
+                              }
+                            </section>
+                          }
+                        </div>
+
+                        <!-- ── Coordinator verdict — closes the debate ── -->
+                        <div class="mt-4 rounded-lg border-2 p-3"
+                             [ngClass]="verdictBannerClass(s.action)">
+                          <div class="flex items-center gap-2 mb-2">
+                            <span class="text-lg" aria-hidden="true">⚖️</span>
+                            <span class="text-xs font-semibold uppercase tracking-wider opacity-80">
+                              Coordinator Verdict
+                            </span>
+                          </div>
+                          <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <span class="inline-flex items-center rounded-md border px-3 py-1 text-base font-bold uppercase"
+                                  [ngClass]="actionClass(s.action)">
+                              {{ s.action ?? '—' }}
+                            </span>
+                            @if (s.symbol) {
+                              <span class="font-mono text-base font-semibold">
+                                {{ s.quantity ?? 0 }} × {{ s.symbol }}
+                              </span>
+                            }
+                            <span class="flex items-center gap-2 text-sm">
+                              <span class="text-muted-foreground">Confidence</span>
+                              <span class="font-mono font-semibold">{{ confidencePercent(s.confidence) }}</span>
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    }
+
+                  <!-- ── Risk: custom layout ────────────────────────── -->
+                  } @else if (node.nodeId === 'risk-node' && parseRiskOutput(node.outputJson); as r) {
+                    <!-- Metrics row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Verdict</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="verdictClass(r.verdict)">
+                          {{ r.verdict ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Action</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="actionClass(r.decision?.action)">
+                          {{ r.decision?.action ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Symbol</span>
+                        <span class="text-lg font-semibold font-mono">{{ r.decision?.symbol ?? '—' }}</span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Quantity</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ r.adjustedQuantity != null ? r.adjustedQuantity : (r.decision?.quantity ?? 0) }}
+                        </span>
+                        @if (r.adjustedQuantity != null) {
+                          <span class="ml-1 text-xs text-yellow-400">(adjusted)</span>
+                        }
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Current Price</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ r.decision?.currentPrice != null ? ('$' + (r.decision!.currentPrice | number:'1.2-2')) : '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Order Value</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ riskOrderValue(r) != null ? ('$' + (riskOrderValue(r) | number:'1.2-2')) : '—' }}
+                        </span>
+                        @if (r.adjustedQuantity != null) {
+                          <span class="ml-1 text-xs text-yellow-400">(adjusted)</span>
+                        }
+                      </div>
+                    </div>
+
+                    <!-- Reasoning -->
+                    @if (r.reasoning) {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Reasoning</span>
+                        <div class="prose text-sm max-h-64 overflow-y-auto" [innerHTML]="renderMarkdown(r.reasoning)"></div>
+                      </div>
+                    } @else {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Reasoning</span>
+                        <span class="text-sm italic text-muted-foreground">
+                          RiskNode returned a {{ r.verdict ?? 'verdict' }} verdict without supplying any reasoning text. Check the trading-pack logs for the raw LLM response.
+                        </span>
+                      </div>
+                    }
+
+                  <!-- ── Execution: custom layout ───────────────────── -->
+                  } @else if (node.nodeId === 'execution-node' && parseExecutionOutput(node.outputJson); as e) {
+                    <!-- Metrics row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Status</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="executionStatusClass(e)">
+                          {{ executionStatusLabel(e) }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Symbol</span>
+                        <span class="text-lg font-semibold font-mono">{{ e.symbol ?? '—' }}</span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Action</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="actionClass(e.action)">
+                          {{ e.action ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Quantity</span>
+                        <span class="text-lg font-semibold font-mono">{{ e.quantity ?? 0 }}</span>
+                      </div>
+                    </div>
+
+                    <!-- Filled price (when available) -->
+                    @if (e.filledPrice != null) {
+                      <div class="grid grid-cols-1 sm:grid-cols-4 gap-3 mb-4">
+                        <div class="rounded-lg bg-muted/40 p-3">
+                          <span class="block text-xs text-muted-foreground mb-1">Filled Price</span>
+                          <span class="text-lg font-semibold font-mono">${{ e.filledPrice.toFixed(2) }}</span>
+                        </div>
+                      </div>
+                    }
+
+                    <!-- Message -->
+                    @if (e.message) {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3 mb-3">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Message</span>
+                        <span class="text-sm">{{ e.message }}</span>
+                      </div>
+                    }
+
+                    <!-- Order reference -->
+                    @if (e.orderId) {
+                      <div class="text-xs text-muted-foreground font-mono">
+                        Order: {{ e.orderId }}
+                      </div>
+                    }
+
+                  <!-- ── All other nodes: generic key-value grid ───── -->
+                  } @else if (node.nodeId === 'monitor-node' && parseMonitorOutput(node.outputJson); as m) {
+                    <!-- Status row -->
+                    <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Order Status</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="monitorStatusClass(m.currentStatus)">
+                          {{ m.currentStatus ?? '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Position</span>
+                        <span class="inline-block text-xs font-semibold px-2 py-0.5 rounded border"
+                          [ngClass]="m.tradeOpen ? 'bg-blue-900/40 text-blue-400 border-blue-600' : 'bg-gray-900/40 text-gray-400 border-gray-600'">
+                          {{ m.tradeOpen ? 'Open' : 'Closed' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Current Price</span>
+                        <span class="text-lg font-semibold font-mono">
+                          {{ m.currentPrice != null ? ('$' + m.currentPrice.toFixed(2)) : '—' }}
+                        </span>
+                      </div>
+                      <div class="rounded-lg bg-muted/40 p-3">
+                        <span class="block text-xs text-muted-foreground mb-1">Unrealized P&L</span>
+                        <span class="text-lg font-semibold font-mono" [ngClass]="pnlClass(m.unrealizedPnL)">
+                          @if (m.unrealizedPnL != null) {
+                            {{ m.unrealizedPnL >= 0 ? '+' : '' }}{{ m.unrealizedPnL.toFixed(2) }}
+                          } @else {
+                            —
+                          }
+                        </span>
+                      </div>
+                    </div>
+
+                    <!-- Summary -->
+                    @if (m.summary) {
+                      <div class="rounded-lg bg-muted/30 border border-border p-3">
+                        <span class="block text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Summary</span>
+                        <span class="text-sm">{{ m.summary }}</span>
+                      </div>
+                    }
+
+                    <!-- Close Position action -->
+                    @if (m.tradeOpen && selectedRun.symbol) {
+                      <div class="mt-4">
+                        <button
+                          class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-medium bg-red-900/40 text-red-400 border border-red-600 hover:bg-red-900/60 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          [disabled]="closingPosition"
+                          (click)="closePositionFromMonitor()">
+                          @if (closingPosition) {
+                            <span class="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent"></span>
+                          }
+                          Close Position at Market
+                        </button>
+                        @if (closePositionError) {
+                          <span class="ml-2 text-xs text-red-400">{{ closePositionError }}</span>
+                        }
+                      </div>
+                    }
+
+                  <!-- ── All other nodes: generic key-value grid ───── -->
+                  } @else if (parseOutput(node.outputJson); as output) {
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      @for (entry of (output | keyvalue); track entry.key) {
+                        <div class="text-sm">
+                          <span class="text-muted-foreground font-mono text-xs">{{ entry.key }}</span>
+                          <div class="mt-0.5 font-medium break-words">
+                            @if (isObject(entry.value)) {
+                              <pre class="text-xs bg-muted/50 p-2 rounded overflow-x-auto">{{ entry.value | json }}</pre>
+                            } @else {
+                              {{ entry.value }}
+                            }
+                          </div>
+                        </div>
+                      }
+                    </div>
+                  }
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            <!-- Connector Line -->
+            @if (!last) {
+              <div class="flex justify-center py-0.5">
+                <div class="w-0.5 h-4" [ngClass]="nodeConnectorClass(node.status)"></div>
+              </div>
+            }
+          }
+        </div>
+
+        <!-- Refinement Loop Indicator -->
+        @if (selectedRun.phase === 'Entry' && !selectedRun.isComplete && selectedRun.currentNode === 'strategy-node' && selectedRun.refinementCount > 0) {
+          <div class="mt-4 p-3 rounded-lg border border-yellow-800 bg-yellow-900/20 text-yellow-400 text-sm flex items-center gap-2">
+            <span class="text-lg">↻</span>
+            Risk rejected the strategy — refining (attempt {{ selectedRun.refinementCount + 1 }})
+          </div>
+        }
+      }
+    </div>
+  </div>
+</div>

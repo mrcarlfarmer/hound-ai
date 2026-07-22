@@ -6,6 +6,7 @@
     "**/node_modules": true
   },
   "chat.tools.terminal.autoApprove": {
-    "docker compose": true
+    "docker compose": true,
+    "dotnet test": true
   }
 }

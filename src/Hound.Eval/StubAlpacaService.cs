@@ -16,6 +16,9 @@ internal sealed class StubAlpacaService : IAlpacaService
     public Task<IReadOnlyList<IPosition>> ListPositionsAsync(CancellationToken cancellationToken = default)
         => Task.FromResult<IReadOnlyList<IPosition>>(new List<IPosition>());
 
+    public Task<IAsset?> GetAssetAsync(string symbol, CancellationToken cancellationToken = default)
+        => Task.FromResult<IAsset?>(null);
+
     public Task<IOrder> SubmitOrderAsync(
         string symbol,
         OrderQuantity quantity,
@@ -25,6 +28,15 @@ internal sealed class StubAlpacaService : IAlpacaService
         decimal? limitPrice = null,
         CancellationToken cancellationToken = default)
         => Task.FromResult<IOrder>(new StubOrder(symbol, side, quantity, limitPrice));
+
+    public Task<IOrder> SubmitTrailingStopOrderAsync(
+        string symbol,
+        OrderQuantity quantity,
+        OrderSide side,
+        decimal trailPercent,
+        TimeInForce timeInForce,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<IOrder>(new StubOrder(symbol, side, quantity, null));
 
     public Task<IReadOnlyList<IBar>> GetBarsAsync(
         string symbol,
@@ -45,6 +57,12 @@ internal sealed class StubAlpacaService : IAlpacaService
         return Task.FromResult<IReadOnlyList<IBar>>(bars);
     }
 
+    public Task<ITrade?> GetLatestTradeAsync(string symbol, CancellationToken cancellationToken = default)
+        => Task.FromResult<ITrade?>(new StubTrade(symbol, 150m));
+
+    public Task<IClock> GetClockAsync(CancellationToken cancellationToken = default)
+        => Task.FromResult<IClock>(new StubClock(isOpen: true));
+
     public Task<IOrder> GetOrderAsync(Guid orderId, CancellationToken cancellationToken = default)
         => Task.FromResult<IOrder>(new StubOrder("STUB", OrderSide.Buy, OrderQuantity.Fractional(1m), null));
 
@@ -53,6 +71,13 @@ internal sealed class StubAlpacaService : IAlpacaService
 
     public Task<bool> CancelOrderAsync(Guid orderId, CancellationToken cancellationToken = default)
         => Task.FromResult(true);
+
+    public Task<IReadOnlyList<INewsArticle>> ListNewsAsync(
+        IReadOnlyCollection<string> symbols,
+        DateTime since,
+        int maxItems,
+        CancellationToken cancellationToken = default)
+        => Task.FromResult<IReadOnlyList<INewsArticle>>(Array.Empty<INewsArticle>());
 }
 
 internal sealed class StubAccount : IAccount
@@ -114,6 +139,39 @@ internal sealed class StubBar : IBar
     public decimal Volume { get; }
     public ulong TradeCount => 0;
     public decimal Vwap => (Open + Close) / 2m;
+}
+
+internal sealed class StubTrade : ITrade
+{
+    public StubTrade(string symbol, decimal price)
+    {
+        Symbol = symbol;
+        Price = price;
+    }
+
+    public string Symbol { get; }
+    public DateTime TimestampUtc => DateTime.UtcNow;
+    public decimal Price { get; }
+    public decimal Size => 1m;
+    public ulong TradeId => 0;
+    public string Exchange => "STUB";
+    public string Tape => "C";
+    public string Update => "stub";
+    public IReadOnlyList<string> Conditions => Array.Empty<string>();
+    public TakerSide TakerSide => TakerSide.Unknown;
+}
+
+internal sealed class StubClock : IClock
+{
+    public StubClock(bool isOpen)
+    {
+        IsOpen = isOpen;
+    }
+
+    public DateTime TimestampUtc => DateTime.UtcNow;
+    public bool IsOpen { get; }
+    public DateTime NextOpenUtc => DateTime.UtcNow.AddHours(1);
+    public DateTime NextCloseUtc => DateTime.UtcNow.AddHours(8);
 }
 
 internal sealed class StubOrder : IOrder

@@ -5,14 +5,14 @@ namespace Hound.Core.Models;
 /// </summary>
 public class BaseHoundConfig
 {
-    public string Model { get; set; } = "gemma3";
+    public string Model { get; set; } = "qwen3.5:9b";
     public string Instructions { get; set; } = string.Empty;
     public int MaxTokens { get; set; } = 512;
     public double Temperature { get; set; } = 0.1;
 }
 
 /// <summary>
-/// Configuration for AnalysisHound — analysis parameters, indicator weights and confidence thresholds.
+/// Configuration for AnalystsTeamNode (formerly AnalysisHound) — analysis parameters, indicator weights and confidence thresholds.
 /// </summary>
 public class AnalysisHoundConfig : BaseHoundConfig
 {
@@ -22,7 +22,8 @@ public class AnalysisHoundConfig : BaseHoundConfig
 }
 
 /// <summary>
-/// Configuration for StrategyHound — indicators, timeframes, and entry/exit thresholds.
+/// Configuration for StrategyNode — indicators, timeframes, entry/exit thresholds,
+/// and bull-vs-bear debate parameters.
 /// </summary>
 public class StrategyHoundConfig : BaseHoundConfig
 {
@@ -32,10 +33,24 @@ public class StrategyHoundConfig : BaseHoundConfig
     public double BearishConfidenceThreshold { get; set; } = 0.7;
     public double EntryThreshold { get; set; } = 0.7;
     public double ExitThreshold { get; set; } = 0.6;
+
+    /// <summary>
+    /// When <c>true</c>, StrategyNode runs a bull-vs-bear MAF group-chat debate
+    /// before the coordinator agent produces the final <see cref="TradingDecision"/>.
+    /// When <c>false</c>, StrategyNode falls back to its single-agent legacy path.
+    /// </summary>
+    public bool DebateEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Number of debate turns each side (bull, bear) takes. Total debate messages
+    /// = <c>DebateTurnsPerSide * 2</c>. Keep small to bound latency; 2 is a good
+    /// balance between rebuttal depth and Ollama wall-clock budget.
+    /// </summary>
+    public int DebateTurnsPerSide { get; set; } = 2;
 }
 
 /// <summary>
-/// Configuration for RiskHound — position limits, drawdown caps, and portfolio exposure.
+/// Configuration for RiskNode — position limits, drawdown caps, and portfolio exposure.
 /// </summary>
 public class RiskHoundConfig : BaseHoundConfig
 {
@@ -47,32 +62,43 @@ public class RiskHoundConfig : BaseHoundConfig
 }
 
 /// <summary>
-/// Configuration for ExecutionHound — order types, slippage tolerance, and order watcher settings.
+/// Configuration for ExecutionNode — order types and slippage tolerance.
 /// </summary>
 public class ExecutionHoundConfig : BaseHoundConfig
 {
     public string OrderType { get; set; } = "Market";
     public double SlippageTolerance { get; set; } = 0.001;
     public string TimeInForce { get; set; } = "Day";
-
-    /// <summary>Seconds between order status polls. Default: 5.</summary>
-    public int OrderWatchIntervalSeconds { get; set; } = 5;
-
-    /// <summary>Minutes before the watcher gives up on a pending order. Default: 30.</summary>
-    public int OrderWatchTimeoutMinutes { get; set; } = 30;
 }
 
 /// <summary>
-/// Tuner constraints specifying which config fields each hound is allowed to have modified.
+/// Configuration for MonitorNode — trade lifecycle monitoring.
+/// </summary>
+public class MonitorNodeConfig : BaseHoundConfig
+{
+}
+
+/// <summary>
+/// Allowlist describing which JSON fields the Tuner is permitted to modify on
+/// each hound's config. Used by <c>TunerController.ApplyExperiment</c> to
+/// reject experiments that would mutate fields outside the allowlist (e.g.,
+/// silently flipping <c>StrategyHound.DebateEnabled</c> to <c>false</c>).
+/// Loaded from <c>Config/TunerConstraints.json</c>.
 /// </summary>
 public class TunerConstraints
 {
+    /// <summary>
+    /// Map of hound name (e.g., <c>"StrategyHound"</c>) to the list of field
+    /// names the Tuner may mutate on that hound's config document.
+    /// </summary>
     public Dictionary<string, List<string>> AllowedModifications { get; set; } = new();
 
-    public IReadOnlyList<string> GetAllowedFields(string houndName)
-    {
-        if (AllowedModifications.TryGetValue(houndName, out var fields))
-            return fields.AsReadOnly();
-        return [];
-    }
+    /// <summary>
+    /// Returns the allowlisted fields for <paramref name="houndName"/>, or an
+    /// empty list when no allowlist is registered (meaning: nothing tunable).
+    /// </summary>
+    public IReadOnlyList<string> GetAllowedFields(string houndName) =>
+        AllowedModifications.TryGetValue(houndName, out var fields)
+            ? fields
+            : Array.Empty<string>();
 }

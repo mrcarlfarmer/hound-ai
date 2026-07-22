@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Worker">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net9.0</TargetFramework>
@@ -6,6 +6,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <UserSecretsId>dotnet-Hound.Trading-460d67e2-b37d-4e2e-9108-3a5e1b282076</UserSecretsId>
   </PropertyGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Hound.Trading.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Alpaca.Markets" Version="7.2.0" />

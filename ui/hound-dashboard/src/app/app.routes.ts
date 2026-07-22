@@ -1,16 +1,39 @@
 import { Routes } from '@angular/router';
-import { DashboardComponent } from './pages/dashboard/dashboard.component';
-import { PackDetailComponent } from './pages/pack-detail/pack-detail.component';
-import { ActivityLogComponent } from './pages/activity-log/activity-log.component';
-import { ExecutionComponent } from './pages/execution/execution.component';
-import { TunerComponent } from './pages/tuner/tuner.component';
-import { WatchtowerComponent } from './pages/watchtower/watchtower.component';
 
 export const routes: Routes = [
-  { path: '', component: DashboardComponent },
-  { path: 'packs/:id', component: PackDetailComponent },
-  { path: 'activity', component: ActivityLogComponent },
-  { path: 'execution', component: ExecutionComponent },
-  { path: 'tuner', component: TunerComponent },
-  { path: 'watchtower', component: WatchtowerComponent },
+  {
+    path: '',
+    loadComponent: () =>
+      import('./pages/dashboard/dashboard.component').then(m => m.DashboardComponent),
+  },
+  {
+    path: 'packs/:id',
+    loadComponent: () =>
+      import('./pages/pack-detail/pack-detail.component').then(m => m.PackDetailComponent),
+  },
+  {
+    path: 'activity',
+    loadComponent: () =>
+      import('./pages/activity-log/activity-log.component').then(m => m.ActivityLogComponent),
+  },
+  {
+    path: 'execution',
+    loadComponent: () =>
+      import('./pages/execution/execution.component').then(m => m.ExecutionComponent),
+  },
+  {
+    path: 'graph',
+    loadComponent: () =>
+      import('./pages/graph-runs/graph-runs.component').then(m => m.GraphRunsComponent),
+  },
+  {
+    path: 'portfolio',
+    loadComponent: () =>
+      import('./pages/portfolio/portfolio.component').then(m => m.PortfolioComponent),
+  },
+  {
+    path: 'charts',
+    loadComponent: () =>
+      import('./pages/charts/charts.component').then(m => m.ChartsComponent),
+  },
 ];

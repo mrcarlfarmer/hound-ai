@@ -1,0 +1,39 @@
+{
+  "AllowedModifications": {
+    "StrategyHound": [
+      "Temperature",
+      "MaxTokens",
+      "BullishConfidenceThreshold",
+      "BearishConfidenceThreshold",
+      "EntryThreshold",
+      "ExitThreshold",
+      "Indicators",
+      "Timeframes",
+      "DebateEnabled",
+      "DebateTurnsPerSide"
+    ],
+    "RiskHound": [
+      "Temperature",
+      "MaxTokens",
+      "MaxPositionPct",
+      "MaxExposurePct",
+      "MaxSharesPerOrder",
+      "MaxDrawdownPct",
+      "PortfolioExposureLimit"
+    ],
+    "AnalysisHound": [
+      "Temperature",
+      "MaxTokens",
+      "DataWindowDays",
+      "ConfidenceThreshold",
+      "IndicatorWeights"
+    ],
+    "ExecutionHound": [
+      "Temperature",
+      "MaxTokens",
+      "OrderType",
+      "SlippageTolerance",
+      "TimeInForce"
+    ]
+  }
+}

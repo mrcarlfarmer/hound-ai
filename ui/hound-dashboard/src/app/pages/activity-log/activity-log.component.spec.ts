@@ -10,7 +10,7 @@ import { ActivityLog } from '../../models';
 describe('ActivityLogComponent', () => {
   let httpMock: HttpTestingController;
 
-  const ACTIVITY_URL = 'http://localhost:5000/api/activity';
+  const ACTIVITY_URL = '/api/activity';
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({

@@ -196,7 +196,6 @@ Set the following variables in `.env`:
 | `ALPACA_BASE_URL` | Alpaca paper trading base URL | `https://paper-api.alpaca.markets` |
 | `OLLAMA_MODEL` | Default LLM model for hounds | `gemma3` |
 | `RAVENDB_URL` | RavenDB connection URL (internal) | `http://ravendb:8080` |
-| `GHCR_TOKEN` | GitHub PAT with `read:packages` scope | `ghp_...` |
 
 ### Configure .NET User Secrets (for local dev outside Docker)
 
@@ -217,7 +216,7 @@ dotnet user-secrets set "RavenDb:Url" "http://localhost:8080"
 
 ```bash
 cd ~/hound-ai
-docker compose pull        # Pull pre-built images (ollama, ravendb, watchtower)
+docker compose pull        # Pull pre-built images (ollama, ravendb)
 docker compose build       # Build custom images (trading-pack, hound-api, hound-ui)
 ```
 
@@ -227,7 +226,7 @@ docker compose build       # Build custom images (trading-pack, hound-api, hound
 docker compose up -d
 ```
 
-This starts all 6 containers:
+This starts all 5 containers:
 
 | Container | Port | URL |
 |-----------|------|-----|
@@ -236,7 +235,6 @@ This starts all 6 containers:
 | `hound-api` | 5000 | `http://localhost:5000` |
 | `hound-ui` | 4200 | `http://localhost:4200` |
 | `trading-pack` | — | Internal only |
-| `watchtower` | — | Background service |
 
 ### 8.3 Pull Ollama models
 
@@ -275,93 +273,7 @@ echo "Open http://localhost:4200 in your browser"
 
 ---
 
-## 9. Watchtower Configuration & Verification
-
-Watchtower automatically monitors GHCR for updated container images and redeploys them.
-
-### 9.1 Review Watchtower configuration
-
-The Watchtower configuration lives in `infra/watchtower/config.env`:
-
-```env
-WATCHTOWER_POLL_INTERVAL=300          # Check for updates every 5 minutes (in seconds)
-WATCHTOWER_INCLUDE_STOPPED=false      # Only monitor running containers
-```
-
-Additional Watchtower settings (`WATCHTOWER_CLEANUP`, `WATCHTOWER_ROLLING_RESTART`) are set in `docker-compose.yml` directly.
-
-> **Important:** Do NOT put `REPO_USER` or `REPO_PASS` in `config.env` or `docker-compose.yml`. Those env vars only work for Docker Hub, not GHCR. GHCR authentication uses a mounted `config.json` file (see below).
-
-### 9.2 GHCR authentication for Watchtower
-
-Watchtower needs a Docker `config.json` with inline credentials to pull from GHCR. The `REPO_USER`/`REPO_PASS` environment variables do **not** work for GHCR.
-
-1. Go to [GitHub → Settings → Developer settings → Personal access tokens](https://github.com/settings/tokens).
-2. Create a new token (classic) with `read:packages` scope.
-3. Add the token to your `.env` file as `GHCR_TOKEN`.
-4. Generate a Docker credentials file for Watchtower:
-
-```bash
-cd ~/hound-ai
-source .env
-mkdir -p infra/watchtower/docker-creds
-echo "$GHCR_TOKEN" | docker --config infra/watchtower/docker-creds login ghcr.io -u mrcarlfarmer --password-stdin
-```
-
-This creates `infra/watchtower/docker-creds/config.json` with inline auth (gitignored).
-
-The `docker-compose.yml` mounts this file into the Watchtower container:
-
-```yaml
-watchtower:
-  image: containrrr/watchtower:latest
-  volumes:
-    - /var/run/docker.sock:/var/run/docker.sock
-    - ./infra/watchtower/docker-creds/config.json:/config.json
-  env_file:
-    - infra/watchtower/config.env
-  environment:
-    - DOCKER_API_VERSION=1.40
-    - WATCHTOWER_CLEANUP=true
-    - WATCHTOWER_ROLLING_RESTART=true
-    - WATCHTOWER_NOTIFICATION_URL=generic://hound-api:8080/api/watchtower/webhook?template=json
-    - WATCHTOWER_NOTIFICATION_REPORT=true
-  depends_on:
-    - hound-api
-  restart: unless-stopped
-  networks:
-    - hound-net
-```
-
-### 9.3 Verify Watchtower is running
-
-```bash
-# Check Watchtower container status
-docker compose ps watchtower
-
-# View Watchtower logs to confirm it's polling
-docker compose logs watchtower --tail 50
-
-# You should see lines like:
-#   time="..." level=info msg="Checking for updated images..."
-#   time="..." level=info msg="Session done" ...
-```
-
-### 9.4 Test Watchtower update cycle
-
-To manually trigger a Watchtower check:
-
-```bash
-# Send SIGHUP to trigger an immediate poll
-docker kill --signal=SIGHUP $(docker compose ps -q watchtower)
-
-# Then check logs for update activity
-docker compose logs watchtower --tail 20 -f
-```
-
----
-
-## 10. Development Workflow
+## 9. Development Workflow
 
 ### Start in dev mode (with hot reload)
 
@@ -436,39 +348,6 @@ If ports 4200, 5000, 8080, or 11434 are already in use:
 sudo lsof -i :8080
 # Or change the port mapping in docker-compose.yml
 ```
-
-### Watchtower not pulling updates
-
-1. **Run debug mode** to check credential loading:
-   ```bash
-   docker exec watchtower /watchtower --run-once --debug 2>&1 | grep -i "credentials\|auth"
-   ```
-   You should see: `Loaded auth credentials for user mrcarlfarmer, on registry ghcr.io, from file /config.json`
-
-2. **If you see `your_github_username_here`** — stale `REPO_USER`/`REPO_PASS` env vars are overriding `config.json`. Check:
-   ```bash
-   docker inspect watchtower --format '{{json .Config.Env}}' | python3 -m json.tool
-   ```
-   Remove any `REPO_USER`/`REPO_PASS` entries from `config.env` and `docker-compose.yml`, then recreate: `docker compose up -d --force-recreate watchtower`
-
-3. **If you see `No credentials for ghcr.io found`** — regenerate the credentials file:
-   ```bash
-   source .env
-   rm -rf infra/watchtower/docker-creds && mkdir -p infra/watchtower/docker-creds
-   echo "$GHCR_TOKEN" | docker --config infra/watchtower/docker-creds login ghcr.io -u mrcarlfarmer --password-stdin
-   docker compose up -d --force-recreate watchtower
-   ```
-
-4. **Verify the config.json mount** is present:
-   ```bash
-   docker inspect watchtower --format '{{json .Mounts}}' | python3 -m json.tool
-   ```
-   You should see a bind mount with `"Destination": "/config.json"`.
-
-5. **Check GHCR token is valid**: `source .env && echo "$GHCR_TOKEN" | docker login ghcr.io -u mrcarlfarmer --password-stdin`
-6. **Check Watchtower logs**: `docker compose logs watchtower`
-7. Ensure images are tagged and pushed to GHCR correctly.
-8. Verify poll interval isn't set too high.
 
 ### WSL2 memory limits
 

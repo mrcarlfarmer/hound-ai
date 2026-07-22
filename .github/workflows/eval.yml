@@ -79,3 +79,47 @@ jobs:
           [ -n "$EVAL_CATEGORY" ] && ARGS="$ARGS --category=$EVAL_CATEGORY"
           [ "$EVAL_VERBOSE" = "true" ] && ARGS="$ARGS --verbose"
           dotnet run --project src/Hound.Eval --no-build -- $ARGS
+
+  grocery-eval:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # The grocery harness runs FULLY OFFLINE: deterministic hounds plus
+    # context-driven stubs for the LLM/embedding/browser seams. No Ollama
+    # or network is required, so this job blocks on both dry-run and full run.
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore .NET
+        run: dotnet restore src/Hound.Grocery.Eval/Hound.Grocery.Eval.csproj
+
+      - name: Build Hound.Grocery.Eval
+        run: dotnet build src/Hound.Grocery.Eval/Hound.Grocery.Eval.csproj --no-restore
+
+      - name: Validate grocery scenario files (dry-run)
+        env:
+          EVAL_HOUND: ${{ inputs.hound }}
+          EVAL_CATEGORY: ${{ inputs.category }}
+        run: |
+          ARGS="--dry-run"
+          [ -n "$EVAL_HOUND" ] && ARGS="$ARGS --hound=$EVAL_HOUND"
+          [ -n "$EVAL_CATEGORY" ] && ARGS="$ARGS --category=$EVAL_CATEGORY"
+          dotnet run --project src/Hound.Grocery.Eval --no-build -- $ARGS
+
+      - name: Run grocery eval scenarios (offline)
+        env:
+          EVAL_HOUND: ${{ inputs.hound }}
+          EVAL_CATEGORY: ${{ inputs.category }}
+          EVAL_VERBOSE: ${{ inputs.verbose }}
+        run: |
+          ARGS=""
+          [ -n "$EVAL_HOUND" ] && ARGS="$ARGS --hound=$EVAL_HOUND"
+          [ -n "$EVAL_CATEGORY" ] && ARGS="$ARGS --category=$EVAL_CATEGORY"
+          [ "$EVAL_VERBOSE" = "true" ] && ARGS="$ARGS --verbose"
+          dotnet run --project src/Hound.Grocery.Eval --no-build -- $ARGS

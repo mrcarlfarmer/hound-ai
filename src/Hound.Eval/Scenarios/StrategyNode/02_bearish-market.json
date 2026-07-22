@@ -1,0 +1,28 @@
+{
+  "scenarioName": "Bearish Market Sell or Hold Decision",
+  "description": "StrategyHound should output a Sell or Hold decision when presented with a bearish market analysis with high confidence.",
+  "houndName": "StrategyNode",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Market analysis for TSLA indicates a strong bearish trend with high confidence.",
+    "context": {
+      "symbol": "TSLA",
+      "lastPrice": 210.00,
+      "volumeChange": -0.18,
+      "trend": "Bearish",
+      "confidenceScore": 0.80,
+      "summary": "Consistent downward price movement with declining volume over the past week."
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": [],
+    "outputMustNotContain": ["Buy"],
+    "outputFormat": "JSON with symbol, action, quantity, reasoning, confidence",
+    "decisionCriteria": "Bearish trend with confidence >= 0.7 must produce a Sell or Hold action, never Buy."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output does not contain the action 'Buy'."
+  }
+}

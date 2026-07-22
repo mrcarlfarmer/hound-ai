@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Position Closed No Holdings",
+  "houndName": "MonitorNode",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Check the status of order abc-003 for SPY and the current position.",
+    "context": {
+      "success": true,
+      "symbol": "SPY",
+      "action": "Sell",
+      "quantity": 50,
+      "filledPrice": 505.00,
+      "orderId": "abc-003",
+      "message": "Order filled",
+      "tradeDocumentId": "TradeDocuments/3"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["check_position"],
+    "outputMustContain": ["tradeOpen"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with tradeOpen, currentStatus, currentPrice, unrealizedPnL, summary",
+    "decisionCriteria": "No position remaining. Trade should be marked closed."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'tradeOpen'."
+  }
+}

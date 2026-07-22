@@ -1,0 +1,25 @@
+{
+  "scenarioName": "Favourite and staple plan at High priority",
+  "description": "An item learned as both favourite and staple plans at High priority for trim-order protection.",
+  "houndName": "PlannerHound",
+  "category": "tool-usage",
+  "input": {
+    "userMessage": "Plan 'eggs' which is a learned favourite and staple.",
+    "context": {
+      "listItems": [{ "name": "eggs", "quantity": 2 }],
+      "preferences": "# Preferences\n\n## Product mappings\n\n- eggs \u2192 \"Free Range Eggs x6\" \u00b7 usual qty 1 \u00b7 confidence 0.9 \u00b7 favourite \u00b7 staple\n",
+      "weeklyTarget": 140
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Free Range Eggs x6", "High"],
+    "outputMustNotContain": ["Normal"],
+    "outputFormat": "JSON ShoppingPlan with IsFavourite and IsStaple true and PlanPriority High.",
+    "decisionCriteria": "A favourite/staple item must plan at High priority."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Plan marks the eggs item High priority using the learned product."
+  }
+}

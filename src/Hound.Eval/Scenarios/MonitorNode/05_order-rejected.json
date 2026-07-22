@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Order Rejected by Broker",
+  "houndName": "MonitorNode",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Check the status of order abc-005 for TSLA and the current position.",
+    "context": {
+      "success": true,
+      "symbol": "TSLA",
+      "action": "Buy",
+      "quantity": 500,
+      "filledPrice": null,
+      "orderId": "abc-005",
+      "message": "Order submitted",
+      "tradeDocumentId": "TradeDocuments/5"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_order_status"],
+    "outputMustContain": ["tradeOpen", "false"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with tradeOpen, currentStatus, currentPrice, unrealizedPnL, summary",
+    "decisionCriteria": "Order was rejected by the broker. No position held, trade should be closed."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'tradeOpen' and 'false'."
+  }
+}

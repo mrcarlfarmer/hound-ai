@@ -1,0 +1,24 @@
+{
+  "scenarioName": "Set-quantity updates an existing item",
+  "description": "A 'make it 5 bananas' message sets the quantity (replace, not accumulate) of an existing item.",
+  "houndName": "ConciergeHound",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "make it 5 bananas",
+    "context": {
+      "existingList": [{ "name": "bananas", "quantity": 2 }],
+      "intents": [{ "kind": "SetQuantity", "itemName": "bananas", "quantity": 5 }]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Set bananas", "5", "\"ListChanged\":true"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON reply confirming the quantity set to 5.",
+    "decisionCriteria": "A SetQuantity intent replaces the quantity for the item."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Reply confirms bananas set to 5."
+  }
+}

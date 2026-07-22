@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Both weekly and cycle over",
+  "description": "A large basket that breaches both the weekly flex band and the pay-cycle cap flags Both.",
+  "houndName": "BudgetHound",
+  "category": "adversarial",
+  "input": {
+    "userMessage": "Reconcile a 200.00 basket with 500 already spent this cycle against a 140 weekly target and 600 cap.",
+    "context": {
+      "basketSubtotal": 200.00,
+      "priorWeekSpend": 0,
+      "priorCycleSpend": 500,
+      "weeklyTarget": 140,
+      "weeklyFlexPercent": 10,
+      "monthlyCap": 600,
+      "cycleStartDay": 25
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["Both", "weekly flex band", "monthly cap", "Approve or trim"],
+    "outputMustNotContain": ["All good"],
+    "outputFormat": "JSON BudgetVerdict with outcome Both and RequiresApproval true.",
+    "decisionCriteria": "Both the weekly flex band and the pay-cycle cap breached must produce Both."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Verdict is Both, references weekly flex band and monthly cap, and asks to approve or trim."
+  }
+}

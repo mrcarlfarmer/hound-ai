@@ -1,6 +1,9 @@
 using Hound.Core.Logging;
+using Hound.Core.Models;
 using Hound.Trading.AlpacaClient;
-using Hound.Trading.Hounds;
+using Hound.Trading.Graph;
+using Hound.Trading.Nodes;
+using Hound.Trading.Nodes.Analysts;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using System.ClientModel;
@@ -41,7 +44,7 @@ public class EvalRunner
 
         _modelName = modelName
             ?? Environment.GetEnvironmentVariable("OLLAMA_MODEL")
-            ?? "gemma3";
+            ?? "qwen3.5:9b";
     }
 
     /// <summary>
@@ -177,41 +180,82 @@ public class EvalRunner
 
         switch (scenario.HoundName)
         {
+            case "StrategyNode":
             case "StrategyHound":
             {
-                var hound = new StrategyHound(chatClient, activityLogger);
+                var node = new StrategyNode(chatClient, alpacaService, activityLogger);
+                var symbol = GetContextString(scenario.Input.Context, "symbol") ?? "AAPL";
                 var analysis = DeserializeContext<MarketAnalysis>(scenario.Input.Context)
-                    ?? new MarketAnalysis("AAPL", 0, 0, "Unknown", 0, scenario.Input.UserMessage);
-                var decision = await hound.DecideAsync(analysis, ct);
-                return JsonSerializer.Serialize(decision, JsonOptions);
+                    ?? new MarketAnalysis(symbol, 0, 0, "Unknown", 0, scenario.Input.UserMessage);
+                var state = TradingGraphState.Initial(analysis.Symbol) with
+                {
+                    DataOutput = analysis,
+                    RefinementCount = DeserializeContextValue<int?>(scenario.Input.Context, "refinementCount") ?? 0,
+                    RiskOutput = DeserializeContextValue<RiskAssessment>(scenario.Input.Context, "riskOutput")
+                        ?? BuildRiskOutputFromContext(scenario.Input.Context, analysis),
+                };
+                var result = await node.ExecuteAsync(state, ct);
+                return JsonSerializer.Serialize(result.StrategyOutput, JsonOptions);
             }
 
+            case "AnalystsTeamNode":
+            case "DataNode":
             case "AnalysisHound":
             {
-                var hound = new AnalysisHound(chatClient, alpacaService, activityLogger);
+                var newsService = new StubNewsService();
+                var sentimentService = new StubSentimentService();
+                var node = new AnalystsTeamNode(
+                    new MarketAnalyst(chatClient, alpacaService, activityLogger),
+                    new FundamentalsAnalyst(chatClient, alpacaService, activityLogger),
+                    new NewsAnalyst(chatClient, alpacaService, activityLogger, newsService),
+                    new SentimentAnalyst(chatClient, alpacaService, activityLogger, sentimentService),
+                    new AnalystSynthesiser(chatClient, activityLogger),
+                    alpacaService,
+                    activityLogger);
                 var symbol = GetContextString(scenario.Input.Context, "symbol") ?? "AAPL";
-                var analysis = await hound.AnalyseAsync(symbol, ct);
-                return JsonSerializer.Serialize(analysis, JsonOptions);
+                var state = TradingGraphState.Initial(symbol);
+                var result = await node.ExecuteAsync(state, ct);
+                return JsonSerializer.Serialize(result.DataOutput, JsonOptions);
             }
 
+            case "RiskNode":
             case "RiskHound":
             {
-                var hound = new RiskHound(chatClient, alpacaService, activityLogger);
+                var node = new RiskNode(chatClient, alpacaService, activityLogger);
                 var decision = DeserializeContext<TradingDecision>(scenario.Input.Context)
                     ?? new TradingDecision("AAPL", TradeAction.Buy, 10, scenario.Input.UserMessage, 0.5);
-                var assessment = await hound.EvaluateAsync(decision, ct);
-                return JsonSerializer.Serialize(assessment, JsonOptions);
+                var state = TradingGraphState.Initial("AAPL") with { StrategyOutput = decision };
+                var result = await node.ExecuteAsync(state, ct);
+                return JsonSerializer.Serialize(result.RiskOutput, JsonOptions);
             }
 
+            case "ExecutionNode":
             case "ExecutionHound":
             {
-                var hound = new ExecutionHound(chatClient, alpacaService, activityLogger, StubDocumentStoreFactory.Create());
+                var node = new ExecutionNode(alpacaService, activityLogger, StubDocumentStoreFactory.Create());
                 var assessment = DeserializeContext<RiskAssessment>(scenario.Input.Context)
                     ?? new RiskAssessment(RiskVerdict.Rejected,
                         new TradingDecision("AAPL", TradeAction.Buy, 10, "", 0),
                         "No assessment provided");
-                var result = await hound.ExecuteAsync(assessment, ct);
-                return JsonSerializer.Serialize(result, JsonOptions);
+                var state = TradingGraphState.Initial("AAPL") with { RiskOutput = assessment };
+                var result = await node.ExecuteAsync(state, ct);
+                return JsonSerializer.Serialize(result.ExecutionOutput, JsonOptions);
+            }
+
+            case "MonitorNode":
+            {
+                var resetter = new StubResettableExecutor();
+                var node = new MonitorNode(alpacaService, activityLogger,
+                    StubDocumentStoreFactory.Create(), resetter, monitorDelaySeconds: 0);
+                var executionResult = DeserializeContext<ExecutionResult>(scenario.Input.Context)
+                    ?? new ExecutionResult(true, "AAPL", TradeAction.Buy, 10, null, "test-order", "Test");
+                var state = TradingGraphState.Initial("AAPL") with
+                {
+                    ExecutionOutput = executionResult,
+                    Phase = GraphPhase.Monitor,
+                };
+                var result = await node.ExecuteAsync(state, ct);
+                return JsonSerializer.Serialize(result.MonitorOutput, JsonOptions);
             }
 
             default:
@@ -226,10 +270,49 @@ public class EvalRunner
         return JsonSerializer.Deserialize<T>(json, JsonOptions);
     }
 
+    private static T? DeserializeContextValue<T>(Dictionary<string, object>? context, string key)
+    {
+        if (context is null || !context.TryGetValue(key, out var value) || value is null)
+            return default;
+
+        if (value is JsonElement element)
+            return element.Deserialize<T>(JsonOptions);
+
+        if (value is T typedValue)
+            return typedValue;
+
+        var json = JsonSerializer.Serialize(value, JsonOptions);
+        return JsonSerializer.Deserialize<T>(json, JsonOptions);
+    }
+
+    private static RiskAssessment? BuildRiskOutputFromContext(
+        Dictionary<string, object>? context,
+        MarketAnalysis analysis)
+    {
+        var refinementCount = GetContextInt(context, "refinementCount");
+        var riskRejection = GetContextString(context, "riskRejection");
+        if (refinementCount is not > 0 || string.IsNullOrWhiteSpace(riskRejection))
+            return null;
+
+        var rejectedDecision = new TradingDecision(
+            analysis.Symbol, TradeAction.Buy, 0, "Previously rejected decision.", 0);
+        return new RiskAssessment(RiskVerdict.Rejected, rejectedDecision, riskRejection);
+    }
+
     private static string? GetContextString(Dictionary<string, object>? context, string key)
     {
         if (context is null || !context.TryGetValue(key, out var value)) return null;
         return value?.ToString();
+    }
+
+    private static int? GetContextInt(Dictionary<string, object>? context, string key)
+    {
+        if (context is null || !context.TryGetValue(key, out var value) || value is null) return null;
+        if (value is JsonElement element)
+        {
+            return element.ValueKind == JsonValueKind.Number && element.TryGetInt32(out var n) ? n : null;
+        }
+        return int.TryParse(value.ToString(), out var parsed) ? parsed : null;
     }
 
     private IChatClient CreateChatClient()
@@ -259,4 +342,3 @@ public class EvalRunner
         return (true, "All criteria met");
     }
 }
-

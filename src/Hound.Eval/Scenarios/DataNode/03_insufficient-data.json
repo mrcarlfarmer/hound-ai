@@ -1,0 +1,23 @@
+{
+  "scenarioName": "Insufficient Data Acknowledges Limitation",
+  "description": "AnalysisHound should acknowledge a data limitation when no historical bars are available for the requested symbol. The stub returns empty data for symbols containing 'NODATA'.",
+  "houndName": "DataNode",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Analyse NODATA_SYMBOL and provide your market assessment.",
+    "context": {
+      "symbol": "NODATA_SYMBOL"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["fetch_market_data"],
+    "outputMustContain": ["NODATA_SYMBOL"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with symbol, trend, confidenceScore, summary indicating insufficient data",
+    "decisionCriteria": "With no bar data available, AnalysisHound should output Unknown or Neutral trend with low confidence (0) and a summary mentioning no data found."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'NODATA_SYMBOL' and a valid JSON structure."
+  }
+}

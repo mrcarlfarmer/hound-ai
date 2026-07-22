@@ -3,6 +3,7 @@ using Hound.Api.Services;
 using Hound.Core.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
+using System.Text.Json;
 
 namespace Hound.Api.Controllers;
 
@@ -75,6 +76,19 @@ public class TunerController : ControllerBase
         if (!IsValidHoundName(experiment.HoundName))
             return UnprocessableEntity(new { message = $"Invalid hound name: '{experiment.HoundName}'." });
 
+        // Enforce the tuner allowlist: reject any candidate config that mutates
+        // a field outside the per-hound allowlist (prevents experiments from
+        // silently disabling safety features like StrategyHound.DebateEnabled).
+        var disallowed = FindDisallowedFields(experiment.HoundName, experiment.ConfigAfter);
+        if (disallowed.Count > 0)
+        {
+            return BadRequest(new
+            {
+                message = $"Candidate config for {experiment.HoundName} contains fields outside the tuner allowlist.",
+                disallowedFields = disallowed,
+            });
+        }
+
         var configPath = Path.Combine(_configDirectory, $"{experiment.HoundName}.json");
 
         try
@@ -131,4 +145,75 @@ public class TunerController : ControllerBase
 
     private static bool IsValidHoundName(string houndName) =>
         houndName is "StrategyHound" or "RiskHound" or "AnalysisHound" or "ExecutionHound";
+
+    /// <summary>
+    /// Returns the set of top-level JSON fields in <paramref name="configAfterJson"/>
+    /// that are NOT in the tuner allowlist for <paramref name="houndName"/>. An empty
+    /// list means the candidate config is safe to apply. Malformed JSON yields a
+    /// single synthetic <c>"&lt;invalid-json&gt;"</c> entry so the controller can reject it.
+    /// </summary>
+    internal List<string> FindDisallowedFields(string houndName, string configAfterJson)
+    {
+        var allowlist = LoadConstraints().GetAllowedFields(houndName);
+        if (allowlist.Count == 0)
+        {
+            // No allowlist configured for this hound → reject everything as a
+            // fail-closed default. Add the hound to TunerConstraints.json to
+            // enable tuning.
+            return ["<no-allowlist-configured>"];
+        }
+
+        JsonDocument doc;
+        try
+        {
+            doc = JsonDocument.Parse(configAfterJson);
+        }
+        catch (JsonException)
+        {
+            return ["<invalid-json>"];
+        }
+
+        using (doc)
+        {
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return ["<not-an-object>"];
+
+            var allowed = new HashSet<string>(allowlist, StringComparer.OrdinalIgnoreCase);
+            var disallowed = new List<string>();
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (!allowed.Contains(prop.Name))
+                    disallowed.Add(prop.Name);
+            }
+            return disallowed;
+        }
+    }
+
+    private TunerConstraints? _cachedConstraints;
+    private TunerConstraints LoadConstraints()
+    {
+        if (_cachedConstraints is not null)
+            return _cachedConstraints;
+
+        var path = Path.Combine(_configDirectory, "TunerConstraints.json");
+        if (!System.IO.File.Exists(path))
+        {
+            _cachedConstraints = new TunerConstraints();
+            return _cachedConstraints;
+        }
+
+        try
+        {
+            var json = System.IO.File.ReadAllText(path);
+            _cachedConstraints = JsonSerializer.Deserialize<TunerConstraints>(json,
+                new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
+                ?? new TunerConstraints();
+        }
+        catch
+        {
+            _cachedConstraints = new TunerConstraints();
+        }
+
+        return _cachedConstraints;
+    }
 }

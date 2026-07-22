@@ -1,0 +1,17 @@
+FROM mcr.microsoft.com/dotnet/sdk:9.0 AS build
+WORKDIR /src
+
+COPY src/Hound.Core/Hound.Core.csproj Hound.Core/
+COPY src/Hound.Grocery/Hound.Grocery.csproj Hound.Grocery/
+COPY Directory.Build.props ../
+RUN dotnet restore Hound.Grocery/Hound.Grocery.csproj
+
+COPY src/Hound.Core/ Hound.Core/
+COPY src/Hound.Grocery/ Hound.Grocery/
+RUN dotnet publish Hound.Grocery/Hound.Grocery.csproj -c Release -o /app/publish --no-restore
+
+FROM mcr.microsoft.com/dotnet/aspnet:9.0 AS runtime
+WORKDIR /app
+EXPOSE 8080
+COPY --from=build /app/publish .
+ENTRYPOINT ["dotnet", "Hound.Grocery.dll"]

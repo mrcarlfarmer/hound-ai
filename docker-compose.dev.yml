@@ -16,6 +16,12 @@ services:
       - ./src/Hound.Core:/src/Hound.Core
       - ./src/Hound.Trading:/src/Hound.Trading
       - ./Directory.Build.props:/Directory.Build.props:ro
+      # Shadow build output with anonymous volumes so host-side `dotnet build/test`
+      # and the other dev container can't clobber this container's bin/obj artifacts.
+      - /src/Hound.Core/bin
+      - /src/Hound.Core/obj
+      - /src/Hound.Trading/bin
+      - /src/Hound.Trading/obj
     working_dir: /src/Hound.Trading
     command: ["dotnet", "watch", "run", "--no-launch-profile", "--urls", "http://0.0.0.0:8080"]
     environment:
@@ -31,11 +37,48 @@ services:
       - ./src/Hound.Core:/src/Hound.Core
       - ./src/Hound.Api:/src/Hound.Api
       - ./Directory.Build.props:/Directory.Build.props:ro
+      # Shadow build output with anonymous volumes so host-side `dotnet build/test`
+      # and the other dev container can't clobber this container's bin/obj artifacts.
+      - /src/Hound.Core/bin
+      - /src/Hound.Core/obj
+      - /src/Hound.Api/bin
+      - /src/Hound.Api/obj
     working_dir: /src/Hound.Api
     command: ["dotnet", "watch", "run", "--no-launch-profile", "--urls", "http://0.0.0.0:8080"]
     environment:
       - ASPNETCORE_ENVIRONMENT=Development
       - DOTNET_WATCH_RESTART_ON_RUDE_EDIT=true
+
+  grocery-pack:
+    build:
+      context: .
+      dockerfile: src/Hound.Grocery/Dockerfile
+      target: build
+    volumes:
+      - ./src/Hound.Core:/src/Hound.Core
+      - ./src/Hound.Grocery:/src/Hound.Grocery
+      - ./Directory.Build.props:/Directory.Build.props:ro
+      # Shadow build output with anonymous volumes so host-side `dotnet build/test`
+      # and the other dev container can't clobber this container's bin/obj artifacts.
+      - /src/Hound.Core/bin
+      - /src/Hound.Core/obj
+      - /src/Hound.Grocery/bin
+      - /src/Hound.Grocery/obj
+    working_dir: /src/Hound.Grocery
+    command: ["dotnet", "watch", "run", "--no-launch-profile", "--urls", "http://0.0.0.0:8080"]
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - DOTNET_WATCH_RESTART_ON_RUDE_EDIT=true
+
+  grocery-browser:
+    build:
+      context: .
+      dockerfile: infra/grocery-browser/Dockerfile
+    volumes:
+      - ./infra/grocery-browser/app:/srv/app
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8090", "--reload"]
+    environment:
+      - PYTHONUNBUFFERED=1
 
   hound-ui:
     build: !reset {}
@@ -48,7 +91,7 @@ services:
       - /app/node_modules
     working_dir: /app
     entrypoint: ["sh", "-c"]
-    command: ["npm install && npx ng serve --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.json"]
+    command: ["npm install && npx ng serve --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.json --poll 2000"]
     environment:
       - NODE_ENV=development
     depends_on:

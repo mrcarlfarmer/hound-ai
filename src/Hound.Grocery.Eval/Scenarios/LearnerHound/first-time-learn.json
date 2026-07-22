@@ -1,0 +1,26 @@
+{
+  "scenarioName": "First-time learn from repeated purchases",
+  "description": "Two consistent purchases of the same product for a new item create a mapping with an initial confidence and a learned usual quantity.",
+  "houndName": "LearnerHound",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Learn from two milk purchases of the same product.",
+    "context": {
+      "observations": [
+        { "item": "milk", "chosenProduct": "Semi Skimmed 2.27L", "quantity": 2, "date": "2026-06-01" },
+        { "item": "milk", "chosenProduct": "Semi Skimmed 2.27L", "quantity": 2, "date": "2026-06-08" }
+      ]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["learned milk", "Semi Skimmed 2.27L", "usual qty 2", "confidence 0.4"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with a Changes list and rendered preferences.md containing the new mapping.",
+    "decisionCriteria": "A brand-new item is learned with the chosen product, usual quantity and a starting confidence."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Preferences gain a milk mapping to Semi Skimmed 2.27L at usual qty 2, confidence 0.4."
+  }
+}

@@ -11,7 +11,7 @@ describe('TunerService', () => {
   let service: TunerService;
   let httpMock: HttpTestingController;
 
-  const BASE = 'http://localhost:5000/api/tuner/experiments';
+  const BASE = '/api/tuner/experiments';
 
   beforeEach(() => {
     TestBed.configureTestingModule({

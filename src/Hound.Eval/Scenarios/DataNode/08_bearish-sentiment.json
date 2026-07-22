@@ -1,0 +1,23 @@
+{
+  "scenarioName": "Bearish sentiment flagged in analysis",
+  "description": "When the stub sentiment service returns a bearish snapshot (symbol contains 'BEAR'), the synthesised MarketAnalysis must surface that sentiment rather than ignore it.",
+  "houndName": "DataNode",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Analyse BEAR ticker.",
+    "context": {
+      "symbol": "BEAR"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_sentiment"],
+    "outputMustContain": ["BEAR"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON MarketAnalysis whose sentimentReport reflects bearish bias.",
+    "decisionCriteria": "Output must reference the BEAR symbol; bearish sentiment should be acknowledged in the synthesised report."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'BEAR'."
+  }
+}

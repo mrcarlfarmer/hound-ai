@@ -13,8 +13,8 @@ applyTo: "ui/hound-dashboard/src/app/{services,models}/**"
 | `getPack(id)` | GET | `/api/packs/{id}` |
 | `getHounds(packId)` | GET | `/api/packs/{packId}/hounds` |
 | `getActivity(filters)` | GET | `/api/activity` — query: `pack`, `hound`, `from`, `to`, `page`, `pageSize` |
-| `getWatchtowerEvents(page, pageSize)` | GET | `/api/watchtower` |
 | `getHealth()` | GET | `/api/health` |
+| `getDebates(runId)` | GET | `/api/debates/{runId}` — persisted StrategyNode debate transcripts for a run |
 
 ### `TunerService`
 | Method | HTTP | Endpoint |
@@ -29,7 +29,6 @@ applyTo: "ui/hound-dashboard/src/app/{services,models}/**"
 | `subscribeToPack(packId)` | client → hub | `SubscribeToPack` |
 | `unsubscribeFromPack(packId)` | client → hub | `UnsubscribeFromPack` |
 | `onActivity$` | hub → client | `OnActivity` |
-| `onWatchtowerEvent$` | hub → client | `OnWatchtowerEvent` |
 
 Hub URL: `http://localhost:5000/hubs/activity`
 
@@ -43,8 +42,8 @@ TypeScript interfaces in `models/index.ts` must mirror the C# models in `Hound.C
 | `HoundInfo` | `HoundInfo` | — |
 | `ActivityLog` | `ActivityLog` | `metadata` is `Record<string, unknown>` |
 | `TunerExperiment` | `TunerExperiment` | `status` uses kebab-case values (`pending-review`) |
-| `WatchtowerEvent` | `WatchtowerEvent` | — |
 | `HealthReport` | `HealthReport` | nested `ServiceHealth[]` |
+| `DebateRecord` | `DebateRecord` | `turns` is `DebateTurnSnapshot[]`; served by `/api/debates/{runId}` |
 | `PagedResult<T>` | (server shape) | `items`, `totalCount`, `page`, `pageSize` |
 
 - All property names are **camelCase** (API serializes with camelCase)

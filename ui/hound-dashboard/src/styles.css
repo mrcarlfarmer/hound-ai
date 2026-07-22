@@ -96,3 +96,99 @@
     -moz-osx-font-smoothing: grayscale;
   }
 }
+
+/* Markdown prose styling for rendered LLM output */
+.prose {
+  color: var(--foreground);
+  line-height: 1.65;
+
+  h1, h2, h3, h4, h5, h6 {
+    color: var(--foreground);
+    font-weight: 600;
+    margin-top: 1em;
+    margin-bottom: 0.5em;
+    line-height: 1.3;
+  }
+  h1 { font-size: 1.25em; }
+  h2 { font-size: 1.15em; }
+  h3 { font-size: 1.05em; }
+  h4, h5, h6 { font-size: 1em; }
+
+  p {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+  }
+
+  strong { color: var(--foreground); font-weight: 600; }
+  em { font-style: italic; }
+
+  ul, ol {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    padding-left: 1.5em;
+  }
+  ul { list-style-type: disc; }
+  ol { list-style-type: decimal; }
+  li { margin-top: 0.25em; margin-bottom: 0.25em; }
+  li > ul, li > ol { margin-top: 0.125em; margin-bottom: 0.125em; }
+
+  hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1em 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 0.75em;
+    margin-bottom: 0.75em;
+    font-size: 0.85em;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: 0.4em 0.6em;
+    text-align: left;
+  }
+  th {
+    background: var(--muted);
+    font-weight: 600;
+  }
+  tr:nth-child(even) td {
+    background: oklch(20% 0.006 300 / 0.4);
+  }
+
+  code {
+    background: var(--muted);
+    padding: 0.15em 0.35em;
+    border-radius: 0.25em;
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+  }
+  pre {
+    background: var(--muted);
+    padding: 0.75em 1em;
+    border-radius: 0.375em;
+    overflow-x: auto;
+    margin: 0.5em 0;
+  }
+  pre code {
+    background: none;
+    padding: 0;
+  }
+
+  blockquote {
+    border-left: 3px solid var(--border);
+    padding-left: 1em;
+    color: var(--muted-foreground);
+    margin: 0.75em 0;
+  }
+
+  a {
+    color: var(--primary);
+    text-decoration: underline;
+  }
+
+  & > *:first-child { margin-top: 0; }
+  & > *:last-child { margin-bottom: 0; }
+}

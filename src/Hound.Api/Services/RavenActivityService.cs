@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Hound.Core.Logging;
 using Hound.Core.Models;
 using Raven.Client.Documents;
@@ -48,10 +49,49 @@ public class RavenActivityService : IActivityLogger
         if (to.HasValue)
             query = query.Where(a => a.Timestamp <= to.Value);
 
-        return await query
+        var results = await query
             .OrderByDescending(a => a.Timestamp)
             .Skip((page - 1) * pageSize)
             .Take(pageSize)
             .ToListAsync(cancellationToken);
+
+        foreach (var activity in results)
+        {
+            SanitizeMetadata(activity);
+        }
+        return results;
+    }
+
+    /// <summary>
+    /// Drops or unwraps metadata values that came from older records where
+    /// <see cref="JsonElement"/> instances were serialised to disk by Newtonsoft
+    /// (yielding stale, unusable JsonElements on the way back). Safe-by-default:
+    /// any value that can't be safely re-serialised is removed.
+    /// </summary>
+    private static void SanitizeMetadata(ActivityLog activity)
+    {
+        if (activity.Metadata is null || activity.Metadata.Count == 0) return;
+        var sanitised = new Dictionary<string, object>(activity.Metadata.Count);
+        foreach (var (key, value) in activity.Metadata)
+        {
+            if (value is null) continue;
+            if (value is JsonElement element)
+            {
+                try
+                {
+                    var cloned = element.Clone();
+                    sanitised[key] = cloned;
+                }
+                catch (InvalidOperationException)
+                {
+                    // Legacy record with a broken JsonElement — skip it.
+                }
+            }
+            else
+            {
+                sanitised[key] = value;
+            }
+        }
+        activity.Metadata = sanitised;
     }
 }

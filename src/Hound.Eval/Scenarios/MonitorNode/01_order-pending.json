@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Order Pending Awaiting Fill",
+  "houndName": "MonitorNode",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Check the status of order abc-001 for AAPL and the current position.",
+    "context": {
+      "success": true,
+      "symbol": "AAPL",
+      "action": "Buy",
+      "quantity": 10,
+      "filledPrice": null,
+      "orderId": "abc-001",
+      "message": "Order placed",
+      "tradeDocumentId": "TradeDocuments/1"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["get_order_status"],
+    "outputMustContain": ["tradeOpen", "true"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with tradeOpen, currentStatus, currentPrice, unrealizedPnL, summary",
+    "decisionCriteria": "Order is pending fill; trade should remain open."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'tradeOpen' and 'true'."
+  }
+}

@@ -32,4 +32,44 @@ public class RavenPackRepository : IPackRepository
             .Where(h => h.PackId == packId)
             .ToListAsync(cancellationToken);
     }
+
+    public async Task RegisterPackAsync(PackRegistration registration, CancellationToken cancellationToken = default)
+    {
+        using var session = _store.OpenAsyncSession();
+
+        var pack = await session.LoadAsync<Pack>(registration.Id, cancellationToken)
+            ?? new Pack { Id = registration.Id };
+
+        pack.Name = registration.Name;
+        pack.HoundCount = registration.Hounds.Count;
+        pack.HoundIds = registration.Hounds.Select(h => h.Id).ToList();
+        pack.Status = PackStatus.Running;
+
+        await session.StoreAsync(pack, cancellationToken);
+
+        // Remove stale hound records no longer in this registration
+        var registeredIds = registration.Hounds.Select(h => h.Id).ToHashSet();
+        var existing = await session.Query<HoundInfo>()
+            .Where(h => h.PackId == registration.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var stale in existing.Where(h => !registeredIds.Contains(h.Id)))
+        {
+            session.Delete(stale);
+        }
+
+        foreach (var hound in registration.Hounds)
+        {
+            var houndInfo = await session.LoadAsync<HoundInfo>(hound.Id, cancellationToken)
+                ?? new HoundInfo { Id = hound.Id };
+
+            houndInfo.Name = hound.Name;
+            houndInfo.PackId = registration.Id;
+            houndInfo.Status = HoundStatus.Idle;
+
+            await session.StoreAsync(houndInfo, cancellationToken);
+        }
+
+        await session.SaveChangesAsync(cancellationToken);
+    }
 }

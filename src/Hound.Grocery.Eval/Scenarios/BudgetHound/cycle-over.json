@@ -1,0 +1,29 @@
+{
+  "scenarioName": "Cycle overage flags the monthly cap",
+  "description": "A weekly-OK basket that tips the pay cycle over the monthly cap flags CycleOver.",
+  "houndName": "BudgetHound",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Reconcile a 140.00 basket when 500 has already been spent this pay cycle (cap 600).",
+    "context": {
+      "basketSubtotal": 140.00,
+      "priorWeekSpend": 0,
+      "priorCycleSpend": 500,
+      "weeklyTarget": 140,
+      "weeklyFlexPercent": 10,
+      "monthlyCap": 600,
+      "cycleStartDay": 25
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["\"Outcome\":\"CycleOver\"", "monthly cap", "Approve or trim"],
+    "outputMustNotContain": ["\"Outcome\":\"WeeklyOver\"", "\"Outcome\":\"Both\"", "All good"],
+    "outputFormat": "JSON BudgetVerdict with outcome CycleOver and RequiresApproval true.",
+    "decisionCriteria": "Weekly within flex but projected cycle over the cap must produce CycleOver."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Verdict is CycleOver referencing the monthly cap and asks to approve or trim."
+  }
+}

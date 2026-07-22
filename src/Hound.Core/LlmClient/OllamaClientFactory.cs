@@ -25,7 +25,8 @@ public class OllamaClientFactory : IOllamaClientFactory
 
     /// <summary>
     /// Creates an <see cref="IChatClient"/> configured for the Ollama OpenAI-compatible endpoint
-    /// for the specified model.
+    /// for the specified model. The returned client is wrapped with <see cref="StreamingChatClient"/>
+    /// middleware so that node executions can stream reasoning to the dashboard.
     /// </summary>
     public IChatClient CreateChatClient(string modelName)
     {
@@ -35,6 +36,24 @@ public class OllamaClientFactory : IOllamaClientFactory
         };
         var credential = new ApiKeyCredential("ollama");
         var chatClient = new OpenAI.Chat.ChatClient(modelName, credential, options);
-        return chatClient.AsIChatClient();
+
+        var defaultChatOptions = new ChatOptions
+        {
+            Temperature = 0.0f,
+            TopP = 0.1f,
+            // Greedy sampling (temp=0 + low top_p) is prone to repetition loops
+            // where the model finds a plausible closing sentence and emits it
+            // ad infinitum. A modest frequency penalty breaks the loop without
+            // meaningfully impacting structured-JSON outputs (which never repeat
+            // long phrases by design).
+            FrequencyPenalty = 0.4f,
+            // Hard ceiling so a runaway analyst can't blow past the context
+            // window. ~2048 tokens ≈ 8-10 KB of text — generous for an analyst
+            // report, but caps the worst-case at ≈3x normal length instead of
+            // the 48 KB tails we've observed during repetition loops.
+            MaxOutputTokens = 2048,
+        };
+
+        return new StreamingChatClient(chatClient.AsIChatClient(), defaultChatOptions);
     }
 }

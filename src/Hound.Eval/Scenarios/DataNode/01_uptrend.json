@@ -1,0 +1,23 @@
+{
+  "scenarioName": "Clear Uptrend High Confidence Buy Recommendation",
+  "description": "AnalysisHound should identify a Bullish trend and output a high confidence score (>= 0.6) when given an AAPL symbol backed by rising bar data from the stub service.",
+  "houndName": "DataNode",
+  "category": "happy-path",
+  "input": {
+    "userMessage": "Analyse AAPL and provide your market assessment.",
+    "context": {
+      "symbol": "AAPL"
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": ["fetch_market_data"],
+    "outputMustContain": ["AAPL", "Bullish"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with symbol, lastPrice, volumeChange, trend, confidenceScore, summary",
+    "decisionCriteria": "Stub returns 3 days of rising prices (148→154→158). AnalysisHound should detect uptrend and output Bullish with confidenceScore >= 0.6."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output contains 'AAPL' and 'Bullish'."
+  }
+}

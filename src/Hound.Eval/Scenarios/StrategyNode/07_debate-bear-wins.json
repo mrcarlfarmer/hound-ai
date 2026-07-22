@@ -1,0 +1,28 @@
+{
+  "scenarioName": "Debate Bear Wins on Deteriorating Fundamentals",
+  "description": "With strongly bearish signals (weak trend, low volume, negative news), the debate should produce a transcript that the coordinator weighs in favour of a Sell (or, if no position is held, Hold).",
+  "houndName": "StrategyNode",
+  "category": "debate",
+  "input": {
+    "userMessage": "Market analysis for NFLX shows deteriorating fundamentals and broken trend.",
+    "context": {
+      "symbol": "NFLX",
+      "lastPrice": 420.00,
+      "volumeChange": -0.45,
+      "trend": "Bearish",
+      "confidenceScore": 0.82,
+      "summary": "Downtrend confirmed below 50-day MA, declining volume on rallies, negative subscriber-growth headlines."
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": [],
+    "outputMustNotContain": ["Buy"],
+    "outputFormat": "JSON with symbol, action, quantity, reasoning, confidence",
+    "decisionCriteria": "After the bull-vs-bear debate, the coordinator must emit Sell or Hold — never Buy on a bearish setup with confidence >= 0.7."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Output does NOT contain the action 'Buy'."
+  }
+}

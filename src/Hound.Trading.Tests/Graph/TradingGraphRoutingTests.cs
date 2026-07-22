@@ -1,0 +1,248 @@
+using Hound.Core.LlmClient;
+using Hound.Core.Logging;
+using Hound.Core.Models;
+using Hound.Trading.Graph;
+using Hound.Trading.Nodes;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Moq;
+
+namespace Hound.Trading.Tests.Graph;
+
+[TestClass]
+public sealed class TradingGraphRoutingTests
+{
+    private TradingGraph CreateGraph(int maxRefinements = 2)
+    {
+        var nodes = new Dictionary<string, INode>();
+        var stateStore = new Mock<IStateStore>();
+        var resetter = new Mock<IResettableExecutor>();
+        var publisher = new Mock<GraphRunPublisher>(MockBehavior.Loose, new Mock<Raven.Client.Documents.IDocumentStore>().Object, new Mock<System.Net.Http.IHttpClientFactory>().Object, "http://localhost", null!);
+        var settings = Options.Create(new TradingGraphSettings { MaxRefinements = maxRefinements });
+        var activityLogger = new Mock<IActivityLogger>();
+        var streamPublisher = new Mock<INodeStreamPublisher>();
+        var logger = new Mock<ILogger<TradingGraph>>();
+
+        return new TradingGraph(nodes, stateStore.Object, resetter.Object, publisher.Object, settings,
+            activityLogger.Object, streamPublisher.Object, logger.Object);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_NullNode_ReturnsAnalystsTeamNode()
+    {
+        var graph = CreateGraph();
+        var state = TradingGraphState.Initial("AAPL");
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("analysts-team-node", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_AnalystsTeamNode_ReturnsStrategyNode()
+    {
+        var graph = CreateGraph();
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "analysts-team-node",
+            DataOutput = new MarketAnalysis("AAPL", 150, 0.05m, "Bullish", 0.8, "Strong uptrend"),
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("strategy-node", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_AnalystsTeamNode_LowConfidence_ReturnsEnd()
+    {
+        var graph = CreateGraph();
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "analysts-team-node",
+            DataOutput = new MarketAnalysis("AAPL", 150, 0.01m, "Neutral", 0.3, "Weak signal"),
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("__end__", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_StrategyNode_ReturnsRiskNode()
+    {
+        var graph = CreateGraph();
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "strategy-node",
+            StrategyOutput = new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.8),
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("risk-node", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_StrategyNode_Hold_ReturnsEnd()
+    {
+        var graph = CreateGraph();
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "strategy-node",
+            StrategyOutput = new TradingDecision("AAPL", TradeAction.Hold, 0, "Neutral", 0.5),
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("__end__", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_RiskNode_Approved_ReturnsApprovalNode()
+    {
+        var graph = CreateGraph();
+        var decision = new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.8);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "risk-node",
+            RiskOutput = new RiskAssessment(RiskVerdict.Approved, decision, "Within limits"),
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("approval-node", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_ApprovalNode_Approved_ReturnsExecutionNode()
+    {
+        var graph = CreateGraph();
+        var decision = new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.8);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "approval-node",
+            RiskOutput = new RiskAssessment(RiskVerdict.Approved, decision, "Within limits"),
+            ApprovalStatus = ApprovalStatus.Approved,
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("execution-node", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_ApprovalNode_Rejected_ReturnsEnd()
+    {
+        var graph = CreateGraph();
+        var decision = new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.8);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "approval-node",
+            RiskOutput = new RiskAssessment(RiskVerdict.Approved, decision, "Within limits"),
+            ApprovalStatus = ApprovalStatus.Rejected,
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("__end__", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_ApprovalNode_Pending_StaysOnApprovalNode()
+    {
+        var graph = CreateGraph();
+        var decision = new TradingDecision("AAPL", TradeAction.Buy, 10, "Bullish", 0.8);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "approval-node",
+            RiskOutput = new RiskAssessment(RiskVerdict.Approved, decision, "Within limits"),
+            ApprovalStatus = ApprovalStatus.Pending,
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("approval-node", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_RiskNode_Rejected_ReturnsEnd()
+    {
+        // The only rejection rule is the 80% total-exposure hard cap, which
+        // can't be resolved by refining the order — so any Rejected verdict
+        // terminates the run regardless of refinement count.
+        var graph = CreateGraph(maxRefinements: 2);
+        var decision = new TradingDecision("AAPL", TradeAction.Buy, 100, "Bullish", 0.8);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "risk-node",
+            RefinementCount = 0,
+            RiskOutput = new RiskAssessment(RiskVerdict.Rejected, decision, "Exceeds 80% exposure"),
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("__end__", next);
+    }
+
+    [TestMethod]
+    public void Route_EntryPhase_ExecutionNode_ReturnsMonitorNode()
+    {
+        var graph = CreateGraph();
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            CurrentNode = "execution-node",
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("monitor-node", next);
+    }
+
+    [TestMethod]
+    public void Route_MonitorPhase_MonitorNode_TradeOpen_ReturnsAnalystsTeamNode()
+    {
+        var graph = CreateGraph();
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            Phase = GraphPhase.Monitor,
+            CurrentNode = "monitor-node",
+            MonitorOutput = new MonitorResult(true, Hound.Core.Models.FillStatus.Filled, 150m, 2.5m, "Position held"),
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("analysts-team-node", next);
+    }
+
+    [TestMethod]
+    public void Route_MonitorPhase_MonitorNode_TradeClosed_ReturnsEnd()
+    {
+        var graph = CreateGraph();
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            Phase = GraphPhase.Monitor,
+            CurrentNode = "monitor-node",
+            MonitorOutput = new MonitorResult(false, Hound.Core.Models.FillStatus.Filled, null, null, "Position closed"),
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("__end__", next);
+    }
+
+    [TestMethod]
+    public void Route_MonitorPhase_AnalystsTeamNode_ReturnsMonitorNode()
+    {
+        var graph = CreateGraph();
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            Phase = GraphPhase.Monitor,
+            CurrentNode = "analysts-team-node",
+        };
+
+        var next = graph.Route(state);
+
+        Assert.AreEqual("monitor-node", next);
+    }
+}

@@ -1,5 +1,6 @@
 using Hound.Api.Hubs;
 using Hound.Api.Repositories;
+using Hound.Api.Services;
 using Hound.Core.Models;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.SignalR;
@@ -12,11 +13,16 @@ public class TradesController : ControllerBase
 {
     private readonly ITradeRepository _repository;
     private readonly IHubContext<ActivityHub> _hubContext;
+    private readonly IAlpacaSyncService _syncService;
 
-    public TradesController(ITradeRepository repository, IHubContext<ActivityHub> hubContext)
+    public TradesController(
+        ITradeRepository repository,
+        IHubContext<ActivityHub> hubContext,
+        IAlpacaSyncService syncService)
     {
         _repository = repository;
         _hubContext = hubContext;
+        _syncService = syncService;
     }
 
     /// <summary>
@@ -72,5 +78,18 @@ public class TradesController : ControllerBase
             }, cancellationToken);
 
         return Ok();
+    }
+
+    /// <summary>
+    /// POST /api/trades/sync — On-demand reconciliation against Alpaca's authoritative
+    /// order state. Updates local <see cref="TradeDocument"/>s and broadcasts
+    /// <c>OnOrderUpdate</c> for any changes. Returns a summary.
+    /// </summary>
+    [HttpPost("sync")]
+    public async Task<ActionResult<AlpacaSyncResult>> SyncFromAlpaca(
+        CancellationToken cancellationToken = default)
+    {
+        var result = await _syncService.SyncAsync(cancellationToken);
+        return Ok(result);
     }
 }

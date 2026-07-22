@@ -15,15 +15,23 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
-        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        options.JsonSerializerOptions.Converters.Add(new StringObjectDictionaryConverter());
+    });
 builder.Services.AddSignalR()
     .AddJsonProtocol(options =>
-        options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase);
+    {
+        options.PayloadSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.PayloadSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        options.PayloadSerializerOptions.Converters.Add(new StringObjectDictionaryConverter());
+    });
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:4200")
+        policy.WithOrigins("http://localhost:4200", "http://localhost:4201")
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -57,10 +65,17 @@ builder.Services.AddSingleton<IDocumentStore>(store);
 builder.Services.AddScoped<IPackRepository, RavenPackRepository>();
 builder.Services.AddScoped<IActivityLogger, RavenActivityService>();
 builder.Services.AddScoped<ITunerExperimentRepository, RavenTunerExperimentRepository>();
-builder.Services.AddScoped<IWatchtowerRepository, RavenWatchtowerRepository>();
 builder.Services.AddScoped<ITradeRepository, RavenTradeRepository>();
+builder.Services.AddScoped<IGraphRunRepository, RavenGraphRunRepository>();
+builder.Services.AddScoped<IDebateRepository, RavenDebateRepository>();
+builder.Services.AddScoped<DebateBackfillService>();
 builder.Services.AddSingleton<TunerStateService>();
+builder.Services.AddSingleton<IAlpacaPortfolioService, AlpacaPortfolioService>();
+builder.Services.AddScoped<IAlpacaSyncService, AlpacaSyncService>();
+builder.Services.AddHostedService<AlpacaSyncBackgroundService>();
 builder.Services.AddHttpClient("health");
+builder.Services.AddHttpClient("trading-pack");
+builder.Services.AddScoped<IMarketDataClient, HttpMarketDataClient>();
 builder.Services.AddScoped<IHealthCheckService, HealthCheckService>();
 
 var app = builder.Build();

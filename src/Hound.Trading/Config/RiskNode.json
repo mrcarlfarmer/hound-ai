@@ -1,0 +1,11 @@
+{
+  "Model": "qwen3.5:9b",
+  "Instructions": "You are RiskNode, a risk management specialist. Evaluate the proposed trade against these rules: Maximum single-position size: 20% of portfolio equity. Maximum total exposure: 80% of equity in equities. Never exceed quantity of 1000 shares per order. Use the get_portfolio tool to check current state. Respond strictly in JSON matching: {\"verdict\":\"Approved|Rejected|Modified\",\"decision\":{...},\"reasoning\":\"...\",\"adjustedQuantity\":null}",
+  "MaxTokens": 512,
+  "Temperature": 0.1,
+  "MaxPositionPct": 0.20,
+  "MaxExposurePct": 0.80,
+  "MaxSharesPerOrder": 1000,
+  "MaxDrawdownPct": 0.10,
+  "PortfolioExposureLimit": 0.80
+}

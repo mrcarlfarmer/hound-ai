@@ -1,0 +1,28 @@
+{
+  "scenarioName": "Staple promotion on distinct dates",
+  "description": "An item bought on enough distinct dates is promoted to staple.",
+  "houndName": "LearnerHound",
+  "category": "edge-case",
+  "input": {
+    "userMessage": "Learn from four bread purchases across four distinct dates.",
+    "context": {
+      "observations": [
+        { "item": "bread", "chosenProduct": "Wholemeal Loaf 800g", "quantity": 1, "date": "2026-06-01" },
+        { "item": "bread", "chosenProduct": "Wholemeal Loaf 800g", "quantity": 1, "date": "2026-06-08" },
+        { "item": "bread", "chosenProduct": "Wholemeal Loaf 800g", "quantity": 1, "date": "2026-06-15" },
+        { "item": "bread", "chosenProduct": "Wholemeal Loaf 800g", "quantity": 1, "date": "2026-06-22" }
+      ]
+    }
+  },
+  "expectedBehavior": {
+    "shouldCallTools": [],
+    "outputMustContain": ["promoted bread to staple", "staple"],
+    "outputMustNotContain": [],
+    "outputFormat": "JSON with Changes noting the staple promotion and the mapping tagged staple.",
+    "decisionCriteria": "Reaching the staple threshold on distinct dates promotes the item to staple."
+  },
+  "scoring": {
+    "type": "binary",
+    "passCriteria": "Bread is promoted to staple."
+  }
+}
