@@ -104,9 +104,12 @@ builder.Services.AddSingleton<INewsService>(sp =>
 });
 builder.Services.AddSingleton<ISentimentService, StockTwitsSentimentService>();
 // ── Keyed IChatClient instances ──────────────────────────────────────────────
-// StrategyNode uses qwen3:14b; all other nodes use qwen3.5:9b.
+// StrategyNode's coordinator uses qwen3:14b; the bull/bear debaters use the
+// smaller DebateModel (default qwen3.5:9b) to bound debate latency/GPU; all
+// other nodes use qwen3.5:9b.
 var strategyModel = builder.Configuration["Ollama:StrategyModel"] ?? "qwen3:14b";
 var defaultModel = builder.Configuration["Ollama:DefaultModel"] ?? "qwen3.5:9b";
+var debateModel = builder.Configuration["Ollama:DebateModel"] ?? "qwen3.5:9b";
 
 builder.Services.AddKeyedSingleton<IChatClient>("strategy", (sp, _) =>
 {
@@ -118,6 +121,12 @@ builder.Services.AddKeyedSingleton<IChatClient>("default", (sp, _) =>
 {
     var factory = sp.GetRequiredService<IOllamaClientFactory>();
     return ((OllamaClientFactory)factory).CreateChatClient(defaultModel);
+});
+
+builder.Services.AddKeyedSingleton<IChatClient>("debate", (sp, _) =>
+{
+    var factory = sp.GetRequiredService<IOllamaClientFactory>();
+    return ((OllamaClientFactory)factory).CreateChatClient(debateModel);
 });
 
 // ── Graph Infrastructure ─────────────────────────────────────────────────────
@@ -184,7 +193,8 @@ builder.Services.AddSingleton<StrategyNode>(sp => new StrategyNode(
     sp.GetRequiredService<IActivityLogger>(),
     sp.GetService<Microsoft.Extensions.Options.IOptions<StrategyHoundConfig>>(),
     sp.GetRequiredService<IDocumentStore>(),
-    sp.GetService<ILoggerFactory>()));
+    sp.GetService<ILoggerFactory>(),
+    sp.GetRequiredKeyedService<IChatClient>("debate")));
 
 builder.Services.AddSingleton<RiskNode>(sp => new RiskNode(
     sp.GetRequiredKeyedService<IChatClient>("default"),

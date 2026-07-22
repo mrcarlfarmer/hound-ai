@@ -43,3 +43,20 @@ Sequential workflow: `AnalysisHound` → `StrategyHound` → `RiskHound` → `Ex
 - Each hound: `AddSingleton<THound>(sp => { ... })` with factory lambda
 - Factory resolves `IOllamaClientFactory`, casts to `OllamaClientFactory`, calls `CreateChatClient(model)`
 - Model name from `builder.Configuration["Hounds:{HoundName}:Model"]`
+
+## Keyed IChatClient Models
+Three keyed `IChatClient` instances are registered in `Program.cs`, each backed by a
+model name from the `Ollama` config section (overridable via `Ollama__*` env vars):
+- `"strategy"` — `Ollama:StrategyModel` (default `qwen3:14b`). Used by the StrategyNode
+  **coordinator** that emits the final `TradingDecision` JSON.
+- `"debate"` — `Ollama:DebateModel` (default `qwen3.5:9b`). Used by the StrategyNode
+  **bull/bear debaters** so the multi-turn debate runs on a smaller, faster model than
+  the coordinator, bounding debate wall-clock and GPU time. `StrategyNode` falls back to
+  its coordinator client when no debate client is supplied (e.g. the eval harness).
+- `"default"` — `Ollama:DefaultModel` (default `qwen3.5:9b`). Used by the analyst team,
+  RiskNode, and other nodes.
+
+Chosen configuration (issue #40): debaters run on `qwen3.5:9b` while the coordinator stays
+on `qwen3:14b`. `qwen3.5:9b` is already pulled by `infra/ollama/pull-models.sh`; point
+`Ollama:DebateModel` at a different local model (e.g. `qwen3:4b`) to trial a smaller
+debate model, adding it to `pull-models.sh` first.

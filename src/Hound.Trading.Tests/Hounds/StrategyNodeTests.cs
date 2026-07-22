@@ -343,6 +343,86 @@ public sealed class StrategyNodeTests
             () => node.ExecuteAsync(state, cts.Token));
     }
 
+    [TestMethod]
+    public async Task Debate_UsesDebateClientForDebaters_AndCoordinatorClientForDecision()
+    {
+        var debateResponses = new Queue<string>(
+        [
+            "BULL: momentum is strong, RSI 65, volume 2x average.",
+            "BEAR: resistance overhead; wait for a confirmed breakout.",
+        ]);
+        var debateMock = new Mock<IChatClient>();
+        debateMock
+            .Setup(c => c.GetResponseAsync(
+                It.IsAny<IEnumerable<ChatMessage>>(),
+                It.IsAny<ChatOptions?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<IEnumerable<ChatMessage>, ChatOptions?, CancellationToken>((_, _, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                return Task.FromResult(new ChatResponse([new ChatMessage(ChatRole.Assistant, debateResponses.Dequeue())]));
+            });
+
+        var coordinatorMock = new Mock<IChatClient>();
+        coordinatorMock
+            .Setup(c => c.GetResponseAsync(
+                It.IsAny<IEnumerable<ChatMessage>>(),
+                It.IsAny<ChatOptions?>(),
+                It.IsAny<CancellationToken>()))
+            .Returns<IEnumerable<ChatMessage>, ChatOptions?, CancellationToken>((_, _, ct) =>
+            {
+                ct.ThrowIfCancellationRequested();
+                return Task.FromResult(new ChatResponse([new ChatMessage(ChatRole.Assistant,
+                    "{\"symbol\":\"AAPL\",\"action\":\"Buy\",\"quantity\":1,\"reasoning\":\"Bull case prevails on momentum and volume.\",\"confidence\":0.8,\"trailPercent\":5}")]));
+            });
+
+        var alpacaMock = new Mock<IAlpacaService>();
+        alpacaMock
+            .Setup(a => a.GetAccountAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("test: no account context"));
+
+        var config = Options.Create(new StrategyHoundConfig
+        {
+            DebateEnabled = true,
+            DebateTurnsPerSide = 1,
+        });
+
+        var node = new StrategyNode(
+            coordinatorMock.Object,
+            alpacaMock.Object,
+            Mock.Of<IActivityLogger>(),
+            config,
+            documentStore: null,
+            loggerFactory: null,
+            debateChatClient: debateMock.Object);
+
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            DataOutput = new MarketAnalysis(
+                Symbol: "AAPL",
+                LastPrice: 175m,
+                VolumeChange: 2.0m,
+                Trend: "Bullish",
+                ConfidenceScore: 0.85,
+                Summary: "Strong upward momentum with above-average volume."),
+        };
+
+        var result = await node.ExecuteAsync(state, CancellationToken.None);
+
+        Assert.IsNotNull(result.StrategyOutput);
+        Assert.AreEqual(TradeAction.Buy, result.StrategyOutput!.Action);
+        debateMock.Verify(c => c.GetResponseAsync(
+            It.IsAny<IEnumerable<ChatMessage>>(),
+            It.IsAny<ChatOptions?>(),
+            It.IsAny<CancellationToken>()), Times.Exactly(2),
+            "Both debater turns must run on the dedicated debate client.");
+        coordinatorMock.Verify(c => c.GetResponseAsync(
+            It.IsAny<IEnumerable<ChatMessage>>(),
+            It.IsAny<ChatOptions?>(),
+            It.IsAny<CancellationToken>()), Times.Once,
+            "The coordinator client must be used exactly once for the final decision.");
+    }
+
     // ── Test helpers ──────────────────────────────────────────────────────────
 
     /// <summary>
