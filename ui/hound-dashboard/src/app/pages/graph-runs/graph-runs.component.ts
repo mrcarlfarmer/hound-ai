@@ -7,7 +7,7 @@ import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { ApiService } from '../../services/api.service';
 import { SignalrService } from '../../services/signalr.service';
-import { GraphRun, NodeSnapshot, NodeStatus, NodeStreamChunk, RunRequest, DebateRecord, DebateTurnSnapshot } from '../../models';
+import { GraphRun, NodeSnapshot, NodeStatus, NodeStreamChunk, RunRequest, DebateRecord } from '../../models';
 import { HlmTabsImports } from '@spartan-ng/helm/tabs';
 import { ChartPanelComponent } from '../../components/chart-panel/chart-panel.component';
 
@@ -104,6 +104,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   private sub?: Subscription;
   private streamSub?: Subscription;
   private pollTimer?: ReturnType<typeof setInterval>;
+  private debateRequestVersion = 0;
   private marked = new Marked({ gfm: true, async: false });
   /** Reasoning <pre> elements, used to auto-scroll as chunks arrive. */
   @ViewChildren('reasoningBox') private reasoningBoxes?: QueryList<ElementRef<HTMLElement>>;
@@ -148,11 +149,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       } else if (this.selectedRun?.runId === run.runId) {
         this.selectedRun = run;
         this.autoExpandActive(run);
-        // The debate is persisted while StrategyNode runs; if we selected the
-        // run before that completed, pick it up on the next update.
-        if (this.debateRecords.length === 0) {
-          this.loadDebates(run.runId);
-        }
+        this.loadDebates(run.runId);
       }
       this.maybeClearApprovalSubmitting(run);
       this.cdr.detectChanges();
@@ -211,6 +208,9 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
           if (fresh) {
             this.selectedRun = fresh;
             this.maybeClearApprovalSubmitting(fresh);
+            if (!fresh.isComplete) {
+              this.loadDebates(fresh.runId);
+            }
           }
         }
         this.loading = false;
@@ -235,6 +235,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
   selectRun(run: GraphRun): void {
     this.selectedRun = run;
+    this.debateRecords = [];
     this.expandedNodes.clear();
     // Auto-expand completed nodes
     run.nodes?.forEach(n => {
@@ -248,20 +249,39 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   /**
-   * Debate turns to render in the Strategy panel for the selected run. Prefers
-   * the dedicated DebateRecord documents fetched from `/api/debates/{runId}`
-   * (using the most recent refinement iteration); falls back to the transcript
-   * persisted on the GraphRun for older runs that predate the DebateRecord
-   * feature.
+   * Debate invocations to render in the Strategy panel. Dedicated records
+   * preserve the initial debate plus every refinement; older runs fall back to
+   * their latest transcript embedded on the GraphRun.
    */
-  get debateTurns(): DebateTurnSnapshot[] {
+  get debateGroups(): DebateRecord[] {
     if (this.debateRecords.length > 0) {
-      // Records arrive ordered by refinementCount ascending (see
-      // RavenDebateRepository), so the last element is the most recent
-      // refinement iteration's debate.
-      return this.debateRecords[this.debateRecords.length - 1].turns;
+      return this.debateRecords;
     }
-    return this.selectedRun?.strategyDebate ?? [];
+
+    const run = this.selectedRun;
+    if (!run?.strategyDebate?.length) {
+      return [];
+    }
+
+    return [{
+      id: `legacy/${run.runId}`,
+      runId: run.runId,
+      symbol: run.symbol,
+      refinementCount: run.refinementCount,
+      turnsPerSide: Math.ceil(run.strategyDebate.length / 2),
+      createdAt: run.startedAt,
+      turns: run.strategyDebate,
+    }];
+  }
+
+  get debateTurnCount(): number {
+    return this.debateGroups.reduce((total, debate) => total + debate.turns.length, 0);
+  }
+
+  debateLabel(debate: DebateRecord): string {
+    return debate.refinementCount === 0
+      ? 'Initial debate'
+      : `Refinement #${debate.refinementCount}`;
   }
 
   /**
@@ -269,13 +289,11 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
    * panel simply falls back to the transcript on the GraphRun snapshot.
    */
   private loadDebates(runId: string): void {
-    this.debateRecords = [];
+    const requestVersion = ++this.debateRequestVersion;
     this.api.getDebates(runId).subscribe({
       next: records => {
-        // Guard against a stale response arriving after the user selected a
-        // different run.
-        if (this.selectedRun?.runId === runId) {
-          this.debateRecords = records;
+        if (this.selectedRun?.runId === runId && requestVersion === this.debateRequestVersion) {
+          this.debateRecords = [...records].sort((a, b) => a.refinementCount - b.refinementCount);
           this.cdr.detectChanges();
         }
       },

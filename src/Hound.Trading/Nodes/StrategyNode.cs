@@ -465,6 +465,10 @@ public class StrategyNode : INode
             await session.StoreAsync(record, record.Id, cancellationToken);
             await session.SaveChangesAsync(cancellationToken);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger?.LogWarning(ex,

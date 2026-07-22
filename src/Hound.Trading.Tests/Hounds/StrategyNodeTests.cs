@@ -6,6 +6,8 @@ using Hound.Trading.Graph;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
 using Moq;
+using Raven.Client.Documents;
+using Raven.Client.Documents.Session;
 
 namespace Hound.Trading.Tests.Nodes;
 
@@ -260,6 +262,59 @@ public sealed class StrategyNodeTests
     }
 
     [TestMethod]
+    public async Task Debate_WithDocumentStore_PersistsRefinementRecord()
+    {
+        var responses = new Queue<string>(
+        [
+            "BULL: reduced sizing preserves upside.",
+            "BEAR: the remaining risk is acceptable at the lower size.",
+            "{\"symbol\":\"AAPL\",\"action\":\"Buy\",\"quantity\":0.5,\"reasoning\":\"Reduced sizing addresses risk.\",\"confidence\":0.75,\"trailPercent\":5}",
+        ]);
+        DebateRecord? persisted = null;
+        var sessionMock = new Mock<IAsyncDocumentSession>();
+        sessionMock
+            .Setup(s => s.StoreAsync(
+                It.IsAny<DebateRecord>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<object, string, CancellationToken>((record, _, _) => persisted = (DebateRecord)record)
+            .Returns(Task.CompletedTask);
+        sessionMock
+            .Setup(s => s.SaveChangesAsync(It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var storeMock = new Mock<IDocumentStore>();
+        storeMock
+            .Setup(s => s.OpenAsyncSession("hound-trading-pack"))
+            .Returns(sessionMock.Object);
+        var node = BuildNodeWithChatResponses(
+            responses,
+            debateEnabled: true,
+            turnsPerSide: 1,
+            documentStoreOverride: storeMock.Object);
+        var state = TradingGraphState.Initial("AAPL") with
+        {
+            RefinementCount = 2,
+            DataOutput = new MarketAnalysis(
+                Symbol: "AAPL",
+                LastPrice: 175m,
+                VolumeChange: 1.2m,
+                Trend: "Bullish",
+                ConfidenceScore: 0.75,
+                Summary: "Refined setup."),
+        };
+
+        var result = await node.ExecuteAsync(state, CancellationToken.None);
+
+        Assert.IsNotNull(result.StrategyOutput);
+        Assert.IsNotNull(persisted);
+        Assert.AreEqual($"DebateRecords/{state.RunId}/2", persisted.Id);
+        Assert.AreEqual(state.RunId, persisted.RunId);
+        Assert.AreEqual(2, persisted.RefinementCount);
+        Assert.AreEqual(2, persisted.Turns.Count);
+        sessionMock.Verify(s => s.SaveChangesAsync(It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [TestMethod]
     public async Task Debate_CancellationTokenCancelsBeforeCoordinator()
     {
         var responses = new Queue<string>(
@@ -302,7 +357,8 @@ public sealed class StrategyNodeTests
         bool debateEnabled,
         int turnsPerSide,
         IActivityLogger? activityLoggerOverride = null,
-        List<string>? capturedPrompts = null)
+        List<string>? capturedPrompts = null,
+        IDocumentStore? documentStoreOverride = null)
     {
         var chatMock = new Mock<IChatClient>();
         chatMock
@@ -333,6 +389,12 @@ public sealed class StrategyNodeTests
             DebateTurnsPerSide = turnsPerSide,
         });
 
-        return new StrategyNode(chatMock.Object, alpacaMock.Object, activity, config, loggerFactory: null);
+        return new StrategyNode(
+            chatMock.Object,
+            alpacaMock.Object,
+            activity,
+            config,
+            documentStoreOverride,
+            loggerFactory: null);
     }
 }

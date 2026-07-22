@@ -224,11 +224,12 @@ reconstructing it from per-turn `debate-turn` activity rows. Per-turn
 ### Data retention
 
 `DebateRecord` documents share the retention policy of the `ActivityLog` feed
-they summarise: both live in RavenDB and are pruned on the same schedule (no
-automatic expiry is configured today; documents persist until pruned via a
-RavenDB expiration/retention job or manual cleanup). When an activity-log
-retention window is introduced, apply the identical window to `DebateRecords`
-so the two stores stay in sync.
+they summarise, although they are stored in different RavenDB databases:
+`DebateRecord` uses `hound-trading-pack`, while `ActivityLog` uses `HoundAI`.
+No automatic expiry is configured today; both document types persist until
+removed by a RavenDB expiration/retention job or manual cleanup. When a
+retention window is introduced, apply the same duration to both databases so
+the transcript and its live activity trail expire consistently.
 
 ---
 

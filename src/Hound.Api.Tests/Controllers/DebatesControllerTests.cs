@@ -55,4 +55,19 @@ public sealed class DebatesControllerTests
         Assert.IsNotNull(payload);
         Assert.AreEqual(0, payload.Count());
     }
+
+    [TestMethod]
+    public async Task GetDebates_PassesCancellationTokenToRepository()
+    {
+        using var cancellation = new CancellationTokenSource();
+        _mockRepo
+            .Setup(r => r.GetDebatesAsync("run-1", cancellation.Token))
+            .ReturnsAsync([]);
+
+        await _controller.GetDebates("run-1", cancellation.Token);
+
+        _mockRepo.Verify(
+            r => r.GetDebatesAsync("run-1", cancellation.Token),
+            Times.Once);
+    }
 }

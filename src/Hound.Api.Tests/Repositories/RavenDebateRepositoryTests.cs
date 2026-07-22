@@ -7,17 +7,19 @@ namespace Hound.Api.Tests.Repositories;
 
 /// <summary>
 /// Integration tests for <see cref="RavenDebateRepository"/> that exercise the
-/// real RavenDB query pipeline against an embedded server, verifying that
+/// real RavenDB document-loading pipeline against an embedded server, verifying that
 /// persisted <see cref="DebateRecord"/> documents are filtered by run id and
 /// returned in refinement order.
 /// </summary>
 [TestClass]
+[DoNotParallelize]
 public sealed class RavenDebateRepositoryTests
 {
     private const string Database = "hound-trading-pack";
 
     private static IDocumentStore _store = null!;
     private static string _dataDirectory = string.Empty;
+    private static bool _serverStarted;
 
     [ClassInitialize]
     public static void ClassInitialize(TestContext _)
@@ -26,15 +28,18 @@ public sealed class RavenDebateRepositoryTests
         EmbeddedServer.Instance.StartServer(new ServerOptions
         {
             DataDirectory = _dataDirectory,
+            FrameworkVersion = "8.0.0+",
         });
         _store = EmbeddedServer.Instance.GetDocumentStore(Database);
+        _serverStarted = true;
     }
 
     [ClassCleanup]
     public static void ClassCleanup()
     {
         _store?.Dispose();
-        EmbeddedServer.Instance.Dispose();
+        if (_serverStarted)
+            EmbeddedServer.Instance.Dispose();
 
         // The embedded server holds the data directory until it is disposed;
         // remove it now so test runs don't leave RavenDB data behind in temp.
@@ -52,8 +57,6 @@ public sealed class RavenDebateRepositoryTests
     private static async Task SeedAsync(params DebateRecord[] records)
     {
         using var session = _store.OpenAsyncSession(Database);
-        // Wait for the auto-index to catch up so subsequent queries are not stale.
-        session.Advanced.WaitForIndexesAfterSaveChanges();
         foreach (var record in records)
         {
             await session.StoreAsync(record, record.Id);
@@ -114,5 +117,22 @@ public sealed class RavenDebateRepositoryTests
         var result = await repo.GetDebatesAsync("run-missing-" + Guid.NewGuid().ToString("N"));
 
         Assert.AreEqual(0, result.Count);
+    }
+
+    [TestMethod]
+    public async Task GetDebatesAsync_WithMoreThanOnePage_ReturnsEveryRecord()
+    {
+        var runId = "run-paged-" + Guid.NewGuid().ToString("N");
+        var records = Enumerable.Range(0, 130)
+            .Select(refinement => Record(runId, refinement))
+            .ToArray();
+        await SeedAsync(records);
+
+        var repo = new RavenDebateRepository(_store);
+        var result = await repo.GetDebatesAsync(runId);
+
+        Assert.AreEqual(130, result.Count);
+        Assert.AreEqual(0, result[0].RefinementCount);
+        Assert.AreEqual(129, result[^1].RefinementCount);
     }
 }

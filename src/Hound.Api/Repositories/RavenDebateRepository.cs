@@ -1,6 +1,5 @@
 using Hound.Core.Models;
 using Raven.Client.Documents;
-using Raven.Client.Documents.Linq;
 
 namespace Hound.Api.Repositories;
 
@@ -12,6 +11,7 @@ namespace Hound.Api.Repositories;
 public class RavenDebateRepository : IDebateRepository
 {
     private const string Database = "hound-trading-pack";
+    private const int PageSize = 128;
 
     private readonly IDocumentStore _store;
 
@@ -25,9 +25,25 @@ public class RavenDebateRepository : IDebateRepository
         CancellationToken cancellationToken = default)
     {
         using var session = _store.OpenAsyncSession(Database);
-        return await session.Query<DebateRecord>()
-            .Where(d => d.RunId == runId)
+        var records = new List<DebateRecord>();
+        while (true)
+        {
+            var page = (await session.Advanced.LoadStartingWithAsync<DebateRecord>(
+                $"DebateRecords/{runId}/",
+                matches: null,
+                start: records.Count,
+                pageSize: PageSize,
+                exclude: null,
+                startAfter: null,
+                token: cancellationToken)).ToList();
+
+            records.AddRange(page);
+            if (page.Count < PageSize)
+                break;
+        }
+
+        return records
             .OrderBy(d => d.RefinementCount)
-            .ToListAsync(cancellationToken);
+            .ToList();
     }
 }

@@ -16,9 +16,10 @@ namespace Hound.Core.Models;
 /// ordered by <see cref="RefinementCount"/>.
 /// </para>
 /// <para>
-/// Retention: DebateRecords live in the <c>hound-trading-pack</c> database
-/// alongside the <see cref="GraphRun"/> and activity documents they summarise,
-/// and follow the same retention policy as <see cref="ActivityLog"/> (see the
+/// Retention: DebateRecords live in the <c>hound-trading-pack</c> database,
+/// while the <see cref="ActivityLog"/> rows they summarise live in
+/// <c>HoundAI</c>. Neither database has automatic expiry configured today;
+/// apply the same retention window to both when one is introduced (see the
 /// "Data retention" section of the README).
 /// </para>
 /// </remarks>
