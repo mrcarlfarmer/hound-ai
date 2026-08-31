@@ -18,7 +18,10 @@ namespace Hound.Trading.Nodes;
 /// <summary>
 /// Determines trading strategy based on market context from AnalystsTeamNode.
 /// On refinement loops, incorporates RiskNode rejection reasoning as additional context.
-/// Uses <c>qwen3:14b</c> via the <c>"strategy"</c> keyed IChatClient.
+/// The coordinator agent (which emits the final decision JSON) uses <c>qwen3:14b</c>
+/// via the <c>"strategy"</c> keyed IChatClient, while the bull/bear debaters use the
+/// smaller, cheaper <c>"debate"</c> keyed IChatClient (<c>Ollama:DebateModel</c>,
+/// default <c>qwen3.5:9b</c>) to bound debate latency and GPU time.
 /// </summary>
 public class StrategyNode : INode
 {
@@ -54,13 +57,24 @@ public class StrategyNode : INode
     /// </summary>
     private const string TradingDatabase = "hound-trading-pack";
 
+    /// <param name="chatClient">
+    /// The coordinator's chat client — produces the final <see cref="TradingDecision"/>
+    /// JSON. In production this is the <c>"strategy"</c> keyed client (qwen3:14b).
+    /// </param>
+    /// <param name="debateChatClient">
+    /// Optional chat client for the bull/bear debaters. When <c>null</c> the debaters
+    /// reuse <paramref name="chatClient"/> (legacy single-model behaviour). In production
+    /// this is the <c>"debate"</c> keyed client (<c>Ollama:DebateModel</c>, default
+    /// qwen3.5:9b) so the debate runs on a smaller, faster model than the coordinator.
+    /// </param>
     public StrategyNode(
         IChatClient chatClient,
         IAlpacaService alpacaService,
         IActivityLogger activityLogger,
         IOptions<StrategyHoundConfig>? debateConfig = null,
         IDocumentStore? documentStore = null,
-        ILoggerFactory? loggerFactory = null)
+        ILoggerFactory? loggerFactory = null,
+        IChatClient? debateChatClient = null)
     {
         _alpacaService = alpacaService;
         _activityLogger = activityLogger;
@@ -68,6 +82,8 @@ public class StrategyNode : INode
         _loggerFactory = loggerFactory;
         _logger = loggerFactory?.CreateLogger<StrategyNode>();
         _debateConfig = debateConfig?.Value ?? new StrategyHoundConfig();
+
+        var debaterClient = debateChatClient ?? chatClient;
 
         _coordinatorAgent = new ChatClientAgent(
             chatClient,
@@ -138,14 +154,14 @@ public class StrategyNode : INode
             loggerFactory: loggerFactory);
 
         _bullAgent = new ChatClientAgent(
-            chatClient,
+            debaterClient,
             instructions: BullSystemPrompt,
             name: "BullDebater",
             description: "Argues the bullish case in the strategy debate",
             loggerFactory: loggerFactory);
 
         _bearAgent = new ChatClientAgent(
-            chatClient,
+            debaterClient,
             instructions: BearSystemPrompt,
             name: "BearDebater",
             description: "Argues the bearish case in the strategy debate",
