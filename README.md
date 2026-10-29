@@ -184,6 +184,8 @@ JSON only; full trading evals still require Ollama and use stub Alpaca services.
 In `ui/hound-dashboard`, run `npm ci`, `npm ls --all`,
 `npx ng test --watch=false`, and `npx ng build --configuration production`.
 Angular 22 requires TypeScript 6.0; TypeScript 7 is not a compatible replacement.
+Keep the Spartan CLI's transitive Nx packages on the same release; validate a
+clean install with `npm ls --all` on Linux as well as Windows after upgrades.
 
 In `infra/grocery-browser`, use an isolated Python 3.12 environment:
 
