@@ -149,7 +149,7 @@ build copies `Hound.Core/` + the pack project, then `dotnet publish`). Consequen
   `Hound.Core` to stay strictly pack-agnostic we *could* later relocate `MarketIntel`, but that is
   **not required** for this work.
 - The grocery pack's `Dockerfile` mirrors `src/Hound.Trading/Dockerfile` (copy `Hound.Core` +
-  `Hound.Grocery`, restore, publish, `aspnet:9.0` runtime).
+  `Hound.Grocery`, restore, publish, `aspnet:10.0` runtime).
 
 ---
 

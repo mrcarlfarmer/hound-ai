@@ -1,4 +1,14 @@
-import { Component, OnInit, OnDestroy, AfterViewInit, ChangeDetectorRef, ViewChildren, QueryList, ElementRef } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  OnDestroy,
+  AfterViewInit,
+  ChangeDetectorRef,
+  ViewChildren,
+  QueryList,
+  ElementRef,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DomSanitizer, SafeHtml } from '@angular/platform-browser';
@@ -7,7 +17,14 @@ import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { ApiService } from '../../services/api.service';
 import { SignalrService } from '../../services/signalr.service';
-import { GraphRun, NodeSnapshot, NodeStatus, NodeStreamChunk, RunRequest, DebateRecord } from '../../models';
+import {
+  GraphRun,
+  NodeSnapshot,
+  NodeStatus,
+  NodeStreamChunk,
+  RunRequest,
+  DebateRecord,
+} from '../../models';
 import { HlmTabsImports } from '@spartan-ng/helm/tabs';
 import { ChartPanelComponent } from '../../components/chart-panel/chart-panel.component';
 
@@ -75,7 +92,8 @@ interface MonitorOutput {
   standalone: true,
   imports: [CommonModule, FormsModule, ChartPanelComponent, ...HlmTabsImports],
   templateUrl: './graph-runs.component.html',
-  styles: []
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [],
 })
 export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   runs: GraphRun[] = [];
@@ -140,7 +158,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
     this.signalr.connect();
     this.signalr.subscribeToPack('trading-pack');
-    this.sub = this.signalr.onGraphRunUpdate$.subscribe(run => {
+    this.sub = this.signalr.onGraphRunUpdate$.subscribe((run) => {
       const isNew = this.mergeRun(run);
       if (isNew) {
         // A brand-new run just started — pull it into focus so the user
@@ -154,7 +172,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       this.maybeClearApprovalSubmitting(run);
       this.cdr.detectChanges();
     });
-    this.streamSub = this.signalr.onNodeStream$.subscribe(chunk => this.appendStream(chunk));
+    this.streamSub = this.signalr.onNodeStream$.subscribe((chunk) => this.appendStream(chunk));
 
     // Poll for updates every 10s (covers runs that started while page was open)
     this.pollTimer = setInterval(() => this.loadRuns(), 10000);
@@ -196,7 +214,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
   loadRuns(): void {
     this.api.getRuns(20).subscribe({
-      next: runs => {
+      next: (runs) => {
         this.runs = runs;
         if (!this.selectedRun && runs.length > 0) {
           this.selectRun(runs[0]);
@@ -204,7 +222,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
           // Keep the in-memory selectedRun in sync with the polled snapshot —
           // notably so the approval-submit flag clears even if a SignalR push
           // was missed.
-          const fresh = runs.find(r => r.runId === this.selectedRun!.runId);
+          const fresh = runs.find((r) => r.runId === this.selectedRun!.runId);
           if (fresh) {
             this.selectedRun = fresh;
             this.maybeClearApprovalSubmitting(fresh);
@@ -222,11 +240,12 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       },
     });
     this.api.getRunRequests(10).subscribe({
-      next: requests => {
+      next: (requests) => {
         // Show requests that are Pending or Running and don't yet have a GraphRun
-        this.pendingRequests = requests.filter(r =>
-          (r.status === 'Pending' || r.status === 'Running') &&
-          !this.runs.some(run => run.runId === r.runId)
+        this.pendingRequests = requests.filter(
+          (r) =>
+            (r.status === 'Pending' || r.status === 'Running') &&
+            !this.runs.some((run) => run.runId === r.runId),
         );
         this.cdr.detectChanges();
       },
@@ -238,7 +257,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     this.debateRecords = [];
     this.expandedNodes.clear();
     // Auto-expand completed nodes
-    run.nodes?.forEach(n => {
+    run.nodes?.forEach((n) => {
       if (n.status === 'Completed' || n.status === 'Failed') {
         this.expandedNodes.add(n.nodeId);
       }
@@ -263,15 +282,17 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       return [];
     }
 
-    return [{
-      id: `legacy/${run.runId}`,
-      runId: run.runId,
-      symbol: run.symbol,
-      refinementCount: run.refinementCount,
-      turnsPerSide: Math.ceil(run.strategyDebate.length / 2),
-      createdAt: run.startedAt,
-      turns: run.strategyDebate,
-    }];
+    return [
+      {
+        id: `legacy/${run.runId}`,
+        runId: run.runId,
+        symbol: run.symbol,
+        refinementCount: run.refinementCount,
+        turnsPerSide: Math.ceil(run.strategyDebate.length / 2),
+        createdAt: run.startedAt,
+        turns: run.strategyDebate,
+      },
+    ];
   }
 
   get debateTurnCount(): number {
@@ -291,19 +312,21 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   private loadDebates(runId: string): void {
     const requestVersion = ++this.debateRequestVersion;
     this.api.getDebates(runId).subscribe({
-      next: records => {
+      next: (records) => {
         if (this.selectedRun?.runId === runId && requestVersion === this.debateRequestVersion) {
           this.debateRecords = [...records].sort((a, b) => a.refinementCount - b.refinementCount);
           this.cdr.detectChanges();
         }
       },
-      error: () => { /* fall back to GraphRun.strategyDebate */ },
+      error: () => {
+        /* fall back to GraphRun.strategyDebate */
+      },
     });
   }
 
   /** Expand the active node and default it to the reasoning tab. */
   private autoExpandActive(run: GraphRun): void {
-    run.nodes?.forEach(n => {
+    run.nodes?.forEach((n) => {
       if (n.status === 'Active') {
         this.expandedNodes.add(n.nodeId);
         if (!this.activeTab.has(n.nodeId)) {
@@ -349,11 +372,14 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   // they return to within STICKY_THRESHOLD_PX of the bottom.
   private viewChildrenSub?: Subscription;
   /** Elements currently observed, with their per-box observer + cleanup state. */
-  private observed = new WeakMap<HTMLElement, {
-    mutationObserver: MutationObserver;
-    onScroll: () => void;
-    stickToBottom: boolean;
-  }>();
+  private observed = new WeakMap<
+    HTMLElement,
+    {
+      mutationObserver: MutationObserver;
+      onScroll: () => void;
+      stickToBottom: boolean;
+    }
+  >();
   /** Pixel tolerance for considering the user "at the bottom". */
   private static readonly STICKY_THRESHOLD_PX = 24;
 
@@ -363,7 +389,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     }
     this.syncObservedBoxes(this.reasoningBoxes.toArray());
     this.viewChildrenSub = this.reasoningBoxes.changes.subscribe(
-      (list: QueryList<ElementRef<HTMLElement>>) => this.syncObservedBoxes(list.toArray())
+      (list: QueryList<ElementRef<HTMLElement>>) => this.syncObservedBoxes(list.toArray()),
     );
   }
 
@@ -374,7 +400,9 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
       const state = {
         mutationObserver: null as unknown as MutationObserver,
-        onScroll: () => { /* set below */ },
+        onScroll: () => {
+          /* set below */
+        },
         stickToBottom: true,
       };
       state.onScroll = () => {
@@ -415,8 +443,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
     // (which renders the approve/reject CTAs) so the user isn't shown an
     // empty "Waiting for the model to start streaming…" placeholder.
     if (node.nodeId === 'approval-node') return 'result';
-    return this.activeTab.get(node.nodeId)
-      ?? (node.status === 'Active' ? 'reasoning' : 'result');
+    return this.activeTab.get(node.nodeId) ?? (node.status === 'Active' ? 'reasoning' : 'result');
   }
 
   setTab(node: NodeSnapshot, tab: 'result' | 'reasoning'): void {
@@ -476,7 +503,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
    * team node's output. Returns null until the analysts node finishes.
    */
   companyNameFor(run?: GraphRun | null): string | null {
-    const analysts = run?.nodes?.find(n => n.nodeId === 'analysts-team-node');
+    const analysts = run?.nodes?.find((n) => n.nodeId === 'analysts-team-node');
     const parsed = this.parseAnalystsOutput(analysts?.outputJson);
     return parsed?.companyName?.trim() || null;
   }
@@ -538,7 +565,12 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   }
 
   hasAnalystReports(output: AnalystsOutput): boolean {
-    return !!(output.marketReport || output.fundamentalsReport || output.newsReport || output.sentimentReport);
+    return !!(
+      output.marketReport ||
+      output.fundamentalsReport ||
+      output.newsReport ||
+      output.sentimentReport
+    );
   }
 
   parseStrategyOutput(json?: string): StrategyOutput | null {
@@ -561,10 +593,14 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
   verdictClass(verdict?: string): string {
     switch (verdict?.toLowerCase()) {
-      case 'approved': return 'bg-green-900/40 text-green-400 border-green-600';
-      case 'rejected': return 'bg-red-900/40 text-red-400 border-red-600';
-      case 'modified': return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
-      default: return 'bg-muted text-muted-foreground border-border';
+      case 'approved':
+        return 'bg-green-900/40 text-green-400 border-green-600';
+      case 'rejected':
+        return 'bg-red-900/40 text-red-400 border-red-600';
+      case 'modified':
+        return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
+      default:
+        return 'bg-muted text-muted-foreground border-border';
     }
   }
 
@@ -608,13 +644,18 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
   monitorStatusClass(status?: string): string {
     switch (status?.toLowerCase()) {
-      case 'filled': return 'bg-green-900/40 text-green-400 border-green-600';
-      case 'partiallyfilled': return 'bg-blue-900/40 text-blue-400 border-blue-600';
-      case 'pending': return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
+      case 'filled':
+        return 'bg-green-900/40 text-green-400 border-green-600';
+      case 'partiallyfilled':
+        return 'bg-blue-900/40 text-blue-400 border-blue-600';
+      case 'pending':
+        return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
       case 'canceled':
       case 'expired':
-      case 'rejected': return 'bg-red-900/40 text-red-400 border-red-600';
-      default: return 'bg-muted text-muted-foreground border-border';
+      case 'rejected':
+        return 'bg-red-900/40 text-red-400 border-red-600';
+      default:
+        return 'bg-muted text-muted-foreground border-border';
     }
   }
 
@@ -643,7 +684,8 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
   executionStatusClass(output: ExecutionOutput): string {
     if (output.success === false) return 'bg-red-900/40 text-red-400 border-red-600';
-    if (output.message?.toLowerCase().includes('filled')) return 'bg-green-900/40 text-green-400 border-green-600';
+    if (output.message?.toLowerCase().includes('filled'))
+      return 'bg-green-900/40 text-green-400 border-green-600';
     return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
   }
 
@@ -655,9 +697,12 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
   actionClass(action?: string): string {
     switch (action?.toLowerCase()) {
-      case 'buy': return 'bg-green-900/40 text-green-400 border-green-600';
-      case 'sell': return 'bg-red-900/40 text-red-400 border-red-600';
-      default: return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
+      case 'buy':
+        return 'bg-green-900/40 text-green-400 border-green-600';
+      case 'sell':
+        return 'bg-red-900/40 text-red-400 border-red-600';
+      default:
+        return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
     }
   }
 
@@ -669,9 +714,12 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
    */
   verdictBannerClass(action?: string): string {
     switch (action?.toLowerCase()) {
-      case 'buy': return 'bg-green-900/20 border-green-600 text-green-100';
-      case 'sell': return 'bg-red-900/20 border-red-600 text-red-100';
-      default: return 'bg-yellow-900/20 border-yellow-600 text-yellow-100';
+      case 'buy':
+        return 'bg-green-900/20 border-green-600 text-green-100';
+      case 'sell':
+        return 'bg-red-900/20 border-red-600 text-red-100';
+      default:
+        return 'bg-yellow-900/20 border-yellow-600 text-yellow-100';
     }
   }
 
@@ -679,7 +727,7 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
   isNoAction(node: NodeSnapshot): boolean {
     if (node.status !== 'Pending' || !this._downstreamNodes.has(node.nodeId)) return false;
-    const strategyNode = this.selectedRun?.nodes?.find(n => n.nodeId === 'strategy-node');
+    const strategyNode = this.selectedRun?.nodes?.find((n) => n.nodeId === 'strategy-node');
     if (!strategyNode || strategyNode.status !== 'Completed') return false;
     const s = this.parseStrategyOutput(strategyNode.outputJson);
     return !!s && s.action?.toLowerCase() !== 'buy';
@@ -708,9 +756,10 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
     const runId = this.selectedRun.runId;
     const notes = this.approvalNotes.trim() || undefined;
-    const call = decision === 'approve'
-      ? this.api.approveRun(runId, 'dashboard-user', notes)
-      : this.api.rejectRun(runId, 'dashboard-user', notes);
+    const call =
+      decision === 'approve'
+        ? this.api.approveRun(runId, 'dashboard-user', notes)
+        : this.api.rejectRun(runId, 'dashboard-user', notes);
 
     call.subscribe({
       next: () => {
@@ -728,10 +777,11 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
       error: (err) => {
         this.approvalSubmitting = null;
         const problem = (err as { error?: { title?: string; detail?: string } })?.error;
-        this.approvalError = problem?.detail
-          ?? problem?.title
-          ?? (err as { message?: string })?.message
-          ?? 'Failed to submit decision';
+        this.approvalError =
+          problem?.detail ??
+          problem?.title ??
+          (err as { message?: string })?.message ??
+          'Failed to submit decision';
         this.cdr.detectChanges();
       },
     });
@@ -754,20 +804,29 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
 
   nodeStatusClass(status: NodeStatus): string {
     switch (status) {
-      case 'Active': return 'bg-blue-900/40 text-blue-400 border-blue-500';
-      case 'Completed': return 'bg-green-900/40 text-green-400 border-green-500';
-      case 'Failed': return 'bg-red-900/40 text-red-400 border-red-500';
-      case 'Skipped': return 'bg-gray-900/40 text-gray-400 border-gray-500';
-      default: return 'bg-muted text-muted-foreground border-border';
+      case 'Active':
+        return 'bg-blue-900/40 text-blue-400 border-blue-500';
+      case 'Completed':
+        return 'bg-green-900/40 text-green-400 border-green-500';
+      case 'Failed':
+        return 'bg-red-900/40 text-red-400 border-red-500';
+      case 'Skipped':
+        return 'bg-gray-900/40 text-gray-400 border-gray-500';
+      default:
+        return 'bg-muted text-muted-foreground border-border';
     }
   }
 
   nodeConnectorClass(status: NodeStatus): string {
     switch (status) {
-      case 'Active': return 'bg-blue-500';
-      case 'Completed': return 'bg-green-500';
-      case 'Failed': return 'bg-red-500';
-      default: return 'bg-border';
+      case 'Active':
+        return 'bg-blue-500';
+      case 'Completed':
+        return 'bg-green-500';
+      case 'Failed':
+        return 'bg-red-500';
+      default:
+        return 'bg-border';
     }
   }
 
@@ -794,11 +853,13 @@ export class GraphRunsComponent implements OnInit, OnDestroy, AfterViewInit {
   formatDate(iso?: string): string {
     if (!iso) return '—';
     const d = new Date(iso);
-    return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + this.formatTime(iso);
+    return (
+      d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + this.formatTime(iso)
+    );
   }
 
   private mergeRun(run: GraphRun): boolean {
-    const idx = this.runs.findIndex(r => r.runId === run.runId);
+    const idx = this.runs.findIndex((r) => r.runId === run.runId);
     if (idx >= 0) {
       this.runs[idx] = run;
       return false;

@@ -1,4 +1,5 @@
 import type { BooleanInput } from '@angular/cdk/coercion';
+import type { ComponentType } from '@angular/cdk/portal';
 import { NgComponentOutlet } from '@angular/common';
 import {
   booleanAttribute,
@@ -15,6 +16,11 @@ import { HlmButton } from '@spartan-ng/helm/button';
 import { HlmIconImports } from '@spartan-ng/helm/icon';
 import { classes } from '@spartan-ng/helm/utils';
 import { HlmDialogClose } from './hlm-dialog-close';
+
+type HlmDialogContentContext = {
+  $component?: ComponentType<unknown>;
+  $dynamicComponentClass?: string;
+};
 
 @Component({
   selector: 'hlm-dialog-content',
@@ -42,7 +48,9 @@ import { HlmDialogClose } from './hlm-dialog-close';
 })
 export class HlmDialogContent {
   private readonly _dialogRef = inject(BrnDialogRef);
-  private readonly _dialogContext = injectBrnDialogContext({ optional: true });
+  private readonly _dialogContext = injectBrnDialogContext<HlmDialogContentContext | null>({
+    optional: true,
+  });
 
   public readonly showCloseButton = input<boolean, BooleanInput>(true, {
     transform: booleanAttribute,

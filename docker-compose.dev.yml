@@ -82,7 +82,7 @@ services:
 
   hound-ui:
     build: !reset {}
-    image: node:22-alpine
+    image: node:24.22.1-alpine
     container_name: hound-ui
     ports:
       - "4201:4200"
@@ -91,7 +91,7 @@ services:
       - /app/node_modules
     working_dir: /app
     entrypoint: ["sh", "-c"]
-    command: ["npm install && npx ng serve --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.json --poll 2000"]
+    command: ["npm install --global npm@12.2.1 && npm ci && npx ng serve --host 0.0.0.0 --port 4200 --proxy-config proxy.conf.json --poll 2000"]
     environment:
       - NODE_ENV=development
     depends_on:

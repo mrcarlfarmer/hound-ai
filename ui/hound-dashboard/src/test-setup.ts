@@ -4,6 +4,10 @@
 // real failures.
 
 if (typeof window !== 'undefined') {
+  if (typeof Element.prototype.scrollIntoView !== 'function') {
+    Element.prototype.scrollIntoView = () => undefined;
+  }
+
   if (typeof window.matchMedia !== 'function') {
     window.matchMedia = (query: string): MediaQueryList => ({
       matches: false,

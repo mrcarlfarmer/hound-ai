@@ -28,7 +28,7 @@ public sealed class RavenDebateRepositoryTests
         EmbeddedServer.Instance.StartServer(new ServerOptions
         {
             DataDirectory = _dataDirectory,
-            FrameworkVersion = "8.0.0+",
+            FrameworkVersion = "10.0.0+",
         });
         _store = EmbeddedServer.Instance.GetDocumentStore(Database);
         _serverStarted = true;

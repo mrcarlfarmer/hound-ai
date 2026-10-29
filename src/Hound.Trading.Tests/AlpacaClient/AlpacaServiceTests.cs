@@ -154,7 +154,7 @@ public sealed class AlpacaServiceTests
         // time and the error message ("fractional orders must be DAY
         // orders") is misleading. The service must short-circuit and tell
         // the caller exactly why.
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => _service.SubmitTrailingStopOrderAsync(
                 symbol: "GOOG",
                 quantity: OrderQuantity.Fractional(0.3315m),
@@ -168,7 +168,7 @@ public sealed class AlpacaServiceTests
     [TestMethod]
     public async Task SubmitTrailingStopOrderAsync_NonPositiveTrailPercent_Throws()
     {
-        await Assert.ThrowsExceptionAsync<ArgumentOutOfRangeException>(
+        await Assert.ThrowsExactlyAsync<ArgumentOutOfRangeException>(
             () => _service.SubmitTrailingStopOrderAsync(
                 symbol: "AAPL",
                 quantity: OrderQuantity.Fractional(5m),

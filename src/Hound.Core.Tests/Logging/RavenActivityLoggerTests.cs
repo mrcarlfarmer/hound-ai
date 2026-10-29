@@ -80,7 +80,7 @@ public sealed class RavenActivityLoggerTests
         _sessionMock.Setup(s => s.Query<ActivityLog>(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()))
             .Throws<InvalidOperationException>();
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => _logger.GetActivitiesAsync(packId: "trading-pack"));
 
         _storeMock.Verify(s => s.OpenAsyncSession("hound-trading-pack"), Times.Once);
@@ -92,7 +92,7 @@ public sealed class RavenActivityLoggerTests
         _sessionMock.Setup(s => s.Query<ActivityLog>(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<bool>()))
             .Throws<InvalidOperationException>();
 
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => _logger.GetActivitiesAsync());
 
         _storeMock.Verify(s => s.OpenAsyncSession("hound-activity"), Times.Once);

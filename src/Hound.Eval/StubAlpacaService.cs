@@ -187,7 +187,7 @@ internal sealed class StubOrder : IOrder
     }
 
     public Guid OrderId { get; }
-    public OrderSide OrderSide { get; }
+    public OrderSide? OrderSide { get; }
     public OrderStatus OrderStatus => OrderStatus.New;
     public string Symbol { get; }
     public decimal? Quantity { get; }
@@ -200,8 +200,8 @@ internal sealed class StubOrder : IOrder
     public OrderClass OrderClass => OrderClass.Simple;
     public OrderType OrderType { get; }
     public TimeInForce TimeInForce => TimeInForce.Day;
-    public AssetClass AssetClass => AssetClass.UsEquity;
-    public Guid AssetId => Guid.Empty;
+    public AssetClass? AssetClass => Alpaca.Markets.AssetClass.UsEquity;
+    public Guid? AssetId => Guid.Empty;
     public decimal? AverageFillPrice => null;
     public DateTime? CancelledAtUtc => null;
     public string ClientOrderId => string.Empty;

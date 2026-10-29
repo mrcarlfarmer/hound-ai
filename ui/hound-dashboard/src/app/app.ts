@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ChangeDetectionStrategy } from '@angular/core';
 import { RouterOutlet, RouterLink, RouterLinkActive } from '@angular/router';
 import { HlmToaster } from '@spartan-ng/helm/sonner';
 
@@ -7,21 +7,48 @@ import { HlmToaster } from '@spartan-ng/helm/sonner';
   standalone: true,
   imports: [RouterOutlet, RouterLink, RouterLinkActive, HlmToaster],
   template: `
-    <nav class="flex flex-wrap items-center gap-4 border-b border-border bg-card px-4 py-3 sm:gap-6 sm:px-6">
+    <nav
+      class="flex flex-wrap items-center gap-4 border-b border-border bg-card px-4 py-3 sm:gap-6 sm:px-6"
+    >
       <a routerLink="/" class="brand text-lg font-bold text-foreground no-underline">Hound AI</a>
       <div class="flex flex-wrap gap-3 sm:gap-4">
-        <a routerLink="/" routerLinkActive="text-primary" [routerLinkActiveOptions]="{ exact: true }"
-           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Dashboard</a>
-        <a routerLink="/activity" routerLinkActive="text-primary"
-           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Activity</a>
-        <a routerLink="/execution" routerLinkActive="text-primary"
-           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Execution</a>
-        <a routerLink="/graph" routerLinkActive="text-primary"
-           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Graph</a>
-        <a routerLink="/portfolio" routerLinkActive="text-primary"
-           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Portfolio</a>
-        <a routerLink="/charts" routerLinkActive="text-primary"
-           class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base">Charts</a>
+        <a
+          routerLink="/"
+          routerLinkActive="text-primary"
+          [routerLinkActiveOptions]="{ exact: true }"
+          class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base"
+          >Dashboard</a
+        >
+        <a
+          routerLink="/activity"
+          routerLinkActive="text-primary"
+          class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base"
+          >Activity</a
+        >
+        <a
+          routerLink="/execution"
+          routerLinkActive="text-primary"
+          class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base"
+          >Execution</a
+        >
+        <a
+          routerLink="/graph"
+          routerLinkActive="text-primary"
+          class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base"
+          >Graph</a
+        >
+        <a
+          routerLink="/portfolio"
+          routerLinkActive="text-primary"
+          class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base"
+          >Portfolio</a
+        >
+        <a
+          routerLink="/charts"
+          routerLinkActive="text-primary"
+          class="text-sm text-muted-foreground no-underline transition-colors hover:text-foreground sm:text-base"
+          >Charts</a
+        >
       </div>
     </nav>
     <main class="px-4 py-4 sm:px-6 sm:py-6">
@@ -29,6 +56,7 @@ import { HlmToaster } from '@spartan-ng/helm/sonner';
     </main>
     <hlm-toaster />
   `,
-  styles: []
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [],
 })
 export class App {}

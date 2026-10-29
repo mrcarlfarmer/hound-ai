@@ -1,4 +1,10 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  OnDestroy,
+  ChangeDetectorRef,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ApiService } from '../../services/api.service';
 import { AccountSummary, PositionInfo } from '../../models';
@@ -7,6 +13,7 @@ import { AccountSummary, PositionInfo } from '../../models';
   selector: 'app-portfolio',
   standalone: true,
   imports: [CommonModule],
+  changeDetection: ChangeDetectionStrategy.Eager,
   templateUrl: './portfolio.component.html',
 })
 export class PortfolioComponent implements OnInit, OnDestroy {
@@ -17,7 +24,10 @@ export class PortfolioComponent implements OnInit, OnDestroy {
   closingSymbol: string | null = null;
   private refreshInterval: ReturnType<typeof setInterval> | null = null;
 
-  constructor(private api: ApiService, private cdr: ChangeDetectorRef) {}
+  constructor(
+    private api: ApiService,
+    private cdr: ChangeDetectorRef,
+  ) {}
 
   ngOnInit(): void {
     this.loadData();

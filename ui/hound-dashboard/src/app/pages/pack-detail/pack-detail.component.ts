@@ -1,12 +1,22 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  OnDestroy,
+  ChangeDetectorRef,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute } from '@angular/router';
 import { ApiService } from '../../services/api.service';
 import { SignalrService } from '../../services/signalr.service';
 import {
-  Pack, HoundInfo, ActivityLog,
-  DebateTurnMetadata, isDebateTurn,
-  StrategyDecisionMetadata, isStrategyDecision,
+  Pack,
+  HoundInfo,
+  ActivityLog,
+  DebateTurnMetadata,
+  isDebateTurn,
+  StrategyDecisionMetadata,
+  isStrategyDecision,
 } from '../../models';
 import { Subscription } from 'rxjs';
 
@@ -48,7 +58,8 @@ interface DebateGroupView {
   standalone: true,
   imports: [CommonModule],
   templateUrl: './pack-detail.component.html',
-  styles: []
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [],
 })
 export class PackDetailComponent implements OnInit, OnDestroy {
   pack?: Pack;
@@ -103,7 +114,12 @@ export class PackDetailComponent implements OnInit, OnDestroy {
     for (const turn of this.debateTurns) {
       let group = byId.get(turn.symbol);
       if (!group) {
-        group = { symbol: turn.symbol, turns: [], verdict: null, latestTurnTimestamp: turn.timestamp };
+        group = {
+          symbol: turn.symbol,
+          turns: [],
+          verdict: null,
+          latestTurnTimestamp: turn.timestamp,
+        };
         byId.set(turn.symbol, group);
       }
       group.turns.push(turn);
@@ -121,8 +137,9 @@ export class PackDetailComponent implements OnInit, OnDestroy {
         group.verdict = v;
       }
     }
-    return Array.from(byId.values())
-      .sort((a, b) => b.latestTurnTimestamp.localeCompare(a.latestTurnTimestamp));
+    return Array.from(byId.values()).sort((a, b) =>
+      b.latestTurnTimestamp.localeCompare(a.latestTurnTimestamp),
+    );
   }
 
   /**
@@ -152,18 +169,24 @@ export class PackDetailComponent implements OnInit, OnDestroy {
   /** Background/border styling for the verdict banner, keyed off the action. */
   verdictBannerClass(action?: string): string {
     switch (action?.toLowerCase()) {
-      case 'buy': return 'bg-green-900/20 border-green-600 text-green-100';
-      case 'sell': return 'bg-red-900/20 border-red-600 text-red-100';
-      default: return 'bg-yellow-900/20 border-yellow-600 text-yellow-100';
+      case 'buy':
+        return 'bg-green-900/20 border-green-600 text-green-100';
+      case 'sell':
+        return 'bg-red-900/20 border-red-600 text-red-100';
+      default:
+        return 'bg-yellow-900/20 border-yellow-600 text-yellow-100';
     }
   }
 
   /** Pill styling for the action label inside the verdict banner. */
   actionPillClass(action?: string): string {
     switch (action?.toLowerCase()) {
-      case 'buy': return 'bg-green-900/40 text-green-400 border-green-600';
-      case 'sell': return 'bg-red-900/40 text-red-400 border-red-600';
-      default: return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
+      case 'buy':
+        return 'bg-green-900/40 text-green-400 border-green-600';
+      case 'sell':
+        return 'bg-red-900/40 text-red-400 border-red-600';
+      default:
+        return 'bg-yellow-900/40 text-yellow-400 border-yellow-600';
     }
   }
 
@@ -175,12 +198,18 @@ export class PackDetailComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     const packId = this.route.snapshot.paramMap.get('id')!;
-    this.api.getPack(packId).subscribe(p => { this.pack = p; this.cdr.detectChanges(); });
-    this.api.getHounds(packId).subscribe(h => { this.hounds = h; this.cdr.detectChanges(); });
+    this.api.getPack(packId).subscribe((p) => {
+      this.pack = p;
+      this.cdr.detectChanges();
+    });
+    this.api.getHounds(packId).subscribe((h) => {
+      this.hounds = h;
+      this.cdr.detectChanges();
+    });
 
     this.signalr.connect();
     this.signalr.subscribeToPack(packId);
-    this.sub = this.signalr.onActivity$.subscribe(a => {
+    this.sub = this.signalr.onActivity$.subscribe((a) => {
       this.activities.unshift(a);
       this.cdr.detectChanges();
     });

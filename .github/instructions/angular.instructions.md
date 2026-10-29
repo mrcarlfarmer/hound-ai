@@ -67,8 +67,8 @@ beforeEach(async () => {
   ```bash
   docker compose -f docker-compose.yml -f docker-compose.dev.yml restart hound-ui
   ```
-  The entrypoint re-runs `npm install` against the new `package.json`.
-- If the restart doesn't pick up the change, recreate the volume: `docker compose … down hound-ui -v` then `up -d hound-ui`.
+  The entrypoint re-runs `npm ci` against the updated lockfile; commit it with manifest changes.
+- If needed, recreate only the UI volume: `docker compose … up -d --force-recreate --renew-anon-volumes --no-deps hound-ui`.
 - Always hard-reload the browser (`Ctrl + Shift + R`) afterwards.
 - See `.github/instructions/docker.instructions.md` for the matching infra note.
 ## Styling

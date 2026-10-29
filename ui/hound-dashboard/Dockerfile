@@ -1,6 +1,7 @@
-FROM node:24 AS build
+FROM node:24.22.1 AS build
 WORKDIR /app
 COPY package*.json ./
+RUN npm install --global npm@12.2.1
 RUN npm ci
 COPY . .
 RUN npx ng build --configuration=production

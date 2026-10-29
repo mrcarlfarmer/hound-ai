@@ -97,7 +97,7 @@ public sealed class HttpActivityLoggerTests
 
         var logger = new HttpActivityLogger(CreateFactory(handler).Object, BaseUrl);
 
-        await Assert.ThrowsExceptionAsync<HttpRequestException>(
+        await Assert.ThrowsExactlyAsync<HttpRequestException>(
             () => logger.LogActivityAsync(new ActivityLog { PackId = "trading-pack" }));
     }
 
