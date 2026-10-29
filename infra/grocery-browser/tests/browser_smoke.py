@@ -7,17 +7,31 @@ test_*.py suite so fast unit tests do not require a browser installation.
 from __future__ import annotations
 
 import asyncio
+import os
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from threading import Thread
+
+import pytest
 
 from app.browser import BrowserSession
 from app.config import Settings
 from app.safety import SafetyViolation
 
 
-def test_real_browser_lifecycle_and_guards(tmp_path: Path) -> None:
+def test_real_browser_lifecycle_and_guards(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if browser_executable := os.environ.get("GROCERY_SMOKE_BROWSER_EXECUTABLE"):
+        import zendriver as zd
+
+        monkeypatch.setattr(
+            zd,
+            "start",
+            partial(zd.start, browser_executable_path=browser_executable),
+        )
+
     page = tmp_path / "index.html"
     page.write_text(
         '<!doctype html><title>Driver smoke</title>'

@@ -82,6 +82,7 @@ jobs:
       - name: Run real Chromium smoke against local fixtures
         run: |
           google-chrome --version
+          export GROCERY_SMOKE_BROWSER_EXECUTABLE="$(command -v google-chrome)"
           python -m pytest tests/browser_smoke.py --log-level=DEBUG --junitxml=results/browser-results.xml
       - uses: actions/upload-artifact@v7
         if: always()

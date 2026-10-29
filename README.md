@@ -199,6 +199,9 @@ python -m pytest tests/browser_smoke.py
 The last command requires installed Chrome/Chromium or Edge. It launches an
 ephemeral profile against a loopback fixture, verifies selectors, PNG capture,
 and safety guards, then closes the browser. It never visits the grocery site.
+Set `GROCERY_SMOKE_BROWSER_EXECUTABLE` to select an installed browser explicitly.
+CI selects the same Google Chrome executable it checks with `--version`, rather
+than relying on driver discovery among the runner's browser installations.
 
 ### .NET User Secrets (local dev without Docker)
 
