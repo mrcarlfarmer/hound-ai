@@ -5,50 +5,159 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ghcr.io/${{ github.repository_owner }}/hound-ai
 
 jobs:
-  build-and-push:
+  dotnet:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet restore src/Hound.sln
+      - run: dotnet build src/Hound.sln --configuration Release --no-restore
+      - run: dotnet test src/Hound.sln --configuration Release --no-build --no-restore --logger trx --results-directory TestResults
+      - name: Validate trading scenarios
+        run: dotnet run --project src/Hound.Eval --configuration Release --no-build -- --dry-run
+      - name: Validate grocery scenarios
+        run: dotnet run --project src/Hound.Grocery.Eval --configuration Release --no-build -- --dry-run
+      - name: Run offline grocery evals
+        run: dotnet run --project src/Hound.Grocery.Eval --configuration Release --no-build
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dotnet-results
+          path: TestResults
+
+  dashboard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: ui/hound-dashboard
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24.22.1'
+          cache: npm
+          cache-dependency-path: ui/hound-dashboard/package-lock.json
+      - run: npm install --global npm@12.2.1
+      - run: npm ci
+      - run: npm ls --all
+      - run: npx ng test --watch=false --reporters=default --reporters=junit --output-file=test-results.xml
+      - run: npx ng build --configuration production
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: dashboard-results
+          path: ui/hound-dashboard/test-results.xml
+
+  sidecar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: infra/grocery-browser
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: infra/grocery-browser/requirements*.txt
+      - run: python -m pip install -r requirements.txt -r requirements-dev.txt
+      - run: python -m pip check
+      - name: Run sidecar unit tests
+        run: python -m pytest --junitxml=results/unit-results.xml
+      - name: Run real Chromium smoke against local fixtures
+        run: |
+          google-chrome --version
+          export GROCERY_SMOKE_BROWSER_EXECUTABLE="$(command -v google-chrome)"
+          python -m pytest tests/browser_smoke.py --log-level=DEBUG --junitxml=results/browser-results.xml
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: sidecar-results
+          path: infra/grocery-browser/results
+
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: trading-pack
+            context: .
+            file: src/Hound.Trading/Dockerfile
+          - name: hound-api
+            context: .
+            file: src/Hound.Api/Dockerfile
+          - name: hound-ui
+            context: ui/hound-dashboard
+            file: ui/hound-dashboard/Dockerfile
+          - name: grocery-pack
+            context: .
+            file: src/Hound.Grocery/Dockerfile
+          - name: grocery-browser
+            context: .
+            file: infra/grocery-browser/Dockerfile
+    steps:
+      - uses: actions/checkout@v7
+      - name: Validate Compose configuration without resolving secrets
+        run: |
+          docker compose --env-file /dev/null -f docker-compose.yml config --no-interpolate --quiet
+          docker compose --env-file /dev/null -f docker-compose.yml -f docker-compose.dev.yml config --no-interpolate --quiet
+      - name: Build production image without publishing
+        uses: docker/build-push-action@v7
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: false
+          load: true
+          tags: hound-ci-${{ matrix.name }}:check
+      - name: Smoke production UI
+        if: matrix.name == 'hound-ui'
+        run: |
+          docker run --detach --name hound-image-smoke \
+            --add-host hound-api:127.0.0.1 \
+            --publish 127.0.0.1:8089:80 hound-ci-hound-ui:check
+          curl --fail --retry 10 --retry-all-errors --retry-delay 1 --connect-timeout 2 --max-time 5 http://127.0.0.1:8089/ -o index.html
+          grep -q '<app-root' index.html
+      - name: Smoke production browser health
+        if: matrix.name == 'grocery-browser'
+        run: |
+          docker run --detach --name hound-image-smoke \
+            --publish 127.0.0.1:8089:8090 hound-ci-grocery-browser:check
+          curl --fail --retry 10 --retry-all-errors --retry-delay 1 --connect-timeout 2 --max-time 5 http://127.0.0.1:8089/health
+      - name: Collect logs and remove smoke container
+        if: always() && (matrix.name == 'hound-ui' || matrix.name == 'grocery-browser')
+        run: |
+          docker logs hound-image-smoke
+          docker rm --force hound-image-smoke
+
+  build-and-push:
+    if: github.event_name == 'push'
+    needs: [dotnet, dashboard, sidecar, images]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup .NET 9
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: '9.0.x'
-
-      - name: Restore .NET
-        run: dotnet restore src/Hound.sln
-
-      - name: Build .NET
-        run: dotnet build src/Hound.sln --no-restore
-
-      - name: Run .NET tests
-        run: dotnet test src/Hound.sln --no-build --no-restore --verbosity normal
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v5
-        with:
-          node-version: '24'
-          cache: 'npm'
-          cache-dependency-path: ui/hound-dashboard/package-lock.json
-
-      - name: Install Angular dependencies
-        run: npm ci
-        working-directory: ui/hound-dashboard
-
-      - name: Run Angular tests
-        run: npx ng test --watch=false
-        working-directory: ui/hound-dashboard
+        uses: actions/checkout@v7
 
       - name: Log in to GHCR
         if: github.event_name == 'push'

@@ -149,10 +149,13 @@ public class AlpacaSyncService : IAlpacaSyncService
 
                 try
                 {
+                    var side = order.OrderSide ?? throw new InvalidOperationException(
+                        $"Alpaca order {orderIdStr} has no side.");
                     var doc = new TradeDocument
                     {
-                        Symbol = order.Symbol,
-                        Action = order.OrderSide.ToString(),
+                        Symbol = order.Symbol ?? throw new InvalidOperationException(
+                            $"Alpaca order {orderIdStr} has no symbol."),
+                        Action = side.ToString(),
                         RequestedQuantity = order.Quantity ?? order.FilledQuantity,
                         OrderId = orderIdStr,
                         FillStatus = MapOrderStatus(order.OrderStatus),

@@ -1,4 +1,10 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  OnDestroy,
+  ChangeDetectorRef,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink } from '@angular/router';
 import { ApiService } from '../../services/api.service';
@@ -9,7 +15,8 @@ import { Pack, HealthReport, ServiceHealth } from '../../models';
   standalone: true,
   imports: [CommonModule, RouterLink],
   templateUrl: './dashboard.component.html',
-  styles: []
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [],
 })
 export class DashboardComponent implements OnInit, OnDestroy {
   packs: Pack[] = [];
@@ -18,12 +25,15 @@ export class DashboardComponent implements OnInit, OnDestroy {
   healthError = false;
   private refreshInterval?: ReturnType<typeof setInterval>;
 
-  constructor(private api: ApiService, private cdr: ChangeDetectorRef) {}
+  constructor(
+    private api: ApiService,
+    private cdr: ChangeDetectorRef,
+  ) {}
 
   ngOnInit(): void {
     this.loading = true;
     this.api.getPacks().subscribe({
-      next: packs => {
+      next: (packs) => {
         this.packs = packs;
         this.loading = false;
         this.cdr.detectChanges();
@@ -43,7 +53,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private loadHealth(): void {
     this.api.getHealth().subscribe({
-      next: report => {
+      next: (report) => {
         this.healthReport = report;
         this.healthError = false;
         this.cdr.detectChanges();
@@ -51,7 +61,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       error: () => {
         this.healthError = true;
         this.cdr.detectChanges();
-      }
+      },
     });
   }
 }

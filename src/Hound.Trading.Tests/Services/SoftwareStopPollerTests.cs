@@ -156,7 +156,7 @@ public sealed class SoftwareStopPollerTests
 
         var poller = CreatePoller(alpaca, store, new SoftwareStopSettings { RunWhenMarketClosed = true });
 
-        var ex = await Assert.ThrowsExceptionAsync<InvalidOperationException>(
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(
             () => poller.RunCycleAsync(default));
 
         Assert.AreEqual("reached-query", ex.Message);

@@ -26,12 +26,10 @@ import { classes } from '@spartan-ng/helm/utils';
       inputs: [
         'align',
         'autoFocus',
-        'closeDelay',
         'closeOnOutsidePointerEvents',
         'sideOffset',
         'state',
         'offsetX',
-        'restoreFocus',
       ],
       outputs: ['stateChanged', 'closed'],
     },

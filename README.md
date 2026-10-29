@@ -80,14 +80,14 @@ Runs are checkpointed via an `IStateStore` (RavenDB), so a pack can resume in-pr
 
 | Component             | Technology                        | Version     |
 |-----------------------|-----------------------------------|-------------|
-| Agent Framework       | Microsoft Agent Framework (`Microsoft.Agents.AI`) | 1.1.0 |
-| Backend               | .NET / ASP.NET Core               | 9.0         |
-| Frontend              | Angular (standalone components)   | 21          |
-| UI styling            | Tailwind CSS + Spartan-ng         | 4 / alpha   |
+| Agent Framework       | Microsoft Agent Framework (`Microsoft.Agents.AI`) | 1.26.0 |
+| Backend               | .NET / ASP.NET Core               | 10.0 LTS    |
+| Frontend              | Angular (standalone components)   | 22          |
+| UI styling            | Tailwind CSS + Spartan-ng         | 4 / 1.9     |
 | Charts                | lightweight-charts                | 5           |
 | Database              | RavenDB (`RavenDB.Client`)        | 7.2         |
 | LLM                   | Ollama (containerized)            | Latest      |
-| Trading API           | Alpaca Markets (`Alpaca.Markets`) | 7.2         |
+| Trading API           | Alpaca Markets (`Alpaca.Markets`) | 8.0         |
 | Orchestration         | Docker Compose                    | WSL2        |
 | Real-time             | SignalR + `@microsoft/signalr`    | Built-in    |
 | .NET tests            | MSTest + Moq                      | —           |
@@ -101,8 +101,8 @@ Runs are checkpointed via an `IStateStore` (RavenDB), so a pack can resume in-pr
 |--------------------------|-----------------------------------------------------|
 | WSL2                     | Ubuntu 22.04 LTS recommended                        |
 | Docker Desktop           | GPU passthrough enabled (NVIDIA)                    |
-| .NET 9 SDK               | `dotnet --version` should show `9.x`                |
-| Node 22+                 | `node --version` should show `v22.x`                |
+| .NET 10 SDK              | `dotnet --version` should show `10.x`               |
+| Node 24 LTS              | 24.22.1 or later on the 24.x line; npm 12.2.1        |
 | Angular CLI              | `npm install -g @angular/cli`                       |
 | NVIDIA GPU + drivers     | Required for Ollama GPU passthrough                 |
 
@@ -162,6 +162,46 @@ This override:
 - Mounts your local `src/` directories into the containers for live reload
 - Replaces nginx in `hound-ui` with `ng serve` for Angular live reload
 - Sets `ASPNETCORE_ENVIRONMENT=Development`
+
+### Upgrade regression checks
+
+Use .NET 10, Node 24.22.1/npm 12.2.1, and Python 3.12. Run the following
+from the repository root:
+
+```bash
+dotnet restore src/Hound.sln
+dotnet build src/Hound.sln --configuration Release --no-restore
+dotnet test src/Hound.sln --configuration Release --no-build --no-restore
+dotnet run --project src/Hound.Eval --configuration Release --no-build -- --dry-run
+dotnet run --project src/Hound.Grocery.Eval --configuration Release --no-build -- --dry-run
+dotnet run --project src/Hound.Grocery.Eval --configuration Release --no-build
+```
+
+The API suite includes an embedded RavenDB server using the .NET 10 runtime
+and a real loopback SignalR WebSocket test. Trading scenario dry-run validates
+JSON only; full trading evals still require Ollama and use stub Alpaca services.
+
+In `ui/hound-dashboard`, run `npm ci`, `npm ls --all`,
+`npx ng test --watch=false`, and `npx ng build --configuration production`.
+Angular 22 requires TypeScript 6.0; TypeScript 7 is not a compatible replacement.
+Keep the Spartan CLI's transitive Nx packages on the same release; validate a
+clean install with `npm ls --all` on Linux as well as Windows after upgrades.
+
+In `infra/grocery-browser`, use an isolated Python 3.12 environment:
+
+```bash
+python -m pip install -r requirements.txt -r requirements-dev.txt
+python -m pip check
+python -m pytest
+python -m pytest tests/browser_smoke.py
+```
+
+The last command requires installed Chrome/Chromium or Edge. It launches an
+ephemeral profile against a loopback fixture, verifies selectors, PNG capture,
+and safety guards, then closes the browser. It never visits the grocery site.
+Set `GROCERY_SMOKE_BROWSER_EXECUTABLE` to select an installed browser explicitly.
+CI selects the same Google Chrome executable it checks with `--version`, rather
+than relying on driver discovery among the runner's browser installations.
 
 ### .NET User Secrets (local dev without Docker)
 
@@ -252,7 +292,7 @@ hound-ai/
 │   ├── Hound.Api.Tests/
 │   └── Hound.Eval/             # Eval harness: scenarios per hound (Data, Strategy, Risk, Execution, Monitor)
 └── ui/
-    └── hound-dashboard/        # Angular 21 SPA
+    └── hound-dashboard/        # Angular 22 SPA
 ```
 
 ---
@@ -269,6 +309,7 @@ hound-ai/
 ## CI / GitOps
 
 - **CI pipeline**: `.github/workflows/` — builds, tests, and publishes Docker images to GHCR on every push to `main`
+- **PR checks**: .NET tests, both scenario parsers, offline grocery evals, dashboard tests and production build, Python 3.12 tests and real-browser smoke, Compose validation, and all five application image builds. PR builds do not publish images or use registry credentials. Branch protection must separately require the desired checks.
 - **Ollama bootstrap**: the `ollama-init` container runs once after `ollama` is healthy and pulls all configured models, then exits
 
 ---

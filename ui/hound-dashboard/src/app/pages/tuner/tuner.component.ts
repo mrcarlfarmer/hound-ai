@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TunerService } from '../../services/tuner.service';
 import { TunerExperiment } from '../../models';
@@ -9,7 +9,8 @@ import { toast } from '@spartan-ng/brain/sonner';
   standalone: true,
   imports: [CommonModule],
   templateUrl: './tuner.component.html',
-  styles: []
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [],
 })
 export class TunerComponent implements OnInit {
   experiments: TunerExperiment[] = [];
@@ -19,7 +20,10 @@ export class TunerComponent implements OnInit {
   error: string | null = null;
   loading = false;
 
-  constructor(private tuner: TunerService, private cdr: ChangeDetectorRef) {}
+  constructor(
+    private tuner: TunerService,
+    private cdr: ChangeDetectorRef,
+  ) {}
 
   ngOnInit(): void {
     this.loadExperiments();
@@ -29,7 +33,7 @@ export class TunerComponent implements OnInit {
     this.error = null;
     this.loading = true;
     this.tuner.getExperiments(this.page, this.pageSize).subscribe({
-      next: result => {
+      next: (result) => {
         this.experiments = result.items;
         this.totalCount = result.totalCount;
         this.loading = false;

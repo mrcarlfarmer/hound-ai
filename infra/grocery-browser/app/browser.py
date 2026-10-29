@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+from pathlib import Path
 from typing import Any
 
 from app.config import Settings, get_settings, load_selectors
@@ -306,8 +307,6 @@ class BrowserSession:
 
     async def screenshot(self, region: str | None = None) -> str:
         path = f"/data/grocery/screenshots/{region or 'page'}.png"
-        try:
-            await self._tab.save_screenshot(path)
-        except Exception:  # pragma: no cover - needs live tab
-            pass
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        await self._tab.save_screenshot(path, format="png")
         return path

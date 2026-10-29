@@ -2,11 +2,15 @@
 
 This project was generated using [Angular CLI](https://github.com/angular/angular-cli) version 21.2.7.
 
+It now uses Angular 22, TypeScript 6.0, and Spartan 1.9. Use Node 24.22.1
+on the 24 LTS line with npm 12.2.1. Run `npm ci` before starting local checks.
+Do not force TypeScript 7 or bypass peer dependency resolution.
+
 ## Development server
 
 The dashboard normally runs inside the `hound-ui` container started by
 `docker compose -f docker-compose.yml -f docker-compose.dev.yml up`. That
-container's entrypoint is `npm install && npx ng serve …` with the source
+container's entrypoint installs npm 12.2.1, runs `npm ci`, and starts `ng serve` with the source
 tree bind-mounted from the host and `/app/node_modules` masked by an
 anonymous Docker volume.
 
@@ -30,15 +34,14 @@ dev stack is running, the container will keep using its old, frozen
 imported the missing dep.
 
 After any `package.json` change, refresh the container so its entrypoint
-re-runs `npm install`:
+re-runs `npm ci` against the updated lockfile:
 
 ```bash
-# Cheap path — entrypoint re-runs `npm install` against the new package.json
+# Cheap path — entrypoint re-runs `npm ci` against the new lockfile
 docker compose -f docker-compose.yml -f docker-compose.dev.yml restart hound-ui
 
-# Nuclear path — recreate the node_modules volume from scratch
-docker compose -f docker-compose.yml -f docker-compose.dev.yml down hound-ui -v
-docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d hound-ui
+# If needed, recreate only the UI container's anonymous volume
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --force-recreate --renew-anon-volumes --no-deps hound-ui
 ```
 
 Always hard-reload (`Ctrl + Shift + R`) the browser afterwards to bypass
@@ -73,18 +76,15 @@ This will compile your project and store the build artifacts in the `dist/` dire
 To execute unit tests with the [Vitest](https://vitest.dev/) test runner, use the following command:
 
 ```bash
-ng test
+npx ng test --watch=false
 ```
 
-## Running end-to-end tests
+The suite includes interaction regressions for the migrated select and dialog
+primitives. Run `npx ng build --configuration production` as well: unit-test
+bundles do not necessarily compile every local Helm primitive.
 
-For end-to-end (e2e) testing, run:
-
-```bash
-ng e2e
-```
-
-Angular CLI does not come with an end-to-end testing framework by default. You can choose one that suits your needs.
+No separate Angular end-to-end runner is configured. Browser smoke checks should
+use an isolated API or fixtures, never real trade or shopping actions.
 
 ## Additional Resources
 

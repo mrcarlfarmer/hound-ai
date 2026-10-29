@@ -339,7 +339,7 @@ public sealed class StrategyNodeTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(
             () => node.ExecuteAsync(state, cts.Token));
     }
 

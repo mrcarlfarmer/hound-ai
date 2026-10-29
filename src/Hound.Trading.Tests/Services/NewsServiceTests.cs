@@ -121,7 +121,7 @@ public sealed class NewsServiceTests
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
-        await Assert.ThrowsExceptionAsync<OperationCanceledException>(
+        await Assert.ThrowsExactlyAsync<OperationCanceledException>(
             () => service.GetRecentNewsAsync("AAPL", 10, TimeSpan.FromHours(24), cts.Token));
     }
 

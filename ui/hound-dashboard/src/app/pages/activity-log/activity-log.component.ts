@@ -1,4 +1,4 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, ChangeDetectorRef, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ApiService } from '../../services/api.service';
@@ -9,14 +9,18 @@ import { ActivityLog, ActivityFilter } from '../../models';
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './activity-log.component.html',
-  styles: []
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [],
 })
 export class ActivityLogComponent implements OnInit {
   activities: ActivityLog[] = [];
   filter: ActivityFilter = {};
   loading = false;
 
-  constructor(private api: ApiService, private cdr: ChangeDetectorRef) {}
+  constructor(
+    private api: ApiService,
+    private cdr: ChangeDetectorRef,
+  ) {}
 
   ngOnInit(): void {
     this.loadActivity();
@@ -24,7 +28,7 @@ export class ActivityLogComponent implements OnInit {
 
   loadActivity(): void {
     this.loading = true;
-    this.api.getActivity(this.filter).subscribe(result => {
+    this.api.getActivity(this.filter).subscribe((result) => {
       this.activities = result.items;
       this.loading = false;
       this.cdr.detectChanges();

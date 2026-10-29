@@ -1,4 +1,10 @@
-import { Component, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
+import {
+  Component,
+  OnInit,
+  OnDestroy,
+  ChangeDetectorRef,
+  ChangeDetectionStrategy,
+} from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { forkJoin, Subscription } from 'rxjs';
 import { ApiService } from '../../services/api.service';
@@ -10,7 +16,8 @@ import { TradeDocument, OrderUpdate, PositionInfo, AlpacaSyncResult } from '../.
   standalone: true,
   imports: [CommonModule],
   templateUrl: './execution.component.html',
-  styles: []
+  changeDetection: ChangeDetectionStrategy.Eager,
+  styles: [],
 })
 export class ExecutionComponent implements OnInit, OnDestroy {
   trades: TradeDocument[] = [];
@@ -71,7 +78,7 @@ export class ExecutionComponent implements OnInit, OnDestroy {
       },
       error: () => {
         // If positions endpoint fails, still show trades but with no Close buttons.
-        this.api.getTrades(this.page, this.pageSize).subscribe(trades => {
+        this.api.getTrades(this.page, this.pageSize).subscribe((trades) => {
           this.trades = trades;
           this.openSymbols = new Set();
           this.cdr.detectChanges();
@@ -91,17 +98,21 @@ export class ExecutionComponent implements OnInit, OnDestroy {
    */
   hasPendingSell(symbol: string): boolean {
     const sym = symbol.toUpperCase();
-    return this.trades.some(t =>
-      t.symbol.toUpperCase() === sym &&
-      t.action?.toUpperCase() === 'SELL' &&
-      (t.fillStatus === 'Pending' || t.fillStatus === 'PartiallyFilled'));
+    return this.trades.some(
+      (t) =>
+        t.symbol.toUpperCase() === sym &&
+        t.action?.toUpperCase() === 'SELL' &&
+        (t.fillStatus === 'Pending' || t.fillStatus === 'PartiallyFilled'),
+    );
   }
 
   canClose(trade: TradeDocument): boolean {
-    return trade.fillStatus === 'Filled'
-      && trade.action?.toUpperCase() === 'BUY'
-      && this.hasOpenPosition(trade.symbol)
-      && !this.hasPendingSell(trade.symbol);
+    return (
+      trade.fillStatus === 'Filled' &&
+      trade.action?.toUpperCase() === 'BUY' &&
+      this.hasOpenPosition(trade.symbol) &&
+      !this.hasPendingSell(trade.symbol)
+    );
   }
 
   prevPage(): void {
@@ -121,12 +132,13 @@ export class ExecutionComponent implements OnInit, OnDestroy {
       'bg-green-100 text-green-800': status === 'Filled',
       'bg-yellow-100 text-yellow-800': status === 'PartiallyFilled',
       'bg-blue-100 text-blue-800': status === 'Pending',
-      'bg-red-100 text-red-800': status === 'Canceled' || status === 'Rejected' || status === 'Expired',
+      'bg-red-100 text-red-800':
+        status === 'Canceled' || status === 'Rejected' || status === 'Expired',
     };
   }
 
   private applyOrderUpdate(update: OrderUpdate): void {
-    const trade = this.trades.find(t => t.id === update.tradeDocumentId);
+    const trade = this.trades.find((t) => t.id === update.tradeDocumentId);
     if (trade) {
       trade.fillStatus = update.fillStatus as TradeDocument['fillStatus'];
       trade.filledQuantity = update.filledQuantity;

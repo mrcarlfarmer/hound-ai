@@ -13,7 +13,7 @@ Create a new pack following all project conventions.
 ## Steps
 
 1. **Project** — create `src/Hound.{{packName}}/Hound.{{packName}}.csproj`
-   - Target `net9.0`, reference `Hound.Core`
+   - Target `net10.0`, reference `Hound.Core`
    - Add `Microsoft.Agents.AI`, `Microsoft.Extensions.AI`, `Microsoft.Extensions.Hosting`
    - Add `Raven.Client` if using RavenDB for state
 

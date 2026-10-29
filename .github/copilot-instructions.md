@@ -9,8 +9,8 @@ Hound AI is a containerized multi-agent platform running locally in WSL2 via Doc
 - Use these terms consistently in code, comments, logs, and documentation
 
 ## Tech Stack
-- .NET 9 / ASP.NET Core, Microsoft Agent Framework v1.1.0 (`Microsoft.Agents.AI`)
-- Angular 21 (standalone components, SCSS), `@microsoft/signalr`
+- .NET 10 LTS / ASP.NET Core, Microsoft Agent Framework v1.26.0 (`Microsoft.Agents.AI`)
+- Angular 22 (standalone components, SCSS), TypeScript 6.0, Node 24 LTS/npm 12, `@microsoft/signalr`
 - RavenDB (activity logging), Ollama (local LLMs), Alpaca Markets (paper trading)
 - Docker Compose on WSL2, nginx reverse proxy for UI
 - Testing: MSTest + Moq (.NET), vitest + jsdom (Angular)
